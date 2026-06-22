@@ -43,12 +43,12 @@ story_location: _bmad-output/implementation-artifacts
 
 development_status:
   # Epic 1: Project Foundation & Core Domain
-  epic-1: in-progress
+  epic-1: done
   1-1-initialize-tauri-project-with-4-layer-structure: done
   1-2-create-printjob-domain-model: done
-  1-3-create-printer-domain-model: backlog
-  1-4-create-document-domain-model-appcontext-di-container: backlog
-  epic-1-retrospective: optional
+  1-3-create-printer-domain-model: done
+  1-4-create-document-domain-model-appcontext-di-container: done
+  epic-1-retrospective: done
 
   # Epic 2: Cross-Platform Printer Infrastructure
   epic-2: backlog
