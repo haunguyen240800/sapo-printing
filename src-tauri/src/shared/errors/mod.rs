@@ -1,2 +1,4 @@
 // Error types for all layers
-// Future: ApplicationError, DomainError, InfrastructureError
+pub mod infrastructure_error;
+
+pub use infrastructure_error::InfrastructureError;

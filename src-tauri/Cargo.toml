@@ -30,7 +30,7 @@ reqwest = { version = "0.12", features = ["json"] }
 
 # Platform-specific secret management
 [target.'cfg(windows)'.dependencies]
-windows = { version = "0.52", features = ["Security_Credentials"] }
+windows = { version = "0.52", features = ["Security_Credentials", "Win32_Foundation", "Win32_Graphics_Gdi", "Win32_Graphics_Printing", "Win32_Security"] }
 
 [target.'cfg(target_os = "macos")'.dependencies]
 security-framework = "2.9"
