@@ -1,2 +1,5 @@
-// SQLite database implementation
-// Future: Repository implementations, migrations
+pub mod connection;
+pub mod migrations;
+
+pub use connection::{DbPool, DatabaseError};
+pub use migrations::run_migrations;

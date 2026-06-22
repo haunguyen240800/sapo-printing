@@ -37,6 +37,7 @@
 generated: 2026-06-22
 last_updated: 2026-06-22
 project: sapo-printer
+
 project_key: NOKEY
 tracking_system: file-system
 story_location: _bmad-output/implementation-artifacts
@@ -51,8 +52,8 @@ development_status:
   epic-1-retrospective: done
 
   # Epic 2: Cross-Platform Printer Infrastructure
-  epic-2: backlog
-  2-1-setup-sqlite-database-with-migrations-schemas: backlog
+  epic-2: in-progress
+  2-1-setup-sqlite-database-with-migrations-schemas: done
   2-2-implement-windows-printer-discovery-status-monitoring-win32-api: backlog
   2-3-implement-cups-printer-discovery-status-monitoring-macos-linux: backlog
   2-4-implement-sqlite-printer-repository-config-persistence: backlog
