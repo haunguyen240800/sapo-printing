@@ -1,0 +1,19 @@
+use super::aggregate::PrintJob;
+use super::errors::DomainError;
+use super::value_objects::JobId;
+
+/// Repository trait for PrintJob aggregate persistence.
+///
+/// Implementations (e.g., SQLite) live in the infrastructure layer.
+/// The domain layer defines only the contract — no storage details.
+pub trait PrintJobRepository {
+    /// Persists a new PrintJob.
+    fn save(&self, job: &PrintJob) -> Result<(), DomainError>;
+
+    /// Updates an existing PrintJob.
+    fn update(&self, job: &PrintJob) -> Result<(), DomainError>;
+
+    /// Finds a PrintJob by its unique ID.
+    /// Returns None if not found.
+    fn find_by_id(&self, id: &JobId) -> Result<Option<PrintJob>, DomainError>;
+}

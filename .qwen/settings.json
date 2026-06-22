@@ -1,0 +1,20 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(python *)",
+      "Bash(python3 *)",
+      "Skill(bmad-code-review)",
+      "Agent(general-purpose)",
+      "Bash(cargo tree *)",
+      "Bash(findstr *)",
+      "Bash(dir *)",
+      "Bash(cargo build)",
+      "Skill(bmad-dev-story)",
+      "Skill(bmad-create-story)",
+      "Bash(git *)",
+      "Bash(cargo test)",
+      "Bash(cargo clippy)"
+    ]
+  },
+  "$version": 4
+}
