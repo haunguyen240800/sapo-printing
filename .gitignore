@@ -22,11 +22,11 @@ npm-debug.log*
 pnpm-debug.log*
 
 # Generated artifacts
-_bmad-output/
+#_bmad-output/
 
 # Environment
-.env
-.env.local
+#.env
+#.env.local
 
 # Tauri dev
-src-tauri/Cargo.lock
+#src-tauri/Cargo.lock

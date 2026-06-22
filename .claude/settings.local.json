@@ -1,0 +1,24 @@
+{
+  "permissions": {
+    "allow": [
+      "WebFetch(domain:help.bigseller.com)",
+      "WebFetch(domain:www.mintlify.com)",
+      "Bash(python3 *)",
+      "Bash(python _bmad/scripts/resolve_customization.py --skill \".claude/skills/bmad-agent-architect\" --key agent)",
+      "Bash(python _bmad/scripts/resolve_customization.py --skill \".claude/skills/bmad-create-architecture\" --key workflow)",
+      "Bash(python _bmad/scripts/resolve_config.py --project-root \".\" --key agents)",
+      "Bash(python _bmad/scripts/resolve_customization.py --skill \".claude/skills/bmad-check-implementation-readiness\" --key workflow)",
+      "Bash(python *)",
+      "Bash(pnpm install *)",
+      "Bash(pnpm add *)",
+      "Bash(cargo build *)",
+      "Bash(curl *)",
+      "Bash(cargo clean *)",
+      "Bash(powershell *)",
+      "Bash(timeout 10 pnpm tauri dev)",
+      "Bash(cargo check *)",
+      "Bash(npx tsc *)",
+      "Bash(cargo tree *)"
+    ]
+  }
+}
