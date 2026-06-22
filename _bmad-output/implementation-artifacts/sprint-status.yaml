@@ -35,7 +35,7 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 
 generated: 2026-06-22
-last_updated: 2026-06-22
+last_updated: 2026-06-23
 
 project_key: NOKEY
 tracking_system: file-system
@@ -54,7 +54,7 @@ development_status:
   epic-2: in-progress
   2-1-setup-sqlite-database-with-migrations-schemas: done
   2-2-implement-windows-printer-discovery-status-monitoring-win32-api: done
-  2-3-implement-cups-printer-discovery-status-monitoring-macos-linux: backlog
+  2-3-implement-cups-printer-discovery-status-monitoring-macos-linux: ready-for-dev
   2-4-implement-sqlite-printer-repository-config-persistence: backlog
   2-5-create-printer-configuration-ui-basic-settings-3-sections: backlog
   2-6-create-printer-configuration-ui-advanced-settings-2-sections: backlog
