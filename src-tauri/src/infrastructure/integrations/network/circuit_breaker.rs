@@ -1,0 +1,241 @@
+use std::time::{Duration, Instant};
+
+use crate::infrastructure::errors::InfrastructureError;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CircuitState {
+    Closed,
+    Open,
+    HalfOpen,
+}
+
+pub struct CircuitBreaker {
+    state: CircuitState,
+    failure_count: u32,
+    failure_threshold: u32,
+    #[allow(dead_code)]
+    success_count: u32,
+    open_until: Option<Instant>,
+    timeout: Duration,
+}
+
+impl CircuitBreaker {
+    pub fn new() -> Self {
+        Self {
+            state: CircuitState::Closed,
+            failure_count: 0,
+            failure_threshold: 5,
+            success_count: 0,
+            open_until: None,
+            timeout: Duration::from_secs(15),
+        }
+    }
+
+    pub fn reset(&mut self) {
+        self.state = CircuitState::Closed;
+        self.failure_count = 0;
+        self.success_count = 0;
+        self.open_until = None;
+    }
+
+    pub fn call<F, T>(&mut self, f: F) -> Result<T, InfrastructureError>
+    where
+        F: FnOnce() -> Result<T, InfrastructureError>,
+    {
+        if !self.should_attempt() {
+            return Err(InfrastructureError::CircuitOpenError);
+        }
+
+        // Transition Open → HalfOpen before attempting the call
+        if self.state == CircuitState::Open {
+            self.state = CircuitState::HalfOpen;
+        }
+
+        let result = f();
+
+        match &result {
+            Ok(_) => self.on_success(),
+            Err(_) => self.on_failure(),
+        }
+
+        result
+    }
+
+    pub fn on_success(&mut self) {
+        self.failure_count = 0;
+        if self.state == CircuitState::HalfOpen {
+            self.state = CircuitState::Closed;
+            self.open_until = None;
+        }
+    }
+
+    pub fn on_failure(&mut self) {
+        self.failure_count += 1;
+
+        match self.state {
+            CircuitState::HalfOpen => {
+                // Any failure in HalfOpen immediately re-opens the circuit
+                self.state = CircuitState::Open;
+                self.open_until = Some(Instant::now() + self.timeout);
+            }
+            CircuitState::Closed => {
+                if self.failure_count >= self.failure_threshold {
+                    self.state = CircuitState::Open;
+                    self.open_until = Some(Instant::now() + self.timeout);
+                }
+            }
+            CircuitState::Open => {
+                // Should not reach here via call(), but handle defensively
+                self.open_until = Some(Instant::now() + self.timeout);
+            }
+        }
+    }
+
+    fn should_attempt(&self) -> bool {
+        match self.state {
+            CircuitState::Closed | CircuitState::HalfOpen => true,
+            CircuitState::Open => {
+                if let Some(until) = self.open_until {
+                    Instant::now() >= until
+                } else {
+                    true
+                }
+            }
+        }
+    }
+
+    pub fn state(&self) -> CircuitState {
+        self.state
+    }
+
+    pub fn failure_count(&self) -> u32 {
+        self.failure_count
+    }
+
+    #[cfg(test)]
+    fn with_threshold(mut self, threshold: u32) -> Self {
+        self.failure_threshold = threshold;
+        self
+    }
+
+    #[cfg(test)]
+    fn with_timeout(mut self, timeout: Duration) -> Self {
+        self.timeout = timeout;
+        self
+    }
+}
+
+impl Default for CircuitBreaker {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_initial_state_is_closed() {
+        let cb = CircuitBreaker::new();
+        assert_eq!(cb.state(), CircuitState::Closed);
+        assert_eq!(cb.failure_count(), 0);
+    }
+
+    #[test]
+    fn test_successful_calls_reset_failure_count() {
+        let mut cb = CircuitBreaker::new();
+
+        for _ in 0..3 {
+            let _ = cb.call(|| Err::<(), _>(InfrastructureError::NetworkError("fail".into())));
+        }
+        assert_eq!(cb.failure_count(), 3);
+
+        let _ = cb.call(|| Ok::<_, InfrastructureError>(()));
+        assert_eq!(cb.failure_count(), 0);
+        assert_eq!(cb.state(), CircuitState::Closed);
+    }
+
+    #[test]
+    fn test_circuit_opens_after_threshold_failures() {
+        let mut cb = CircuitBreaker::new().with_threshold(3);
+
+        for _ in 0..3 {
+            let _ = cb.call(|| Err::<(), _>(InfrastructureError::NetworkError("fail".into())));
+        }
+
+        assert_eq!(cb.state(), CircuitState::Open);
+    }
+
+    #[test]
+    fn test_circuit_returns_circuit_open_error_when_open() {
+        let mut cb = CircuitBreaker::new().with_threshold(2);
+
+        for _ in 0..2 {
+            let _ = cb.call(|| Err::<(), _>(InfrastructureError::NetworkError("fail".into())));
+        }
+
+        assert_eq!(cb.state(), CircuitState::Open);
+
+        let result = cb.call(|| Ok::<_, InfrastructureError>(()));
+        assert!(matches!(result, Err(InfrastructureError::CircuitOpenError)));
+    }
+
+    #[test]
+    fn test_circuit_transitions_open_to_halfopen_after_timeout() {
+        let mut cb = CircuitBreaker::new()
+            .with_threshold(2)
+            .with_timeout(Duration::from_millis(50));
+
+        for _ in 0..2 {
+            let _ = cb.call(|| Err::<(), _>(InfrastructureError::NetworkError("fail".into())));
+        }
+        assert_eq!(cb.state(), CircuitState::Open);
+
+        std::thread::sleep(Duration::from_millis(60));
+
+        assert!(cb.should_attempt());
+
+        let result = cb.call(|| Ok::<_, InfrastructureError>(()));
+        assert!(result.is_ok());
+        assert_eq!(cb.state(), CircuitState::Closed);
+    }
+
+    #[test]
+    fn test_circuit_transitions_halfopen_to_open_on_failure() {
+        let mut cb = CircuitBreaker::new()
+            .with_threshold(2)
+            .with_timeout(Duration::from_millis(50));
+
+        for _ in 0..2 {
+            let _ = cb.call(|| Err::<(), _>(InfrastructureError::NetworkError("fail".into())));
+        }
+        assert_eq!(cb.state(), CircuitState::Open);
+
+        std::thread::sleep(Duration::from_millis(60));
+
+        let result = cb.call(|| {
+            Err::<(), InfrastructureError>(InfrastructureError::NetworkError("fail again".into()))
+        });
+        assert!(result.is_err());
+        assert_eq!(cb.state(), CircuitState::Open);
+    }
+
+    #[test]
+    fn test_five_consecutive_failures_open_circuit_default() {
+        let mut cb = CircuitBreaker::new(); // default threshold = 5
+
+        for i in 0..5 {
+            let result =
+                cb.call(|| Err::<(), _>(InfrastructureError::NetworkError(format!("fail {}", i))));
+            if i < 4 {
+                assert!(result.is_err());
+                assert_eq!(cb.state(), CircuitState::Closed);
+            } else {
+                // 5th failure should open the circuit
+                assert!(result.is_err());
+                assert_eq!(cb.state(), CircuitState::Open);
+            }
+        }
+    }
+}

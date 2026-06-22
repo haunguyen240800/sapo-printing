@@ -1,0 +1,41 @@
+# Dependencies
+node_modules/
+.pnpm-store/
+
+# Build output
+dist/
+src-tauri/target/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+npm-debug.log*
+pnpm-debug.log*
+
+# Generated artifacts
+#_bmad-output/
+
+# Environment
+#.env
+#.env.local
+
+# Tauri dev
+#src-tauri/Cargo.lock
+
+# Code signing keys (NEVER commit private keys)
+*.key
+*.pem
+*.pfx
+*.p12
+.tauri/
+
+*.key

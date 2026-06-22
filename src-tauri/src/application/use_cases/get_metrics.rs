@@ -1,0 +1,44 @@
+use std::sync::Arc;
+
+use crate::application::errors::Error;
+use crate::application::ports::{MetricsPort, MetricsSnapshot};
+
+pub struct GetMetricsUseCase {
+    metrics: Arc<dyn MetricsPort>,
+}
+
+impl GetMetricsUseCase {
+    pub fn new(metrics: Arc<dyn MetricsPort>) -> Self {
+        Self { metrics }
+    }
+
+    pub fn execute(&self) -> Result<MetricsSnapshot, Error> {
+        tracing::info!(
+            target = "sapo_printer::application::use_case::get_metrics",
+            "GetMetricsUseCase: starting"
+        );
+
+        let start = std::time::Instant::now();
+        let snapshot = self.metrics.collect().map_err(|e| Error::MetricsError {
+            reason: format!("Failed to collect metrics: {}", e),
+        })?;
+        let duration = start.elapsed();
+
+        tracing::info!(
+            target = "sapo_printer::application::use_case::get_metrics",
+            duration_ms = duration.as_millis(),
+            total_jobs = snapshot.total_jobs,
+            "GetMetricsUseCase: completed"
+        );
+
+        if duration.as_secs() > 5 {
+            tracing::warn!(
+                target = "sapo_printer::application::use_case::get_metrics",
+                duration_secs = duration.as_secs(),
+                "GetMetricsUseCase: SLOW execution (>5s)"
+            );
+        }
+
+        Ok(snapshot)
+    }
+}

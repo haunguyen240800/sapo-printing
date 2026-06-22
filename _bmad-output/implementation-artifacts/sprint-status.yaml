@@ -1,0 +1,92 @@
+# generated: 2026-06-22
+# last_updated: 2026-06-25 (story 4-7 → done)
+# project: sapo-printer
+# project_key: NOKEY
+# tracking_system: file-system
+# story_location: _bmad-output/implementation-artifacts
+
+# STATUS DEFINITIONS:
+# ==================
+# Epic Status:
+#   - backlog: Epic not yet started
+#   - in-progress: Epic actively being worked on
+#   - done: All stories in epic completed
+#
+# Epic Status Transitions:
+#   - backlog → in-progress: Automatically when first story is created (via create-story)
+#   - in-progress → done: Manually when all stories reach 'done' status
+#
+# Story Status:
+#   - backlog: Story only exists in epic file
+#   - ready-for-dev: Story file created in stories folder
+#   - in-progress: Developer actively working on implementation
+#   - review: Ready for code review (via Dev's code-review workflow)
+#   - done: Story completed
+#
+# Retrospective Status:
+#   - optional: Can be completed but not required
+#   - done: Retrospective has been completed
+#
+# WORKFLOW NOTES:
+# ===============
+# - Epic transitions to 'in-progress' automatically when first story is created
+# - Stories can be worked in parallel if team capacity allows
+# - Developer typically creates next story after previous one is 'done' to incorporate learnings
+# - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
+
+generated: 2026-06-22
+last_updated: 2026-06-25 (story 4-7 → review)
+
+project_key: NOKEY
+tracking_system: file-system
+story_location: _bmad-output/implementation-artifacts
+
+development_status:
+  # Epic 1: Project Foundation & Core Domain
+  epic-1: done
+  1-1-initialize-tauri-project-with-4-layer-structure: done
+  1-2-create-printjob-domain-model: done
+  1-3-create-printer-domain-model: done
+  1-4-create-document-domain-model-appcontext-di-container: done
+  epic-1-retrospective: done
+
+  # Epic 2: Cross-Platform Printer Infrastructure
+  epic-2: done
+  2-1-setup-sqlite-database-with-migrations-schemas: done
+  2-2-implement-windows-printer-discovery-status-monitoring-win32-api: done
+  2-3-implement-cups-printer-discovery-status-monitoring-macos-linux: done
+  2-4-implement-sqlite-printer-repository-config-persistence: done
+  2-5-create-printer-configuration-ui-basic-settings-3-sections: done
+  2-5-1-migrate-printer-config-ui-to-sapo-components: done
+  2-6-create-printer-configuration-ui-advanced-settings-2-sections: done
+  2-6-implement-secret-management-for-device-tokens-os-keychain: done
+  epic-2-retrospective: done
+
+  # Epic 3: Bulk Print Job Management with Document Processing Pipeline
+  epic-3: done
+  3-1-implement-s3-document-downloader-with-circuit-breaker: done
+  3-2-implement-mupdf-renderer-with-color-mode-support: done
+  3-3-implement-direct-pdf-strategy: done
+  3-4-create-hybrid-strategy-selector-auto-detect-printer-capability: done
+  3-5-implement-raii-temp-file-management-with-tiered-cleanup: done
+  3-6-create-print-job-tables-event-store-schema: done
+  3-7-implement-sqlite-print-job-repository: done
+  3-3-implement-createprintjobusecase-with-event-publishing: done
+  3-4-implement-durable-queue-manager-sqlite-backed: done
+  3-5-implement-queue-worker-with-batch-processing: done
+  3-6-implement-auto-retry-logic-with-exponential-backoff: done
+  3-7-implement-job-cancellation-use-case: done
+  3-8-create-print-job-list-ui-with-filters: done
+  3-9-add-real-time-status-updates-to-dashboard: done
+  epic-3-retrospective: done
+
+  # Epic 4: System Integration & Production Readiness
+  epic-4: in-progress
+  4-1-implement-native-messaging-protocol-json-commands: done
+  4-2-implement-status-polling-sync-2s-interval: done
+  4-3-setup-structured-logging-with-tracing-crate: done
+  4-4-implement-event-store-audit-trail-with-hmac-signing-30-days-retention: done
+  4-5-implement-metrics-collection-export: done
+  4-6-setup-tauri-auto-update-with-code-signing: done
+  4-7-create-auto-update-popup-ui: done
+  epic-4-retrospective: optional

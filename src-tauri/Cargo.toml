@@ -1,0 +1,122 @@
+[package]
+name = "sapo-printer-pro-max"
+version = "1.0.0"
+description = "Sapo Printer Pro Max"
+authors = ["SAPO Team"]
+edition = "2024"
+default-run = "sapo-printer"
+
+# Keep the library crate name stable (`sapo_printer`) regardless of the package
+# name, so `use sapo_printer::...` in the binaries keeps resolving.
+[lib]
+name = "sapo_printer"
+
+# Lint policy applied to the whole crate (both binaries). Levels are "warn" so
+# they surface in `cargo build`/`cargo clippy` without breaking local builds;
+# enforce with `-D warnings` in CI. Fine-tuning of individual lints lives in
+# clippy.toml.
+[lints.rust]
+rust_2018_idioms = { level = "warn", priority = -1 }
+unused_qualifications = "warn"
+
+[lints.clippy]
+all = { level = "warn", priority = -1 }
+# Keep debug/placeholder artifacts out of shipped code.
+dbg_macro = "warn"
+todo = "warn"
+unimplemented = "warn"
+print_stdout = "warn"
+print_stderr = "warn"
+# Prefer explicit error handling over panics in non-test code
+# (tests are exempted via clippy.toml).
+unwrap_used = "warn"
+
+[build-dependencies]
+tauri-build = { version = "2.0", features = [] }
+serde_json = "1"
+
+[features]
+default = []
+# Enable the (incomplete) native PDF render path. Off by default because the
+# FFI bridge to FPDF_RenderPage is not wired yet — turning this on will fail
+# every job at render time. Kept behind a feature so the dead code path can be
+# developed without poisoning production builds.
+native_pdf_render = []
+
+[dependencies]
+tauri = { version = "2.0", features = ["tray-icon"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+# Database
+rusqlite = { version = "0.32", features = ["bundled"] }
+rusqlite_migration = "1.2"
+r2d2 = "0.8"
+r2d2_sqlite = "0.25"
+
+# Async runtime
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "sync", "time", "fs", "io-util"] }
+async-trait = "0.1"
+
+# Logging
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
+tracing-appender = "0.2"
+chrono = "0.4"
+regex = "1"
+
+# Utilities
+uuid = { version = "1", features = ["v4", "serde"] }
+reqwest = { version = "0.12", features = ["json", "blocking"] }
+url = "2.5"
+
+# Token hashing (API token store)
+sha2 = "0.10"
+rand = "0.8"
+hex = "0.4"
+base64 = "0.22"
+
+# Plain HTTP local server (loopback only)
+axum = { version = "0.7", features = ["macros"] }
+tokio-stream = { version = "0.1", features = ["sync"] }
+tower-http = { version = "0.5", features = ["cors", "trace"] }
+tower_governor = "0.4"
+subtle = "2.5"
+futures = "0.3"
+
+# PDF rendering
+pdfium-render = { version = "0.9", features = ["thread_safe"] }
+
+# Auto-update
+tauri-plugin-updater = "2"
+# Verify minisign signature của installer trước khi service (SYSTEM) chạy nó.
+
+# Dialog plugin for native file dialogs
+tauri-plugin-dialog = "2"
+
+# Open external URLs in the system browser
+tauri-plugin-opener = "2"
+
+# Auto-start on OS login (toggleable via Settings)
+tauri-plugin-autostart = "2"
+
+# Chặn chạy nhiều tiến trình app trên cùng một máy. Nhiều instance sẽ cùng chạy
+# QueueWorker trên chung 1 SQLite DB và pop trùng job → in ra nhiều bản.
+tauri-plugin-single-instance = "2"
+image = "0.25.10"
+
+[target.'cfg(windows)'.dependencies]
+windows = { version = "0.52", features = ["Win32_Foundation", "Win32_Graphics_Dwm", "Win32_Graphics_Gdi", "Win32_Graphics_Printing", "Win32_Security", "Win32_Storage_Xps", "Win32_System_Threading", "Win32_System_RemoteDesktop", "Win32_System_StationsAndDesktops", "Win32_System_SystemServices"] }
+winreg = "0.52"
+
+[target.'cfg(not(target_os = "windows"))'.dependencies]
+cups-sys = "0.1"
+
+[dev-dependencies]
+mockito = "1.0"
+filetime = "0.2"
+tempfile = "3"
+
+[[bin]]
+name = "sapo-printer"
+path = "src/main.rs"

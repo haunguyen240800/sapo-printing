@@ -1,0 +1,9 @@
+# Icon files needed:
+# - 32x32.png
+# - 128x128.png
+# - 128x128@2x.png
+# - icon.icns (macOS)
+# - icon.ico (Windows)
+#
+# These will be added in future stories or can be generated using Tauri CLI:
+# pnpm tauri icon path/to/icon.png
