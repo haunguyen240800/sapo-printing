@@ -103,9 +103,10 @@ impl PrinterRepository for SqlitePrinterRepository {
     }
 
     fn find_all(&self) -> Result<Vec<Printer>, PrinterDomainError> {
-        let conn = self.conn.lock().unwrap_or_else(|poisoned| {
-            poisoned.into_inner()
-        });
+        let conn = self
+            .conn
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
 
         let mut stmt = conn
             .prepare("SELECT printer_name, printer_type, status FROM printer_configs")
@@ -141,11 +142,10 @@ impl PrinterRepository for SqlitePrinterRepository {
 
         let mut printers = Vec::new();
         for printer_result in printer_iter {
-            let (name, printer_type, stored_status) = printer_result.map_err(|e| {
-                PrinterDomainError::RepositoryError {
+            let (name, printer_type, stored_status) =
+                printer_result.map_err(|e| PrinterDomainError::RepositoryError {
                     reason: format!("Failed to read printer row: {}", e),
-                }
-            })?;
+                })?;
 
             // Reconstruct Printer aggregate (always starts as Offline)
             let mut printer = Printer::new(PrinterName::new(name), printer_type);
@@ -164,9 +164,10 @@ impl PrinterRepository for SqlitePrinterRepository {
     }
 
     fn find_by_name(&self, name: &PrinterName) -> Result<Option<Printer>, PrinterDomainError> {
-        let conn = self.conn.lock().unwrap_or_else(|poisoned| {
-            poisoned.into_inner()
-        });
+        let conn = self
+            .conn
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
 
         let mut stmt = conn
             .prepare("SELECT printer_name, printer_type, status FROM printer_configs WHERE printer_name = ?1")
@@ -224,10 +225,8 @@ mod tests {
     use crate::infrastructure::database::migrations::run_migrations;
 
     fn setup_test_db() -> Arc<Mutex<Connection>> {
-        let mut conn = Connection::open_in_memory()
-            .expect("Failed to open in-memory database");
-        run_migrations(&mut conn)
-            .expect("Failed to run migrations in test setup");
+        let mut conn = Connection::open_in_memory().expect("Failed to open in-memory database");
+        run_migrations(&mut conn).expect("Failed to run migrations in test setup");
         Arc::new(Mutex::new(conn))
     }
 
@@ -263,7 +262,9 @@ mod tests {
         repo.save(&printer).unwrap();
 
         // Modify and save again (should UPSERT)
-        printer.connect().expect("Failed to connect printer in test");
+        printer
+            .connect()
+            .expect("Failed to connect printer in test");
         repo.save(&printer).unwrap();
 
         // Should still be only 1 record
@@ -356,7 +357,9 @@ mod tests {
         let printer = make_test_printer("HP OfficeJet", PrinterType::Local);
         repo.save(&printer).unwrap();
 
-        let found = repo.find_by_name(&PrinterName::new("HP OfficeJet".to_string())).unwrap();
+        let found = repo
+            .find_by_name(&PrinterName::new("HP OfficeJet".to_string()))
+            .unwrap();
         assert!(found.is_some());
         assert_eq!(found.unwrap().name().as_str(), "HP OfficeJet");
     }
@@ -366,8 +369,9 @@ mod tests {
         let conn = setup_test_db();
         let repo = SqlitePrinterRepository::new(conn);
 
-        let found = repo.find_by_name(&PrinterName::new("NonExistent".to_string())).unwrap();
+        let found = repo
+            .find_by_name(&PrinterName::new("NonExistent".to_string()))
+            .unwrap();
         assert!(found.is_none());
     }
 }
-

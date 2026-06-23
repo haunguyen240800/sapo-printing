@@ -13,7 +13,26 @@
       "Skill(bmad-create-story)",
       "Bash(git *)",
       "Bash(cargo test)",
-      "Bash(cargo clippy)"
+      "Bash(cargo clippy)",
+      "Skill(bmad-agent-dev)",
+      "Bash(cargo fmt)",
+      "Agent(Explore)",
+      "WebFetch(crates.io)",
+      "Bash(cargo search *)",
+      "Bash(cargo *)",
+      "WebFetch(docs.rs)",
+      "WebFetch(github.com)",
+      "Bash(where *)",
+      "Bash(rustc *)",
+      "Bash(powershell *)",
+      "Bash(del *)",
+      "Bash(curl *)",
+      "Bash(type *)",
+      "Bash(tar *)",
+      "Bash(copy *)",
+      "Bash(.\\integration_tests-c2b3e73fd9a298a9.exe *)",
+      "Bash(target\\debug\\deps\\integration_tests-c2b3e73fd9a298a9.exe *)",
+      "Agent"
     ]
   },
   "$version": 4

@@ -52,7 +52,9 @@ pub fn run_migrations(conn: &mut Connection) -> Result<(), DatabaseError> {
     let migrations = Migrations::new(vec![M::up(MIGRATION_1), M::up(MIGRATION_2)]);
     migrations
         .to_latest(conn)
-        .map_err(|e| DatabaseError::MigrationFailed { reason: e.to_string() })
+        .map_err(|e| DatabaseError::MigrationFailed {
+            reason: e.to_string(),
+        })
 }
 
 #[cfg(test)]

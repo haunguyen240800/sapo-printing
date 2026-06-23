@@ -38,8 +38,12 @@ mod tests {
 
     #[test]
     fn test_printer_not_online_eq() {
-        let a = PrinterDomainError::PrinterNotOnline { printer_name: "X".to_string() };
-        let b = PrinterDomainError::PrinterNotOnline { printer_name: "X".to_string() };
+        let a = PrinterDomainError::PrinterNotOnline {
+            printer_name: "X".to_string(),
+        };
+        let b = PrinterDomainError::PrinterNotOnline {
+            printer_name: "X".to_string(),
+        };
         assert_eq!(a, b);
     }
 }

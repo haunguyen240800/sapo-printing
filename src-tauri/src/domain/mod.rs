@@ -2,6 +2,6 @@
 // This layer contains aggregates, entities, value objects, domain events, and repository traits
 // CRITICAL: Domain must remain completely independent of all other layers
 
+pub mod document;
 pub mod print_job;
 pub mod printer;
-pub mod document;

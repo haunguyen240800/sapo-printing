@@ -72,13 +72,19 @@ mod tests {
     fn test_document_new_empty_url() {
         let loc = DocumentLocation::new(String::new());
         let result = Document::new(loc, DocumentType::Pdf);
-        assert!(matches!(result, Err(DocumentDomainError::InvalidUrl { .. })));
+        assert!(matches!(
+            result,
+            Err(DocumentDomainError::InvalidUrl { .. })
+        ));
     }
 
     #[test]
     fn test_document_new_invalid_scheme() {
         let loc = DocumentLocation::new("ftp://example.com/doc.pdf".to_string());
         let result = Document::new(loc, DocumentType::Pdf);
-        assert!(matches!(result, Err(DocumentDomainError::InvalidUrl { .. })));
+        assert!(matches!(
+            result,
+            Err(DocumentDomainError::InvalidUrl { .. })
+        ));
     }
 }

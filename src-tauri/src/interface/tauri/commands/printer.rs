@@ -133,7 +133,10 @@ mod tests {
         };
         let result = save_printer_config(config);
         assert!(result.is_err());
-        assert_eq!(result.unwrap_err(), "Kích thước buffer bắt buộc khi bật buffer");
+        assert_eq!(
+            result.unwrap_err(),
+            "Kích thước buffer bắt buộc khi bật buffer"
+        );
     }
 
     #[test]
@@ -177,7 +180,10 @@ mod tests {
         };
         let result = save_printer_config(config);
         assert!(result.is_err());
-        assert_eq!(result.unwrap_err(), "Không thể đặt kích thước buffer khi buffer đã tắt");
+        assert_eq!(
+            result.unwrap_err(),
+            "Không thể đặt kích thước buffer khi buffer đã tắt"
+        );
     }
 
     #[test]

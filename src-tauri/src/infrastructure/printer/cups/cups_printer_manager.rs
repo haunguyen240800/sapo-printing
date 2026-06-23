@@ -1,7 +1,7 @@
 #[cfg(not(target_os = "windows"))]
-use crate::domain::printer::{Printer, PrinterName, PrinterStatus, PrinterType};
-#[cfg(not(target_os = "windows"))]
 use super::super::printer_manager::PrinterManager;
+#[cfg(not(target_os = "windows"))]
+use crate::domain::printer::{Printer, PrinterName, PrinterStatus, PrinterType};
 
 #[cfg(not(target_os = "windows"))]
 pub struct CupsPrinterManager;
@@ -92,7 +92,10 @@ fn detect_printer_type_from_dest(dest: &cups_sys::cups_dest_t) -> PrinterType {
     }
 
     let opts = unsafe {
-        std::slice::from_raw_parts(dest.options as *const cups_option_t, dest.num_options as usize)
+        std::slice::from_raw_parts(
+            dest.options as *const cups_option_t,
+            dest.num_options as usize,
+        )
     };
 
     for opt in opts {
@@ -100,7 +103,10 @@ fn detect_printer_type_from_dest(dest: &cups_sys::cups_dest_t) -> PrinterType {
             let key = unsafe { CStr::from_ptr(opt.name).to_string_lossy() };
             if key == "device-uri" && !opt.value.is_null() {
                 let val = unsafe { CStr::from_ptr(opt.value).to_string_lossy() };
-                if val.starts_with("ipp://") || val.starts_with("ipps://") || val.starts_with("socket://") {
+                if val.starts_with("ipp://")
+                    || val.starts_with("ipps://")
+                    || val.starts_with("socket://")
+                {
                     return PrinterType::Network;
                 }
             }
@@ -119,7 +125,10 @@ fn get_printer_state(dest: &cups_sys::cups_dest_t) -> i32 {
     }
 
     let opts = unsafe {
-        std::slice::from_raw_parts(dest.options as *const cups_option_t, dest.num_options as usize)
+        std::slice::from_raw_parts(
+            dest.options as *const cups_option_t,
+            dest.num_options as usize,
+        )
     };
 
     for opt in opts {
@@ -208,7 +217,10 @@ fn parse_printers_conf(content: &str) -> Vec<Printer> {
 
     for line in content.lines() {
         let line = line.trim();
-        if let Some(name) = line.strip_prefix("<Printer ").and_then(|s| s.strip_suffix('>')) {
+        if let Some(name) = line
+            .strip_prefix("<Printer ")
+            .and_then(|s| s.strip_suffix('>'))
+        {
             current_name = Some(name.to_string());
             current_stopped = false;
         } else if line == "</Printer>" {
@@ -277,9 +289,9 @@ fn cups_api_get_status(name: &str) -> Option<PrinterStatus> {
             if dest_name == name {
                 let state = get_printer_state(dest);
                 result = Some(match state {
-                    3 => PrinterStatus::Online,  // IPP_PRINTER_IDLE
-                    4 => PrinterStatus::Online,  // IPP_PRINTER_PROCESSING — changed per review
-                    5 => PrinterStatus::Error,   // IPP_PRINTER_STOPPED
+                    3 => PrinterStatus::Online, // IPP_PRINTER_IDLE
+                    4 => PrinterStatus::Online, // IPP_PRINTER_PROCESSING — changed per review
+                    5 => PrinterStatus::Error,  // IPP_PRINTER_STOPPED
                     _ => PrinterStatus::Online,
                 });
                 break;

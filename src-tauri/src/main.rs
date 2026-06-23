@@ -4,16 +4,27 @@
 // Prevents additional console window on Windows in release builds
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
-use std::sync::Arc;
-use sapo_printer::infrastructure::database::{DbPool, run_migrations, SqlitePrinterRepository};
+use sapo_printer::infrastructure::database::{run_migrations, DbPool, SqlitePrinterRepository};
 use sapo_printer::infrastructure::printer::PrinterManager;
-use sapo_printer::interface::tauri::dtos::printer_dto::{PrinterConfigDto, PrinterDto, PrinterStatusDto};
+use sapo_printer::infrastructure::secrets::SecretManager;
+use sapo_printer::interface::tauri::dtos::printer_dto::{
+    PrinterConfigDto, PrinterDto, PrinterStatusDto,
+};
+use std::sync::Arc;
 
 #[cfg(target_os = "windows")]
 use sapo_printer::infrastructure::printer::windows::Win32PrinterManager;
+#[cfg(target_os = "windows")]
+use sapo_printer::infrastructure::secrets::WindowsCredentialManager;
 
 #[cfg(not(target_os = "windows"))]
 use sapo_printer::infrastructure::printer::cups::CupsPrinterManager;
+
+#[cfg(target_os = "macos")]
+use sapo_printer::infrastructure::secrets::MacOSKeychain;
+
+#[cfg(target_os = "linux")]
+use sapo_printer::infrastructure::secrets::LinuxSecretService;
 
 /// List all available printers (discovered + saved configs)
 #[tauri::command]
@@ -22,44 +33,53 @@ fn list_printers(app_ctx: tauri::State<AppContextState>) -> Result<Vec<PrinterDt
     let discovered = app_ctx.printer_manager.discover_printers();
 
     // 2. Load saved configs from repository
-    let saved_printers = app_ctx.printer_repo.find_all()
+    let saved_printers = app_ctx
+        .printer_repo
+        .find_all()
         .map_err(|e| format!("Không thể tải cấu hình máy in: {}", e))?;
 
     // 3. Map to DTOs - merge discovered with saved configs
-    let dtos: Vec<PrinterDto> = discovered.iter().map(|printer| {
-        let printer_name = printer.name().as_str();
+    let dtos: Vec<PrinterDto> = discovered
+        .iter()
+        .map(|printer| {
+            let printer_name = printer.name().as_str();
 
-        // Check if this printer has saved config with is_default flag
-        let is_default = saved_printers.iter()
-            .find(|saved| saved.name().as_str() == printer_name)
-            .and_then(|_| {
-                // TODO: Once Printer aggregate includes is_default field, use it here
-                // For now, return None since domain model doesn't expose is_default yet
-                None
-            });
+            // Check if this printer has saved config with is_default flag
+            let is_default = saved_printers
+                .iter()
+                .find(|saved| saved.name().as_str() == printer_name)
+                .and_then(|_| {
+                    // TODO: Once Printer aggregate includes is_default field, use it here
+                    // For now, return None since domain model doesn't expose is_default yet
+                    None
+                });
 
-        PrinterDto {
-            name: printer_name.to_string(),
-            device_id: printer_name.to_string(), // device_id = printer_name
-            status: match printer.status() {
-                sapo_printer::domain::printer::PrinterStatus::Online => "Online".to_string(),
-                sapo_printer::domain::printer::PrinterStatus::Offline => "Offline".to_string(),
-                sapo_printer::domain::printer::PrinterStatus::Error => "Error".to_string(),
-            },
-            printer_type: match printer.printer_type() {
-                sapo_printer::domain::printer::PrinterType::Local => "Local".to_string(),
-                sapo_printer::domain::printer::PrinterType::Network => "Network".to_string(),
-            },
-            is_default,
-        }
-    }).collect();
+            PrinterDto {
+                name: printer_name.to_string(),
+                device_id: printer_name.to_string(), // device_id = printer_name
+                status: match printer.status() {
+                    sapo_printer::domain::printer::PrinterStatus::Online => "Online".to_string(),
+                    sapo_printer::domain::printer::PrinterStatus::Offline => "Offline".to_string(),
+                    sapo_printer::domain::printer::PrinterStatus::Error => "Error".to_string(),
+                },
+                printer_type: match printer.printer_type() {
+                    sapo_printer::domain::printer::PrinterType::Local => "Local".to_string(),
+                    sapo_printer::domain::printer::PrinterType::Network => "Network".to_string(),
+                },
+                is_default,
+            }
+        })
+        .collect();
 
     Ok(dtos)
 }
 
 /// Save printer configuration
 #[tauri::command]
-fn save_printer_config(config: PrinterConfigDto, app_ctx: tauri::State<AppContextState>) -> Result<(), String> {
+fn save_printer_config(
+    config: PrinterConfigDto,
+    app_ctx: tauri::State<AppContextState>,
+) -> Result<(), String> {
     // 1. Validate config fields
     // Paper size validation
     if config.paper_size.is_empty() {
@@ -86,7 +106,9 @@ fn save_printer_config(config: PrinterConfigDto, app_ctx: tauri::State<AppContex
     } else {
         // Non-Custom paper size should not have dimensions
         if config.paper_width.is_some() || config.paper_height.is_some() {
-            return Err("Không được cung cấp kích thước tùy chỉnh khi chọn khổ giấy chuẩn".to_string());
+            return Err(
+                "Không được cung cấp kích thước tùy chỉnh khi chọn khổ giấy chuẩn".to_string(),
+            );
         }
     }
 
@@ -113,8 +135,11 @@ fn save_printer_config(config: PrinterConfigDto, app_ctx: tauri::State<AppContex
     use sapo_printer::domain::printer::{PrinterName, PrinterType};
 
     let printer_name = PrinterName::new(config.printer_name.clone());
-    let printer = match app_ctx.printer_repo.find_by_name(&printer_name)
-        .map_err(|e| format!("Không thể tải cấu hình máy in: {}", e))? {
+    let printer = match app_ctx
+        .printer_repo
+        .find_by_name(&printer_name)
+        .map_err(|e| format!("Không thể tải cấu hình máy in: {}", e))?
+    {
         Some(p) => p,
         None => {
             // Create new printer if not found
@@ -127,7 +152,9 @@ fn save_printer_config(config: PrinterConfigDto, app_ctx: tauri::State<AppContex
     //    these separately. We just save the Printer aggregate.
 
     // 4. Save printer (repository will handle config fields via UPSERT)
-    app_ctx.printer_repo.save(&printer)
+    app_ctx
+        .printer_repo
+        .save(&printer)
         .map_err(|e| format!("Không thể lưu cấu hình máy in: {}", e))?;
 
     // TODO: In future, extend repository to accept config parameters
@@ -138,7 +165,10 @@ fn save_printer_config(config: PrinterConfigDto, app_ctx: tauri::State<AppContex
 
 /// Get current printer status
 #[tauri::command]
-fn get_printer_status(name: String, app_ctx: tauri::State<AppContextState>) -> Result<PrinterStatusDto, String> {
+fn get_printer_status(
+    name: String,
+    app_ctx: tauri::State<AppContextState>,
+) -> Result<PrinterStatusDto, String> {
     // 1. Access PrinterManager from AppContext
     // 2. Call printer_manager.get_status(name)
     let status = app_ctx.printer_manager.get_status(&name);
@@ -151,9 +181,7 @@ fn get_printer_status(name: String, app_ctx: tauri::State<AppContextState>) -> R
     };
 
     // 4. Return PrinterStatusDto
-    Ok(PrinterStatusDto {
-        status: status_str,
-    })
+    Ok(PrinterStatusDto { status: status_str })
 }
 
 fn main() {
@@ -196,6 +224,24 @@ fn main() {
     #[cfg(not(target_os = "windows"))]
     let printer_manager: Arc<dyn PrinterManager> = Arc::new(CupsPrinterManager::new());
 
+    // Initialize secret manager
+    #[cfg(target_os = "windows")]
+    let secret_manager: Arc<dyn SecretManager> = Arc::new(WindowsCredentialManager::new());
+
+    #[cfg(target_os = "macos")]
+    let secret_manager: Arc<dyn SecretManager> = Arc::new(MacOSKeychain::new());
+
+    #[cfg(target_os = "linux")]
+    let secret_manager: Arc<dyn SecretManager> = Arc::new(match LinuxSecretService::new() {
+        Ok(service) => service,
+        Err(e) => {
+            eprintln!("Warning: Secret Service unavailable: {}", e);
+            eprintln!("Device tokens and secrets will not be persisted securely.");
+            eprintln!("Install gnome-keyring or use environment variables for secrets.");
+            std::process::exit(1);
+        }
+    });
+
     // TODO: Wire job_repo and event_bus when those are implemented
     // For now, we'll create a minimal AppContext structure inline
 
@@ -204,6 +250,7 @@ fn main() {
         .manage(AppContextState {
             printer_repo,
             printer_manager,
+            secret_manager,
         })
         .invoke_handler(tauri::generate_handler![
             list_printers,
@@ -222,4 +269,5 @@ fn main() {
 struct AppContextState {
     printer_repo: Arc<dyn sapo_printer::domain::printer::PrinterRepository>,
     printer_manager: Arc<dyn PrinterManager>,
+    secret_manager: Arc<dyn SecretManager>,
 }

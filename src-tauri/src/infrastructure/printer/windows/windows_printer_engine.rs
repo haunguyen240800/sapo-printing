@@ -1,7 +1,7 @@
 #[cfg(target_os = "windows")]
-use crate::shared::errors::InfrastructureError;
-#[cfg(target_os = "windows")]
 use super::super::printer_engine::PrinterEngine;
+#[cfg(target_os = "windows")]
+use crate::shared::errors::InfrastructureError;
 
 pub struct WindowsPrinterEngine;
 

@@ -78,7 +78,8 @@ impl Printer {
             return Ok(());
         }
         self.status = PrinterStatus::Online;
-        self.events.push(Box::new(PrinterConnected::new(self.id.clone())));
+        self.events
+            .push(Box::new(PrinterConnected::new(self.id.clone())));
         Ok(())
     }
 
@@ -88,7 +89,8 @@ impl Printer {
             return Ok(());
         }
         self.status = PrinterStatus::Offline;
-        self.events.push(Box::new(PrinterDisconnected::new(self.id.clone())));
+        self.events
+            .push(Box::new(PrinterDisconnected::new(self.id.clone())));
         Ok(())
     }
 
@@ -98,7 +100,8 @@ impl Printer {
             return Ok(());
         }
         self.status = PrinterStatus::Error;
-        self.events.push(Box::new(PrinterDisconnected::new(self.id.clone())));
+        self.events
+            .push(Box::new(PrinterDisconnected::new(self.id.clone())));
         Ok(())
     }
 

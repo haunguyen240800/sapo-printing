@@ -5,8 +5,8 @@ use serde::{Deserialize, Serialize};
 pub struct PrinterDto {
     pub name: String,
     pub device_id: String,
-    pub status: String,          // "Online" | "Offline" | "Error"
-    pub printer_type: String,    // "Local" | "Network"
+    pub status: String,       // "Online" | "Offline" | "Error"
+    pub printer_type: String, // "Local" | "Network"
     #[serde(skip_serializing_if = "Option::is_none")]
     pub is_default: Option<bool>,
 }
@@ -15,24 +15,24 @@ pub struct PrinterDto {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PrinterConfigDto {
     pub printer_name: String,
-    pub paper_size: String,           // "A4" | "A5" | "Letter" | "Custom"
-    pub paper_width: Option<u32>,     // mm, required when paper_size = "Custom"
-    pub paper_height: Option<u32>,    // mm, required when paper_size = "Custom"
-    pub orientation: String,          // "Portrait" | "Landscape"
-    pub margin_left: u32,             // mm
-    pub margin_right: u32,            // mm
-    pub margin_top: u32,              // mm
-    pub margin_bottom: u32,           // mm
-    pub print_as_image: bool,         // true = render as image before printing
-    pub color_mode: String,           // "RGB" | "ARGB" | "BGR" | "GRAY" | "BINARY"
-    pub enable_buffer: bool,          // true = enable printing buffer
-    pub buffer_size_kb: Option<u32>,  // KB, 1-1024, required when enable_buffer = true
+    pub paper_size: String,          // "A4" | "A5" | "Letter" | "Custom"
+    pub paper_width: Option<u32>,    // mm, required when paper_size = "Custom"
+    pub paper_height: Option<u32>,   // mm, required when paper_size = "Custom"
+    pub orientation: String,         // "Portrait" | "Landscape"
+    pub margin_left: u32,            // mm
+    pub margin_right: u32,           // mm
+    pub margin_top: u32,             // mm
+    pub margin_bottom: u32,          // mm
+    pub print_as_image: bool,        // true = render as image before printing
+    pub color_mode: String,          // "RGB" | "ARGB" | "BGR" | "GRAY" | "BINARY"
+    pub enable_buffer: bool,         // true = enable printing buffer
+    pub buffer_size_kb: Option<u32>, // KB, 1-1024, required when enable_buffer = true
 }
 
 /// DTO for printer status query response
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PrinterStatusDto {
-    pub status: String,  // "Online" | "Offline" | "Error"
+    pub status: String, // "Online" | "Offline" | "Error"
 }
 
 #[cfg(test)]

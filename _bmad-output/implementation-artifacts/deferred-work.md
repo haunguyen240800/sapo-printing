@@ -52,3 +52,24 @@
 - **Margins default to 0mm** — May clip on printers with 3-5mm unprintable border. [PrinterConfigForm.tsx:1199-1202] — Product decision, not correctness bug
 - **Accessibility: missing aria-invalid** — Form inputs lack aria-invalid and aria-describedby for screen readers. [PrinterConfigForm.tsx:1290+] — Accessibility improvement, not blocking
 - **Default printer logic relies on unset is_default** — Frontend logic won't work until backend fixed. [PrinterConfigForm.tsx:1222-1224] — Blocked by is_default flag patch
+
+
+## Deferred from: code review of 2-6-implement-secret-management-for-device-tokens-os-keychain (2026-06-23)
+
+- **Windows use-after-free potential** [windows_credential_manager.rs:51] — False positive: Rust ownership ensures vectors live until after CredWriteW call. Rust's lifetime rules prevent this issue.
+
+- **UTF-8 panic on non-UTF8 legacy data** [windows_credential_manager.rs:95] — Pre-existing data issue: Error handled correctly with Err(SecretRetrieveError). Edge case for legacy migrations, document if needed.
+
+- **macOS unsigned app prompt spam** [macos_keychain.rs] — Operational concern: Already documented in AC-3 requirement, runtime check not feasible. User must sign app to avoid repeated keychain prompts.
+
+- **Linux error suggests gnome-keyring on wrong platform** [main.rs:216] — False positive: Conditional compilation ensures this is Linux-only code, impossible to trigger on other platforms.
+
+- **HashMap OOM panic** [linux_secret_service.rs:72] — System-level failure: Rust standard library behavior, no graceful handling possible at application level.
+
+
+## Deferred from: code review of 3-2-implement-mupdf-renderer-with-color-mode-support (2026-06-23)
+
+- **Pixel-by-pixel conversion performance** — `convert_bitmap_to_color_mode` uses nested Rust loops per pixel. For A4 at 600 DPI ARGB: ~139M pixels. SIMD or image crate optimization deferred.
+- **mm_to_pixels u32 overflow** — Custom paper >100,000mm at 1200 DPI overflows u32. Saturates to u32::MAX. Pre-existing in `unit_conversion.rs`.
+- **Vec::with_capacity overflow on 32-bit targets** — `actual_w * render_h * bpp` can overflow usize. Only relevant for extreme paper sizes.
+- **Floating-point precision in margin validation** — `margin_left + margin_right >= width` uses exact f64 comparison. Epsilon comparison would be more robust.

@@ -8,9 +8,9 @@
 //   - Consider aliasing in downstream code: `use crate::infrastructure::printer as print_engine;`
 
 pub mod database;
-pub mod queue;
 pub mod downloader;
-pub mod renderer;
-pub mod printer;
 pub mod eventbus;
+pub mod printer;
+pub mod queue;
+pub mod renderer;
 pub mod secrets;

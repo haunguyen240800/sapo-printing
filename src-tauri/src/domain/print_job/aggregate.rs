@@ -90,7 +90,10 @@ impl PrintJob {
 
     /// DOWNLOADED → SUBMITTED_TO_QUEUE
     pub fn mark_submitted(&mut self) -> Result<(), DomainError> {
-        if !self.status.can_transition_to(&PrintStatus::SubmittedToQueue) {
+        if !self
+            .status
+            .can_transition_to(&PrintStatus::SubmittedToQueue)
+        {
             return Err(DomainError::InvalidStateTransition {
                 from: format!("{:?}", self.status),
                 to: "SubmittedToQueue".to_string(),

@@ -34,10 +34,7 @@ mod tests {
     #[test]
     fn test_max_retry_exceeded_display() {
         let err = DomainError::MaxRetryExceeded;
-        assert_eq!(
-            format!("{}", err),
-            "Maximum retry count (3) exceeded"
-        );
+        assert_eq!(format!("{}", err), "Maximum retry count (3) exceeded");
     }
 
     #[test]

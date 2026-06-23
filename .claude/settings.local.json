@@ -30,7 +30,13 @@
       "Bash(pnpm exec *)",
       "Bash(xargs grep -l \"AppProvider\")",
       "Bash(pnpm run *)",
-      "Bash(grep type Tone\\\\$4 *)"
+      "Bash(grep type Tone\\\\$4 *)",
+      "Bash(cargo metadata *)",
+      "WebFetch(domain:docs.rs)",
+      "Bash(where python *)",
+      "Bash(where py *)",
+      "Bash(cmd /c where python)",
+      "Bash(grep -E \"bmad-agent-dev\\\\.\\(toml|user\\\\.toml\\)$\")"
     ]
   }
 }

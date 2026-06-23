@@ -4,17 +4,16 @@ use windows::{
     Win32::{
         Foundation::HANDLE,
         Graphics::Printing::{
-            ClosePrinter, EnumPrintersW, GetPrinterW, OpenPrinterW,
-            PRINTER_ATTRIBUTE_NETWORK, PRINTER_ENUM_CONNECTIONS, PRINTER_ENUM_LOCAL,
-            PRINTER_INFO_2W, PRINTER_STATUS_ERROR, PRINTER_STATUS_NO_TONER,
-            PRINTER_STATUS_OFFLINE, PRINTER_STATUS_OUTPUT_BIN_FULL, PRINTER_STATUS_PAPER_JAM,
-            PRINTER_STATUS_PAPER_OUT,
+            ClosePrinter, EnumPrintersW, GetPrinterW, OpenPrinterW, PRINTER_ATTRIBUTE_NETWORK,
+            PRINTER_ENUM_CONNECTIONS, PRINTER_ENUM_LOCAL, PRINTER_INFO_2W, PRINTER_STATUS_ERROR,
+            PRINTER_STATUS_NO_TONER, PRINTER_STATUS_OFFLINE, PRINTER_STATUS_OUTPUT_BIN_FULL,
+            PRINTER_STATUS_PAPER_JAM, PRINTER_STATUS_PAPER_OUT,
         },
     },
 };
 
-use crate::domain::printer::{Printer, PrinterName, PrinterStatus, PrinterType};
 use super::super::printer_manager::PrinterManager;
+use crate::domain::printer::{Printer, PrinterName, PrinterStatus, PrinterType};
 
 pub struct Win32PrinterManager;
 
@@ -74,7 +73,14 @@ fn enum_printers_raw() -> (Vec<u8>, usize) {
         let mut bytes_needed: u32 = 0;
         let mut count_returned: u32 = 0;
 
-        let _ = EnumPrintersW(flags, PCWSTR::null(), 2, None, &mut bytes_needed, &mut count_returned);
+        let _ = EnumPrintersW(
+            flags,
+            PCWSTR::null(),
+            2,
+            None,
+            &mut bytes_needed,
+            &mut count_returned,
+        );
 
         if bytes_needed == 0 {
             return (vec![], 0);

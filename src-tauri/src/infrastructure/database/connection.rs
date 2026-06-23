@@ -28,15 +28,20 @@ pub struct DbPool(Arc<Mutex<Connection>>);
 
 impl DbPool {
     pub fn new(db_path: &str) -> Result<Self, DatabaseError> {
-        let conn = Connection::open(db_path)
-            .map_err(|e| DatabaseError::ConnectionFailed { reason: e.to_string() })?;
+        let conn = Connection::open(db_path).map_err(|e| DatabaseError::ConnectionFailed {
+            reason: e.to_string(),
+        })?;
         conn.execute_batch("PRAGMA journal_mode=WAL; PRAGMA synchronous=NORMAL;")
-            .map_err(|e| DatabaseError::ConnectionFailed { reason: e.to_string() })?;
+            .map_err(|e| DatabaseError::ConnectionFailed {
+                reason: e.to_string(),
+            })?;
         Ok(Self(Arc::new(Mutex::new(conn))))
     }
 
     pub fn get(&self) -> MutexGuard<'_, Connection> {
-        self.0.lock().unwrap_or_else(|poisoned| poisoned.into_inner())
+        self.0
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
     }
 
     /// Get the underlying Arc<Mutex<Connection>> for repository construction
@@ -52,13 +57,17 @@ mod tests {
     #[test]
     fn test_db_pool_opens_wal_mode() {
         use std::time::{SystemTime, UNIX_EPOCH};
-        let nanos = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().subsec_nanos();
+        let nanos = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .subsec_nanos();
         let thread_id = std::thread::current().id();
         let tmp = std::env::temp_dir().join(format!("sapo_test_{nanos}_{thread_id:?}.db"));
         let pool = DbPool::new(tmp.to_str().unwrap()).unwrap();
         let mode: String = {
             let conn = pool.get();
-            conn.query_row("PRAGMA journal_mode", [], |row| row.get(0)).unwrap()
+            conn.query_row("PRAGMA journal_mode", [], |row| row.get(0))
+                .unwrap()
         };
         drop(pool); // ensure connection closed before deleting file (important on Windows)
         let _ = std::fs::remove_file(&tmp);
