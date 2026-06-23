@@ -37,3 +37,6 @@ security-framework = "2.9"
 
 [target.'cfg(target_os = "linux")'.dependencies]
 secret-service = "3.0"
+
+[target.'cfg(not(target_os = "windows"))'.dependencies]
+cups-sys = "0.1"
