@@ -137,6 +137,87 @@ fn query_printer_status(name: &str) -> PrinterStatus {
     }
 }
 
+/// Checks if a printer driver name suggests native PDF support.
+///
+/// Heuristic: matches known PDF-capable driver keywords.
+/// Conservative — false negatives are acceptable (fallback to PDFium),
+/// false positives are BAD (print will fail).
+fn driver_name_suggests_pdf(driver_name: &str) -> bool {
+    let upper = driver_name.to_uppercase();
+    upper.contains("PDF")
+        || upper.contains("POSTSCRIPT")
+        || upper.contains(" PS ")
+        || upper.ends_with(" PS")
+        || upper.starts_with("PS ")
+}
+
+#[cfg(target_os = "windows")]
+fn detect_direct_pdf_support(printer_name: &str) -> bool {
+    unsafe {
+        let wide: Vec<u16> = printer_name
+            .encode_utf16()
+            .chain(std::iter::once(0))
+            .collect();
+        let mut handle = HANDLE::default();
+
+        if OpenPrinterW(PCWSTR(wide.as_ptr()), &mut handle, None).is_err() {
+            tracing::warn!(
+                "supports_direct_pdf: OpenPrinterW failed for '{}', returning false",
+                printer_name
+            );
+            return false;
+        }
+
+        let mut needed: u32 = 0;
+        let _ = GetPrinterW(handle, 2, None, &mut needed);
+
+        if needed == 0 {
+            ClosePrinter(handle).ok();
+            tracing::warn!(
+                "supports_direct_pdf: GetPrinterW returned 0 bytes for '{}', returning false",
+                printer_name
+            );
+            return false;
+        }
+
+        let mut buf = vec![0u8; needed as usize];
+        let ok = GetPrinterW(handle, 2, Some(buf.as_mut_slice()), &mut needed);
+        ClosePrinter(handle).ok();
+
+        if ok.is_err() {
+            tracing::warn!(
+                "supports_direct_pdf: GetPrinterW failed for '{}', returning false",
+                printer_name
+            );
+            return false;
+        }
+
+        if (needed as usize) < std::mem::size_of::<PRINTER_INFO_2W>() {
+            tracing::warn!(
+                "supports_direct_pdf: buffer too small ({} bytes) for PRINTER_INFO_2W for '{}', returning false",
+                needed,
+                printer_name
+            );
+            return false;
+        }
+
+        let info = &*(buf.as_ptr() as *const PRINTER_INFO_2W);
+
+        let driver_name = read_pwstr(info.pDriverName);
+
+        // PRINTER_ATTRIBUTE_RAW_ONLY alone is not sufficient — PCL/ESC/P printers
+        // can have this flag but cannot interpret raw PDF bytes.
+        // Combine with driver name heuristic: RAW_ONLY confirms raw data acceptance,
+        // driver name confirms the raw format is PDF.
+        // Driver name alone is also sufficient (some PDF drivers don't set RAW_ONLY).
+        if driver_name_suggests_pdf(&driver_name) {
+            return true;
+        }
+
+        false
+    }
+}
+
 impl PrinterManager for Win32PrinterManager {
     fn discover_printers(&self) -> Vec<Printer> {
         #[cfg(target_os = "windows")]
@@ -180,6 +261,18 @@ impl PrinterManager for Win32PrinterManager {
             PrinterStatus::Offline
         }
     }
+
+    fn supports_direct_pdf(&self, printer_name: &str) -> bool {
+        #[cfg(target_os = "windows")]
+        {
+            detect_direct_pdf_support(printer_name)
+        }
+        #[cfg(not(target_os = "windows"))]
+        {
+            let _ = printer_name;
+            false
+        }
+    }
 }
 
 #[cfg(test)]
@@ -209,5 +302,33 @@ mod tests {
         // Must not panic — may return empty Vec in CI
         let manager = Win32PrinterManager::new();
         let _printers = manager.discover_printers();
+    }
+
+    #[test]
+    fn test_driver_name_pdf_keywords() {
+        assert!(driver_name_suggests_pdf("Microsoft Print to PDF"));
+        assert!(driver_name_suggests_pdf("Adobe PDF"));
+        assert!(driver_name_suggests_pdf("HP LaserJet PS"));
+        assert!(driver_name_suggests_pdf("HP PostScript"));
+    }
+
+    #[test]
+    fn test_driver_name_non_pdf() {
+        assert!(!driver_name_suggests_pdf("HP LaserJet 4000"));
+        assert!(!driver_name_suggests_pdf("Epson L3150 Series"));
+        assert!(!driver_name_suggests_pdf("Brother HL-L2350DW"));
+        assert!(
+            !driver_name_suggests_pdf("Canon PCL6"),
+            "PCL is not PDF — must return false to avoid false positives"
+        );
+    }
+
+    #[test]
+    fn test_supports_direct_pdf_nonexistent_printer() {
+        let manager = Win32PrinterManager::new();
+        assert!(
+            !manager.supports_direct_pdf("NonExistentPrinter_XYZ_99999"),
+            "Non-existent printer must return false"
+        );
     }
 }

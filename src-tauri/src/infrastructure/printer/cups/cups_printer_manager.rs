@@ -40,6 +40,10 @@ impl PrinterManager for CupsPrinterManager {
     fn get_status(&self, name: &str) -> PrinterStatus {
         get_status(name)
     }
+
+    fn supports_direct_pdf(&self, printer_name: &str) -> bool {
+        detect_cups_direct_pdf(printer_name)
+    }
 }
 
 // ── Tier 1: CUPS API ────────────────────────────────────────────────
@@ -337,6 +341,79 @@ fn lpstat_get_status(name: &str) -> Option<PrinterStatus> {
     None
 }
 
+// ── supports_direct_pdf() ──────────────────────────────────────────
+
+/// Detects if a CUPS printer supports native PDF rendering.
+///
+/// Fallback chain:
+/// 1. `lpoptions -d {printer_name} -l` — look for pdftopdf / application/pdf
+/// 2. PPD file at `/etc/cups/ppd/{printer_name}.ppd` — look for `*cupsFilter:* pdftopdf`
+/// 3. Return `false` (safe default)
+#[cfg(not(target_os = "windows"))]
+fn detect_cups_direct_pdf(printer_name: &str) -> bool {
+    if lpoptions_has_pdf_support(printer_name) {
+        return true;
+    }
+    if ppd_has_pdf_filter(printer_name) {
+        return true;
+    }
+    false
+}
+
+#[cfg(not(target_os = "windows"))]
+fn lpoptions_has_pdf_support(printer_name: &str) -> bool {
+    let output = std::process::Command::new("lpoptions")
+        .args(["-d", printer_name, "-l"])
+        .output();
+
+    let output = match output {
+        Ok(o) => o,
+        Err(_) => return false,
+    };
+
+    if !output.status.success() {
+        return false;
+    }
+
+    let text = String::from_utf8_lossy(&output.stdout);
+    parse_lpoptions_for_pdf(&text)
+}
+
+fn parse_lpoptions_for_pdf(text: &str) -> bool {
+    let lower = text.to_lowercase();
+    lower.contains("pdftopdf") || lower.contains("application/pdf")
+}
+
+#[cfg(not(target_os = "windows"))]
+fn ppd_has_pdf_filter(printer_name: &str) -> bool {
+    let paths = [format!("/etc/cups/ppd/{}.ppd", printer_name), {
+        let home = std::env::var("HOME").unwrap_or_default();
+        format!("{}/.cups/ppd/{}.ppd", home, printer_name)
+    }];
+
+    for path in &paths {
+        if let Ok(content) = std::fs::read_to_string(path) {
+            if parse_ppd_for_pdf_filter(&content) {
+                return true;
+            }
+        }
+    }
+    false
+}
+
+fn parse_ppd_for_pdf_filter(content: &str) -> bool {
+    for line in content.lines() {
+        let trimmed = line.trim();
+        if trimmed.starts_with("*cupsFilter:") || trimmed.starts_with("*CupsFilter:") {
+            let lower = trimmed.to_lowercase();
+            if lower.contains("pdftopdf") {
+                return true;
+            }
+        }
+    }
+    false
+}
+
 // ── Tests ───────────────────────────────────────────────────────────
 
 #[cfg(test)]
@@ -391,5 +468,46 @@ mod tests {
         let manager = CupsPrinterManager::new();
         let status = manager.get_status("NonExistentPrinter_XYZ_12345");
         assert_eq!(status, PrinterStatus::Offline);
+    }
+
+    #[test]
+    fn test_parse_lpoptions_with_pdftopdf() {
+        let output =
+            "Option1/Value1\n*cupsFilter: application/vnd.cups-postscript pdftopdf\nOption2/Value2";
+        assert!(parse_lpoptions_for_pdf(output));
+    }
+
+    #[test]
+    fn test_parse_lpoptions_with_application_pdf() {
+        let output = "MediaType/plain application/pdf\nOtherOption/value";
+        assert!(parse_lpoptions_for_pdf(output));
+    }
+
+    #[test]
+    fn test_parse_lpoptions_no_pdf() {
+        let output = "Option1/Value1\nOption2/Value2\nPageSize/Letter";
+        assert!(!parse_lpoptions_for_pdf(output));
+    }
+
+    #[test]
+    fn test_parse_ppd_with_pdftopdf_filter() {
+        let ppd = "*cupsFilter: application/vnd.cups-pdf 0 pdftopdf\n*PageSize Letter/Letter";
+        assert!(parse_ppd_for_pdf_filter(ppd));
+    }
+
+    #[test]
+    fn test_parse_ppd_no_pdf_filter() {
+        let ppd =
+            "*cupsFilter: application/vnd.cups-postscript 0 rastertohp\n*PageSize Letter/Letter";
+        assert!(!parse_ppd_for_pdf_filter(ppd));
+    }
+
+    #[test]
+    fn test_supports_direct_pdf_nonexistent_printer() {
+        let manager = CupsPrinterManager::new();
+        assert!(
+            !manager.supports_direct_pdf("NonExistentPrinter_XYZ_99999"),
+            "Non-existent printer must return false"
+        );
     }
 }

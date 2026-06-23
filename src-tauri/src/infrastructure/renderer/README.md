@@ -2,21 +2,81 @@
 
 ## Purpose
 
-Render PDF documents to bitmap for printing with configurable margins, color modes, and DPI. This module provides the **control path** of the hybrid rendering strategy — high-quality rendering with full control over output format.
+Render PDF documents for printing. This module provides a **hybrid rendering** architecture with automatic strategy selection:
+
+1. **StrategySelector** — Auto-detects printer capability and picks the optimal renderer
+2. **PdfiumRenderer** — Control path: full rendering with margins, color modes, and DPI (~2-3s per job)
+3. **DirectPdfRenderer** — Fast path: raw PDF pass-through to printer (~0.5s per job)
 
 ## Architecture
 
-### Trait-Based Design
+### Strategy Pattern (AR-5)
 
 ```
-DocumentRenderer (trait)          -- service contract
+StrategySelector                    -- auto-selects renderer based on capability + config
     |
-    +-- PdfiumRenderer (struct)   -- PDFium-based implementation
+    +-- checks PrinterManager.supports_direct_pdf()  -- OS-level capability detection
+    |
+    +-- if capable AND no margins AND RGB:
+    |       +-- DirectPdfRenderer   -- fast path: raw PDF bytes, no processing
+    |
+    +-- otherwise:
+            +-- PdfiumRenderer      -- control path: render with full control
+
+DocumentRenderer (trait)            -- service contract (shared by both renderers)
+    |
+    +-- PdfiumRenderer (struct)     -- control path: render with full control
+    +-- DirectPdfRenderer (struct)  -- fast path: raw PDF bytes, no processing
 ```
 
 - **`DocumentRenderer` trait**: Defines the rendering contract (`render(path, config) -> Result<Vec<u8>>`)
-- **`PdfiumRenderer`**: Concrete implementation using Google's PDFium library
-- **`Send + Sync`**: Thread-safe for use with `Arc<dyn DocumentRenderer>` across async tasks
+- **`PdfiumRenderer`**: PDFium-based implementation — renders PDF to bitmap with margin/color/DPI control
+- **`DirectPdfRenderer`**: Pure file read — returns raw PDF bytes unchanged, printer handles rendering
+- **`StrategySelector`**: Auto-selects between renderers based on printer capability + render config
+- **`Send + Sync`**: All types are thread-safe for use with `Arc<dyn DocumentRenderer>` across async tasks
+
+### StrategySelector — Automatic Strategy Selection
+
+`StrategySelector` decides which renderer to use based on two factors:
+
+1. **Printer capability** — Does the printer support native PDF? (via `PrinterManager::supports_direct_pdf()`)
+2. **Render config** — Does the job require margins or color conversion?
+
+**Selection logic:**
+
+```text
+printer supports native PDF?
+├── NO  → PdfiumRenderer (always)
+└── YES → config requires margins or color conversion?
+          ├── YES (margins > 0 OR color ≠ RGB) → PdfiumRenderer
+          └── NO (margins == 0 AND color == RGB) → DirectPdfRenderer
+```
+
+**Caching:** Per-printer capability results are cached for 5s (aligned with printer status polling interval) to avoid repeated OS API calls.
+
+**Thread safety:** Uses `Mutex<HashMap>` for the cache, making `StrategySelector` safe to share across threads via `Arc<StrategySelector>`.
+
+**Usage example:**
+```rust
+use crate::infrastructure::renderer::{StrategySelector, RenderConfig};
+
+let selector = StrategySelector::new(printer_manager.clone());
+let renderer = selector.select_renderer("HP LaserJet", &config);
+let output = renderer.render(&pdf_path, &config)?;
+```
+
+### Capability Detection
+
+**Windows (`Win32PrinterManager`):**
+- Uses Win32 API: `OpenPrinterW` + `GetPrinterW` (level 2)
+- Checks `PRINTER_ATTRIBUTE_RAW_ONLY` (0x00008000) — indicates raw data acceptance
+- Falls back to driver name heuristic: "PDF", "PostScript", "PS", "PCL" keywords
+- **Conservative** — when in doubt, returns `false` (fallback to PDFium)
+
+**CUPS (`CupsPrinterManager`):**
+- Tier 1: `lpoptions -d {printer_name} -l` — looks for `pdftopdf` or `application/pdf`
+- Tier 2: PPD file at `/etc/cups/ppd/{printer_name}.ppd` — looks for `*cupsFilter:* pdftopdf`
+- Tier 3: Returns `false` (safe default)
 
 ### Why PDFium?
 
@@ -33,6 +93,33 @@ DocumentRenderer (trait)          -- service contract
 - ✅ Faster compilation (no C code compilation)
 - ✅ Same feature set: RGB/ARGB/BGR/GRAY/BINARY color modes, margin control, DPI scaling
 - ⚠️ Requires runtime `pdfium.dll` (distributed with application)
+
+### DirectPdfRenderer — Fast Path
+
+When the printer supports native PDF rendering, `DirectPdfRenderer` sends raw PDF bytes directly — no rendering, no margin conversion, no color mode transformation.
+
+**When to use:** Printer capability detection confirms native PDF support (Story 3.4).
+
+**Trade-offs:**
+
+| Aspect | DirectPdfRenderer | PdfiumRenderer |
+|--------|-------------------|----------------|
+| Speed | ~0.5s per job | ~2-3s per job |
+| Margin control | None (printer handles) | Full (software-applied) |
+| Color mode | None (printer handles) | RGB/ARGB/BGR/Gray/Binary |
+| CPU usage | Minimal (file read only) | Moderate (rendering) |
+| Dependencies | None (pure `std::fs`) | `pdfium-render` + `pdfium.dll` |
+| Output format | Raw PDF bytes | Bitmap `[page_count][w][h][pixels]` |
+
+**Usage example:**
+```rust
+use crate::infrastructure::renderer::{DirectPdfRenderer, RenderConfig};
+
+// Fast path — no rendering, raw PDF bytes
+let renderer = DirectPdfRenderer::new();
+let pdf_bytes = renderer.render(&pdf_path, &config)?;
+// pdf_bytes == raw PDF file content, ready to send to printer
+```
 
 ### Color Modes
 
@@ -173,8 +260,8 @@ Per NFR-1:
 - ✅ 300 DPI rendering
 
 **Deferred to later stories**:
-- ❌ Direct PDF strategy (Story 3.3) — fast path, no processing
-- ❌ Hybrid strategy selection (Story 3.4) — auto-detect printer capability
+- ✅ Direct PDF strategy (Story 3.3) — fast path, no processing
+- ✅ Hybrid strategy selection (Story 3.4) — auto-detect printer capability
 - ❌ RAII TempFile management (Story 3.5)
 - ❌ Queue worker integration (Story 3.5)
 - ❌ Page rotation support

@@ -31,6 +31,13 @@ use crate::shared::errors::InfrastructureError;
 pub struct WindowsCredentialManager;
 
 #[cfg(target_os = "windows")]
+impl Default for WindowsCredentialManager {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+#[cfg(target_os = "windows")]
 impl WindowsCredentialManager {
     pub fn new() -> Self {
         Self
@@ -65,7 +72,7 @@ impl SecretManager for WindowsCredentialManager {
 
         let value_bytes = value.as_bytes();
 
-        let mut credential = CREDENTIALW {
+        let credential = CREDENTIALW {
             Flags: CRED_FLAGS(0),
             Type: CRED_TYPE_GENERIC,
             TargetName: PWSTR(target_name_wide.as_ptr() as *mut u16),
@@ -81,7 +88,7 @@ impl SecretManager for WindowsCredentialManager {
         };
 
         unsafe {
-            CredWriteW(&mut credential, 0).map_err(|e| {
+            CredWriteW(&credential, 0).map_err(|e| {
                 InfrastructureError::SecretStoreError(format!(
                     "Failed to write credential '{}': {}",
                     key,

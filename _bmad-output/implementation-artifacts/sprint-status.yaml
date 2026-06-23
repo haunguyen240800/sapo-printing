@@ -1,5 +1,5 @@
 # generated: 2026-06-22
-# last_updated: 2026-06-23
+# last_updated: 2026-06-23 (story 3-4 review complete, all patches applied)
 # project: sapo-printer
 # project_key: NOKEY
 # tracking_system: file-system
@@ -66,9 +66,9 @@ development_status:
   epic-3: in-progress
   3-1-implement-s3-document-downloader-with-circuit-breaker: done
   3-2-implement-mupdf-renderer-with-color-mode-support: done
-  3-3-implement-direct-pdf-strategy: backlog
-  3-4-create-hybrid-strategy-selector-auto-detect-printer-capability: backlog
-  3-5-implement-raii-temp-file-management-with-tiered-cleanup: backlog
+  3-3-implement-direct-pdf-strategy: done
+  3-4-create-hybrid-strategy-selector-auto-detect-printer-capability: done
+  3-5-implement-raii-temp-file-management-with-tiered-cleanup: ready-for-dev
   3-6-create-print-job-tables-event-store-schema: backlog
   3-7-implement-sqlite-print-job-repository: backlog
   3-3-implement-createprintjobusecase-with-event-publishing: backlog

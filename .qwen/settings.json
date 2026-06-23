@@ -32,7 +32,8 @@
       "Bash(copy *)",
       "Bash(.\\integration_tests-c2b3e73fd9a298a9.exe *)",
       "Bash(target\\debug\\deps\\integration_tests-c2b3e73fd9a298a9.exe *)",
-      "Agent"
+      "Agent",
+      "Bash(true)"
     ]
   },
   "$version": 4

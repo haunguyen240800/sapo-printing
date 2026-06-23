@@ -48,7 +48,7 @@ fn list_printers(app_ctx: tauri::State<AppContextState>) -> Result<Vec<PrinterDt
             let is_default = saved_printers
                 .iter()
                 .find(|saved| saved.name().as_str() == printer_name)
-                .and_then(|_| {
+                .and({
                     // TODO: Once Printer aggregate includes is_default field, use it here
                     // For now, return None since domain model doesn't expose is_default yet
                     None
@@ -250,7 +250,7 @@ fn main() {
         .manage(AppContextState {
             printer_repo,
             printer_manager,
-            secret_manager,
+            _secret_manager: secret_manager,
         })
         .invoke_handler(tauri::generate_handler![
             list_printers,
@@ -269,5 +269,5 @@ fn main() {
 struct AppContextState {
     printer_repo: Arc<dyn sapo_printer::domain::printer::PrinterRepository>,
     printer_manager: Arc<dyn PrinterManager>,
-    secret_manager: Arc<dyn SecretManager>,
+    _secret_manager: Arc<dyn SecretManager>,
 }

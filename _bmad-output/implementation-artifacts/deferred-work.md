@@ -73,3 +73,20 @@
 - **mm_to_pixels u32 overflow** — Custom paper >100,000mm at 1200 DPI overflows u32. Saturates to u32::MAX. Pre-existing in `unit_conversion.rs`.
 - **Vec::with_capacity overflow on 32-bit targets** — `actual_w * render_h * bpp` can overflow usize. Only relevant for extreme paper sizes.
 - **Floating-point precision in margin validation** — `margin_left + margin_right >= width` uses exact f64 comparison. Epsilon comparison would be more robust.
+
+
+## Deferred from: code review of story 3-3-implement-direct-pdf-strategy (2026-06-23)
+
+- **TOCTOU race between validate and read** — Spec explicitly defines two-step process (validate header then read file). Inherent to design, not actionable without spec change.
+- **IO errors misclassified as NetworkError** — Pre-existing `From<io::Error>` impl in `infrastructure_error.rs` maps all IO errors to `NetworkError`. Not caused by this story.
+- **No upper bound on file size** — `std::fs::read` allocates unbounded memory. Spec does not define maximum file size. Defer to queue worker story.
+- **Test temp dirs not cleaned up on panic** — Common Rust test pattern, not specific to this change. Project-wide improvement.
+- **Broken symlink → wrong error variant** — Same root cause as IO misclassification above.
+
+
+## Deferred from: code review of story 3-4-create-hybrid-strategy-selector-auto-detect-printer-capability (2026-06-23)
+
+- **Cache unbounded growth** — `StrategySelector` cache `HashMap<String, (bool, Instant)>` có TTL nhưng không có max size. Stale entries không bị evict. In print server environments với nhiều ephemeral network printers, đây là slow memory leak. Fix: thêm LRU eviction hoặc periodic cleanup.
+- **CUPS PPD path traversal via printer name** — `ppd_has_pdf_filter()` constructs path `format!("/etc/cups/ppd/{}.ppd", printer_name)`. Printer name với `../` có thể read arbitrary files. Printer names thường từ CUPS API (không phải user input), nhưng defense-in-depth nên validate. Fix: reject names chứa `/`, `\`, `..`.
+- **lpstat substring match** — `lpstat_get_status()` dùng `line.contains(name)` thay vì exact match. Printer "HP" match "HP_LaserJet". Pre-existing code, không thay đổi trong story này.
+- **TOCTOU race in capability cache** — `check_capability()` drop lock giữa check và insert. Concurrent calls cho cùng printer sau TTL expiry sẽ gọi `supports_direct_pdf()` redundant. Result vẫn correct (idempotent), chỉ wasteful OS API calls.

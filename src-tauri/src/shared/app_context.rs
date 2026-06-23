@@ -3,6 +3,8 @@ use std::sync::Arc;
 use crate::domain::print_job::PrintJobRepository;
 use crate::domain::printer::PrinterRepository;
 use crate::infrastructure::printer::printer_manager::PrinterManager;
+use crate::infrastructure::renderer::document_renderer::{DocumentRenderer, RenderConfig};
+use crate::infrastructure::renderer::strategy_selector::StrategySelector;
 use crate::infrastructure::secrets::SecretManager;
 use crate::shared::errors::InfrastructureError;
 use crate::shared::event_bus::EventBus;
@@ -13,13 +15,6 @@ use crate::shared::event_bus::EventBus;
 //   pub downloader: Arc<dyn DocumentDownloader>,
 // Initialize in AppContext::new():
 //   downloader: Arc::new(ReqwestDownloader::new()),
-
-// TODO (Story 3.2): Add DocumentRenderer to AppContext
-// When Use Cases are created (Story 3.8+), inject:
-//   use crate::infrastructure::renderer::{DocumentRenderer, PdfiumRenderer};
-//   pub renderer: Arc<dyn DocumentRenderer>,
-// Initialize in AppContext::new():
-//   renderer: Arc::new(PdfiumRenderer::new(300)),
 
 #[cfg(target_os = "linux")]
 use crate::infrastructure::secrets::LinuxSecretService;
@@ -41,6 +36,7 @@ pub struct AppContext {
     pub printer_manager: Arc<dyn PrinterManager>,
     pub event_bus: Arc<dyn EventBus>,
     pub secret_manager: Arc<dyn SecretManager>,
+    pub strategy_selector: Arc<StrategySelector>,
 }
 
 impl AppContext {
@@ -57,13 +53,13 @@ impl AppContext {
     pub fn new(_db_path: &str) -> Result<Self, InfrastructureError> {
         // Platform-specific secret manager initialization
         #[cfg(target_os = "windows")]
-        let secret_manager: Arc<dyn SecretManager> = Arc::new(WindowsCredentialManager::new());
+        let _secret_manager: Arc<dyn SecretManager> = Arc::new(WindowsCredentialManager::new());
 
         #[cfg(target_os = "macos")]
-        let secret_manager: Arc<dyn SecretManager> = Arc::new(MacOSKeychain::new());
+        let _secret_manager: Arc<dyn SecretManager> = Arc::new(MacOSKeychain::new());
 
         #[cfg(target_os = "linux")]
-        let secret_manager: Arc<dyn SecretManager> = Arc::new(LinuxSecretService::new()?);
+        let _secret_manager: Arc<dyn SecretManager> = Arc::new(LinuxSecretService::new()?);
 
         todo!("AppContext::new — infrastructure not yet implemented (Epic 2, Stories 2.1/2.4)")
     }
@@ -79,6 +75,14 @@ impl AppContext {
         {
             "cups"
         }
+    }
+
+    /// Selects the optimal renderer for the given printer and config.
+    ///
+    /// Delegates to `StrategySelector` which auto-detects printer capability
+    /// and picks DirectPdfRenderer (fast path) or PdfiumRenderer (control path).
+    pub fn renderer(&self, printer_name: &str, config: &RenderConfig) -> Arc<dyn DocumentRenderer> {
+        self.strategy_selector.select_renderer(printer_name, config)
     }
 }
 
