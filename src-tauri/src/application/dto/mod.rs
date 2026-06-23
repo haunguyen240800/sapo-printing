@@ -1,2 +1,3 @@
 // Data Transfer Objects for API communication
-// Future: Request/Response DTOs will be defined here
+pub mod create_job_request;
+// Future: Response DTOs

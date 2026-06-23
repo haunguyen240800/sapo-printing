@@ -393,10 +393,10 @@ mod tests {
     #[test]
     fn test_find_by_invalid_status_returns_error() {
         let conn = setup_test_db();
+        let job = make_test_job();
         // Insert a row with an invalid status string directly
         {
             let c = conn.lock().unwrap();
-            let job = make_test_job();
             c.execute(
                 "INSERT INTO print_jobs (id, printer_name, document_url, status, retry_count, created_at, updated_at, completed_at)
                  VALUES (?1, ?2, ?3, 'UnknownStatus', ?4, ?5, ?6, ?7)",

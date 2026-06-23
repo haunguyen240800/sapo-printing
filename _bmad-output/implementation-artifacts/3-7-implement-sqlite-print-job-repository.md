@@ -3,7 +3,7 @@ baseline_commit: e2c596f15e51206ef743d915a509c5ebc5a7f1e8
 ---
 # Story 3.7: Implement SQLite Print Job Repository
 
-Status: review
+Status: done
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 

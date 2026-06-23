@@ -1,3 +1,3 @@
-// Tauri commands will be defined here in future stories
-
+// Tauri commands
+pub mod print_job;
 pub mod printer;

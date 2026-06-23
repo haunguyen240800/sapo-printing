@@ -13,6 +13,7 @@ mod secrets {
     mod linux_integration_test;
 }
 
+mod create_print_job_integration_test;
 mod downloader_integration_test;
 mod migration_integration_test;
 mod renderer_integration_test;

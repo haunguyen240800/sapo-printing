@@ -6,7 +6,7 @@ use super::value_objects::{JobId, PrintStatus};
 ///
 /// Implementations (e.g., SQLite) live in the infrastructure layer.
 /// The domain layer defines only the contract — no storage details.
-pub trait PrintJobRepository {
+pub trait PrintJobRepository: Send + Sync {
     /// Persists a new PrintJob.
     fn save(&self, job: &PrintJob) -> Result<(), DomainError>;
 

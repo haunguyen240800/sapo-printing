@@ -1,5 +1,5 @@
 # generated: 2026-06-22
-# last_updated: 2026-06-23 (story 3-4 review complete, all patches applied)
+# last_updated: 2026-06-23 (story 3-3 complete, all ACs verified)
 # project: sapo-printer
 # project_key: NOKEY
 # tracking_system: file-system
@@ -35,7 +35,7 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 
 generated: 2026-06-22
-last_updated: 2026-06-23 (story 3-7 implementation complete, status → review)
+last_updated: 2026-06-23 (story 3-3 created, status → ready-for-dev)
 
 project_key: NOKEY
 tracking_system: file-system
@@ -70,9 +70,9 @@ development_status:
   3-4-create-hybrid-strategy-selector-auto-detect-printer-capability: done
   3-5-implement-raii-temp-file-management-with-tiered-cleanup: done
   3-6-create-print-job-tables-event-store-schema: done
-  3-7-implement-sqlite-print-job-repository: review
-  3-3-implement-createprintjobusecase-with-event-publishing: backlog
-  3-4-implement-durable-queue-manager-sqlite-backed: backlog
+  3-7-implement-sqlite-print-job-repository: done
+  3-3-implement-createprintjobusecase-with-event-publishing: done
+  3-4-implement-durable-queue-manager-sqlite-backed: ready-for-dev
   3-5-implement-queue-worker-with-batch-processing: backlog
   3-6-implement-auto-retry-logic-with-exponential-backoff: backlog
   3-7-implement-job-cancellation-use-case: backlog

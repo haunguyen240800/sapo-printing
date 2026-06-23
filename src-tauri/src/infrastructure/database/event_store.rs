@@ -189,7 +189,7 @@ mod tests {
         let conn = setup_test_db();
         let store = SqliteEventStore::new(conn);
 
-        let job = PrintJob::new(
+        let mut job = PrintJob::new(
             "https://s3.example.com/doc.pdf".to_string(),
             "HP".to_string(),
         );

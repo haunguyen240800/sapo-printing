@@ -4,13 +4,29 @@
 // Prevents additional console window on Windows in release builds
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
-use sapo_printer::infrastructure::database::{run_migrations, DbPool, SqlitePrinterRepository};
+use sapo_printer::infrastructure::database::{
+    run_migrations, DbPool, SqliteEventStore, SqlitePrintJobRepository, SqlitePrinterRepository,
+};
 use sapo_printer::infrastructure::printer::PrinterManager;
 use sapo_printer::infrastructure::secrets::SecretManager;
 use sapo_printer::interface::tauri::dtos::printer_dto::{
     PrinterConfigDto, PrinterDto, PrinterStatusDto,
 };
+use sapo_printer::shared::event_bus::{EventBus, InMemoryEventBus};
+use sapo_printer::AppContextState;
 use std::sync::Arc;
+
+/// Tauri command: create print job(s) via CreatePrintJobUseCase.
+#[tauri::command]
+fn create_print_job(
+    payload: sapo_printer::interface::tauri::commands::print_job::CreateJobPayload,
+    ctx: tauri::State<'_, AppContextState>,
+) -> Result<Vec<String>, String> {
+    sapo_printer::interface::tauri::commands::print_job::execute_create_print_job(
+        payload,
+        ctx.inner(),
+    )
+}
 
 #[cfg(target_os = "windows")]
 use sapo_printer::infrastructure::printer::windows::Win32PrinterManager;
@@ -227,6 +243,9 @@ fn main() {
 
     // 4. Initialize AppContext dependencies
     let printer_repo = Arc::new(SqlitePrinterRepository::new(pool.get_arc()));
+    let job_repo = Arc::new(SqlitePrintJobRepository::new(pool.get_arc()));
+    let event_store = Arc::new(SqliteEventStore::new(pool.get_arc()));
+    let event_bus: Arc<dyn EventBus> = Arc::new(InMemoryEventBus::new());
 
     #[cfg(target_os = "windows")]
     let printer_manager: Arc<dyn PrinterManager> = Arc::new(Win32PrinterManager::new());
@@ -261,11 +280,15 @@ fn main() {
             printer_repo,
             printer_manager,
             _secret_manager: secret_manager,
+            job_repo,
+            event_store,
+            event_bus,
         })
         .invoke_handler(tauri::generate_handler![
             list_printers,
             save_printer_config,
-            get_printer_status
+            get_printer_status,
+            create_print_job,
         ])
         .run(tauri::generate_context!())
         .unwrap_or_else(|e| {
@@ -273,11 +296,4 @@ fn main() {
             eprintln!("  {e}");
             std::process::exit(1);
         });
-}
-
-// Temporary state structure until AppContext is fully wired
-struct AppContextState {
-    printer_repo: Arc<dyn sapo_printer::domain::printer::PrinterRepository>,
-    printer_manager: Arc<dyn PrinterManager>,
-    _secret_manager: Arc<dyn SecretManager>,
 }
