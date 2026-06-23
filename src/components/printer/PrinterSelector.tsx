@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { invoke } from '@tauri-apps/api/core';
+import { Select, Spinner } from '@sapo/ui-components';
 import { PrinterDto } from '../../types/printer';
 
 interface PrinterSelectorProps {
@@ -39,7 +40,8 @@ export const PrinterSelector: React.FC<PrinterSelectorProps> = ({
 
   if (loading) {
     return (
-      <div style={{ padding: '8px 0' }}>
+      <div style={{ padding: '8px 0', display: 'flex', alignItems: 'center', gap: '8px' }}>
+        <Spinner size="small" />
         <span>Đang tải...</span>
       </div>
     );
@@ -62,36 +64,19 @@ export const PrinterSelector: React.FC<PrinterSelectorProps> = ({
   }
 
   return (
-    <div>
-      <label htmlFor="printer-selector" style={{ display: 'block', marginBottom: '4px', fontWeight: 500 }}>
-        Chọn máy in
-      </label>
-      <select
-        id="printer-selector"
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        disabled={disabled}
-        style={{
-          width: '100%',
-          padding: '8px 12px',
-          border: error ? '1px solid #d32f2f' : '1px solid #ccc',
-          borderRadius: '4px',
-          fontSize: '14px',
-          backgroundColor: disabled ? '#f5f5f5' : '#fff',
-        }}
-      >
-        <option value="">-- Chọn máy in --</option>
-        {printers.map((printer) => (
-          <option key={printer.device_id} value={printer.name}>
-            {printer.name} ({printer.printer_type})
-          </option>
-        ))}
-      </select>
-      {error && (
-        <div style={{ marginTop: '4px', fontSize: '12px', color: '#d32f2f' }}>
-          {error}
-        </div>
-      )}
-    </div>
+    <Select
+      label="Chọn máy in"
+      options={[
+        { label: '-- Chọn máy in --', value: '' },
+        ...printers.map((printer) => ({
+          label: `${printer.name} (${printer.printer_type})`,
+          value: printer.name,
+        })),
+      ]}
+      value={value}
+      onChange={onChange}
+      disabled={disabled}
+      error={error}
+    />
   );
 };

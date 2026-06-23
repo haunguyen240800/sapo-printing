@@ -1,11 +1,12 @@
 import React, { useEffect, useState } from 'react';
-import { useForm } from 'react-hook-form';
+import { useForm, Controller } from 'react-hook-form';
 import { yupResolver } from '@hookform/resolvers/yup';
 import * as yup from 'yup';
 import { invoke } from '@tauri-apps/api/core';
+import { TextField, Select, Checkbox, Button, Banner } from '@sapo/ui-components';
 import { PrinterSelector } from './PrinterSelector';
 import { PrinterStatus } from './PrinterStatus';
-import { PrinterDto, PrinterConfigDto } from '../../types/printer';
+import { PrinterDto } from '../../types/printer';
 
 interface PrinterConfigFormData {
   printer_name: string;
@@ -80,10 +81,10 @@ export const PrinterConfigForm: React.FC = () => {
   const [notification, setNotification] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
 
   const {
-    register,
     handleSubmit,
     watch,
     setValue,
+    control,
     formState: { errors, isSubmitting, isValid },
   } = useForm<PrinterConfigFormData>({
     resolver: yupResolver(schema) as any,
@@ -149,17 +150,12 @@ export const PrinterConfigForm: React.FC = () => {
       <h1 style={{ marginBottom: '24px' }}>Cấu hình máy in</h1>
 
       {notification && (
-        <div
-          style={{
-            padding: '12px 16px',
-            marginBottom: '16px',
-            borderRadius: '4px',
-            backgroundColor: notification.type === 'success' ? '#e8f5e9' : '#ffebee',
-            color: notification.type === 'success' ? '#2e7d32' : '#c62828',
-          }}
+        <Banner
+          status={notification.type === 'success' ? 'success' : 'critical'}
+          onDismiss={() => setNotification(null)}
         >
           {notification.message}
-        </div>
+        </Banner>
       )}
 
       <form onSubmit={handleSubmit(onSubmit)}>
@@ -183,92 +179,63 @@ export const PrinterConfigForm: React.FC = () => {
           <h2 style={{ marginBottom: '16px', fontSize: '18px' }}>2. Cài đặt giấy</h2>
 
           <div style={{ marginBottom: '16px' }}>
-            <label htmlFor="paper_size" style={{ display: 'block', marginBottom: '4px', fontWeight: 500 }}>
-              Khổ giấy
-            </label>
-            <select
-              id="paper_size"
-              {...register('paper_size')}
-              style={{
-                width: '100%',
-                padding: '8px 12px',
-                border: errors.paper_size ? '1px solid #d32f2f' : '1px solid #ccc',
-                borderRadius: '4px',
-                fontSize: '14px',
-              }}
-            >
-              <option value="A4">A4 (210 × 297 mm)</option>
-              <option value="A5">A5 (148 × 210 mm)</option>
-              <option value="Letter">Letter (216 × 279 mm)</option>
-              <option value="Custom">Tùy chỉnh</option>
-            </select>
-            {errors.paper_size && (
-              <div style={{ marginTop: '4px', fontSize: '12px', color: '#d32f2f' }}>
-                {errors.paper_size.message}
-              </div>
-            )}
+            <Controller
+              name="paper_size"
+              control={control}
+              render={({ field }) => (
+                <Select
+                  label="Khổ giấy"
+                  options={[
+                    { label: 'A4 (210 × 297 mm)', value: 'A4' },
+                    { label: 'A5 (148 × 210 mm)', value: 'A5' },
+                    { label: 'Letter (216 × 279 mm)', value: 'Letter' },
+                    { label: 'Tùy chỉnh', value: 'Custom' },
+                  ]}
+                  value={field.value}
+                  onChange={field.onChange}
+                  error={errors.paper_size?.message}
+                />
+              )}
+            />
           </div>
 
           {selectedPaperSize === 'Custom' && (
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px', marginBottom: '16px' }}>
-              <div>
-                <label htmlFor="paper_width" style={{ display: 'block', marginBottom: '4px', fontWeight: 500 }}>
-                  Chiều rộng (mm)
-                </label>
-                <input
-                  id="paper_width"
-                  type="number"
-                  {...register('paper_width')}
-                  style={{
-                    width: '100%',
-                    padding: '8px 12px',
-                    border: errors.paper_width ? '1px solid #d32f2f' : '1px solid #ccc',
-                    borderRadius: '4px',
-                    fontSize: '14px',
-                  }}
-                />
-                {errors.paper_width && (
-                  <div style={{ marginTop: '4px', fontSize: '12px', color: '#d32f2f' }}>
-                    {errors.paper_width.message}
-                  </div>
+              <Controller
+                name="paper_width"
+                control={control}
+                render={({ field }) => (
+                  <TextField
+                    label="Chiều rộng (mm)"
+                    type="number"
+                    value={field.value?.toString() || ''}
+                    onChange={field.onChange}
+                    error={errors.paper_width?.message}
+                  />
                 )}
-              </div>
-
-              <div>
-                <label htmlFor="paper_height" style={{ display: 'block', marginBottom: '4px', fontWeight: 500 }}>
-                  Chiều cao (mm)
-                </label>
-                <input
-                  id="paper_height"
-                  type="number"
-                  {...register('paper_height')}
-                  style={{
-                    width: '100%',
-                    padding: '8px 12px',
-                    border: errors.paper_height ? '1px solid #d32f2f' : '1px solid #ccc',
-                    borderRadius: '4px',
-                    fontSize: '14px',
-                  }}
-                />
-                {errors.paper_height && (
-                  <div style={{ marginTop: '4px', fontSize: '12px', color: '#d32f2f' }}>
-                    {errors.paper_height.message}
-                  </div>
+              />
+              <Controller
+                name="paper_height"
+                control={control}
+                render={({ field }) => (
+                  <TextField
+                    label="Chiều cao (mm)"
+                    type="number"
+                    value={field.value?.toString() || ''}
+                    onChange={field.onChange}
+                    error={errors.paper_height?.message}
+                  />
                 )}
-              </div>
+              />
             </div>
           )}
 
           <div>
-            <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer' }}>
-              <input
-                type="checkbox"
-                checked={watch('orientation') === 'Landscape'}
-                onChange={(e) => setValue('orientation', e.target.checked ? 'Landscape' : 'Portrait')}
-                style={{ width: '16px', height: '16px' }}
-              />
-              <span style={{ fontSize: '14px' }}>In chiều ngang</span>
-            </label>
+            <Checkbox
+              label="In chiều ngang"
+              checked={watch('orientation') === 'Landscape'}
+              onChange={(checked) => setValue('orientation', checked ? 'Landscape' : 'Portrait')}
+            />
           </div>
         </div>
 
@@ -277,118 +244,71 @@ export const PrinterConfigForm: React.FC = () => {
           <h2 style={{ marginBottom: '16px', fontSize: '18px' }}>3. Lề trang</h2>
 
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
-            <div>
-              <label htmlFor="margin_left" style={{ display: 'block', marginBottom: '4px', fontWeight: 500 }}>
-                Lề trái (mm)
-              </label>
-              <input
-                id="margin_left"
-                type="number"
-                {...register('margin_left')}
-                style={{
-                  width: '100%',
-                  padding: '8px 12px',
-                  border: errors.margin_left ? '1px solid #d32f2f' : '1px solid #ccc',
-                  borderRadius: '4px',
-                  fontSize: '14px',
-                }}
-              />
-              {errors.margin_left && (
-                <div style={{ marginTop: '4px', fontSize: '12px', color: '#d32f2f' }}>
-                  {errors.margin_left.message}
-                </div>
+            <Controller
+              name="margin_left"
+              control={control}
+              render={({ field }) => (
+                <TextField
+                  label="Lề trái (mm)"
+                  type="number"
+                  value={field.value?.toString() || '0'}
+                  onChange={field.onChange}
+                  error={errors.margin_left?.message}
+                />
               )}
-            </div>
-
-            <div>
-              <label htmlFor="margin_right" style={{ display: 'block', marginBottom: '4px', fontWeight: 500 }}>
-                Lề phải (mm)
-              </label>
-              <input
-                id="margin_right"
-                type="number"
-                {...register('margin_right')}
-                style={{
-                  width: '100%',
-                  padding: '8px 12px',
-                  border: errors.margin_right ? '1px solid #d32f2f' : '1px solid #ccc',
-                  borderRadius: '4px',
-                  fontSize: '14px',
-                }}
-              />
-              {errors.margin_right && (
-                <div style={{ marginTop: '4px', fontSize: '12px', color: '#d32f2f' }}>
-                  {errors.margin_right.message}
-                </div>
+            />
+            <Controller
+              name="margin_right"
+              control={control}
+              render={({ field }) => (
+                <TextField
+                  label="Lề phải (mm)"
+                  type="number"
+                  value={field.value?.toString() || '0'}
+                  onChange={field.onChange}
+                  error={errors.margin_right?.message}
+                />
               )}
-            </div>
-
-            <div>
-              <label htmlFor="margin_top" style={{ display: 'block', marginBottom: '4px', fontWeight: 500 }}>
-                Lề trên (mm)
-              </label>
-              <input
-                id="margin_top"
-                type="number"
-                {...register('margin_top')}
-                style={{
-                  width: '100%',
-                  padding: '8px 12px',
-                  border: errors.margin_top ? '1px solid #d32f2f' : '1px solid #ccc',
-                  borderRadius: '4px',
-                  fontSize: '14px',
-                }}
-              />
-              {errors.margin_top && (
-                <div style={{ marginTop: '4px', fontSize: '12px', color: '#d32f2f' }}>
-                  {errors.margin_top.message}
-                </div>
+            />
+            <Controller
+              name="margin_top"
+              control={control}
+              render={({ field }) => (
+                <TextField
+                  label="Lề trên (mm)"
+                  type="number"
+                  value={field.value?.toString() || '0'}
+                  onChange={field.onChange}
+                  error={errors.margin_top?.message}
+                />
               )}
-            </div>
-
-            <div>
-              <label htmlFor="margin_bottom" style={{ display: 'block', marginBottom: '4px', fontWeight: 500 }}>
-                Lề dưới (mm)
-              </label>
-              <input
-                id="margin_bottom"
-                type="number"
-                {...register('margin_bottom')}
-                style={{
-                  width: '100%',
-                  padding: '8px 12px',
-                  border: errors.margin_bottom ? '1px solid #d32f2f' : '1px solid #ccc',
-                  borderRadius: '4px',
-                  fontSize: '14px',
-                }}
-              />
-              {errors.margin_bottom && (
-                <div style={{ marginTop: '4px', fontSize: '12px', color: '#d32f2f' }}>
-                  {errors.margin_bottom.message}
-                </div>
+            />
+            <Controller
+              name="margin_bottom"
+              control={control}
+              render={({ field }) => (
+                <TextField
+                  label="Lề dưới (mm)"
+                  type="number"
+                  value={field.value?.toString() || '0'}
+                  onChange={field.onChange}
+                  error={errors.margin_bottom?.message}
+                />
               )}
-            </div>
+            />
           </div>
         </div>
 
         {/* Submit Button */}
-        <button
-          type="submit"
+        <Button
+          submit
+          primary
           disabled={!isValid || isSubmitting}
-          style={{
-            width: '100%',
-            padding: '12px',
-            backgroundColor: !isValid || isSubmitting ? '#ccc' : '#1976d2',
-            color: '#fff',
-            border: 'none',
-            borderRadius: '4px',
-            fontSize: '16px',
-            fontWeight: 500,
-            cursor: !isValid || isSubmitting ? 'not-allowed' : 'pointer',
-          }}
+          loading={isSubmitting}
+          fullWidth
         >
-          {isSubmitting ? 'Đang lưu...' : 'Lưu cấu hình'}
-        </button>
+          Lưu cấu hình
+        </Button>
       </form>
     </div>
   );

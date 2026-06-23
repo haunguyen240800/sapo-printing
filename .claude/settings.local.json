@@ -27,7 +27,10 @@
       "Bash(git commit -m ' *)",
       "Bash(cargo --version)",
       "Bash(rustc --version)",
-      "Bash(pnpm exec *)"
+      "Bash(pnpm exec *)",
+      "Bash(xargs grep -l \"AppProvider\")",
+      "Bash(pnpm run *)",
+      "Bash(grep type Tone\\\\$4 *)"
     ]
   }
 }

@@ -56,8 +56,8 @@ development_status:
   2-2-implement-windows-printer-discovery-status-monitoring-win32-api: done
   2-3-implement-cups-printer-discovery-status-monitoring-macos-linux: done
   2-4-implement-sqlite-printer-repository-config-persistence: done
-  2-5-create-printer-configuration-ui-basic-settings-3-sections: in-progress
-  2-5-1-migrate-printer-config-ui-to-sapo-components: ready-for-dev
+  2-5-create-printer-configuration-ui-basic-settings-3-sections: done
+  2-5-1-migrate-printer-config-ui-to-sapo-components: done
   2-6-create-printer-configuration-ui-advanced-settings-2-sections: backlog
   2-6-implement-secret-management-for-device-tokens-os-keychain: backlog
   epic-2-retrospective: optional

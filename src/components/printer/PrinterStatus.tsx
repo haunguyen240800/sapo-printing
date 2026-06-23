@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { invoke } from '@tauri-apps/api/core';
+import { Badge, Spinner } from '@sapo/ui-components';
 
 interface PrinterStatusDto {
   status: string;
@@ -42,52 +43,26 @@ export const PrinterStatus: React.FC<PrinterStatusProps> = ({ printerName }) => 
   if (loading) {
     return (
       <div style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
+        <Spinner size="small" />
         <span style={{ fontSize: '12px', color: '#666' }}>Đang kiểm tra...</span>
       </div>
     );
   }
 
-  const getStatusColor = (status: string): string => {
+  const getStatusProps = (status: string): { status: 'success' | 'warning' | 'critical' | 'plain'; label: string } => {
     switch (status) {
       case 'Online':
-        return '#4caf50'; // green
+        return { status: 'success', label: 'Trực tuyến' };
       case 'Offline':
-        return '#9e9e9e'; // gray
+        return { status: 'plain', label: 'Ngoại tuyến' };
       case 'Error':
-        return '#f44336'; // red
+        return { status: 'critical', label: 'Lỗi' };
       default:
-        return '#9e9e9e';
+        return { status: 'warning', label: 'Không xác định' };
     }
   };
 
-  const getStatusLabel = (status: string): string => {
-    switch (status) {
-      case 'Online':
-        return 'Trực tuyến';
-      case 'Offline':
-        return 'Ngoại tuyến';
-      case 'Error':
-        return 'Lỗi';
-      default:
-        return 'Không xác định';
-    }
-  };
+  const statusProps = getStatusProps(status);
 
-  const color = getStatusColor(status);
-  const label = getStatusLabel(status);
-
-  return (
-    <div style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
-      <span
-        style={{
-          display: 'inline-block',
-          width: '8px',
-          height: '8px',
-          borderRadius: '50%',
-          backgroundColor: color,
-        }}
-      />
-      <span style={{ fontSize: '12px', color: '#666' }}>{label}</span>
-    </div>
-  );
+  return <Badge status={statusProps.status}>{statusProps.label}</Badge>;
 };

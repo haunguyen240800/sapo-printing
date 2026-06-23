@@ -4,7 +4,7 @@ baseline_commit: d90854c49be9bb7c5af7efe97b3a9ae3e98e1cd1
 
 # Story 2.5: Create Printer Configuration UI - Basic Settings (3 Sections)
 
-Status: in-progress
+Status: done
 
 ## Story
 
