@@ -2,6 +2,7 @@ use std::sync::Arc;
 
 use crate::domain::print_job::PrintJobRepository;
 use crate::domain::printer::PrinterRepository;
+use crate::infrastructure::printer::printer_manager::PrinterManager;
 use crate::shared::event_bus::EventBus;
 
 /// Application-wide dependency injection container.
@@ -14,6 +15,7 @@ use crate::shared::event_bus::EventBus;
 pub struct AppContext {
     pub job_repo: Arc<dyn PrintJobRepository>,
     pub printer_repo: Arc<dyn PrinterRepository>,
+    pub printer_manager: Arc<dyn PrinterManager>,
     pub event_bus: Arc<dyn EventBus>,
 }
 

@@ -38,6 +38,11 @@ impl DbPool {
     pub fn get(&self) -> MutexGuard<'_, Connection> {
         self.0.lock().expect("DB mutex poisoned")
     }
+
+    /// Get the underlying Arc<Mutex<Connection>> for repository construction
+    pub fn get_arc(&self) -> Arc<Mutex<Connection>> {
+        self.0.clone()
+    }
 }
 
 #[cfg(test)]

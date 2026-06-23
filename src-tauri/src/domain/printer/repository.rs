@@ -6,7 +6,7 @@ use super::value_objects::PrinterName;
 ///
 /// Implementations live in the Infrastructure layer.
 /// Domain layer only defines this contract.
-pub trait PrinterRepository {
+pub trait PrinterRepository: Send + Sync {
     /// Persist a new printer record.
     fn save(&self, printer: &Printer) -> Result<(), PrinterDomainError>;
 
