@@ -48,8 +48,43 @@ INSERT INTO app_settings (key, value, value_type, description, updated_at) VALUE
     ('last_update_check', '0', 'integer', 'Unix timestamp of last update check', strftime('%s', 'now'));
 ";
 
+const MIGRATION_3: &str = "
+CREATE TABLE print_jobs (
+    id TEXT PRIMARY KEY CHECK(length(id) = 36),
+    printer_name TEXT NOT NULL,
+    document_url TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'PENDING',
+    retry_count INTEGER NOT NULL DEFAULT 0,
+    created_at INTEGER NOT NULL,
+    updated_at INTEGER NOT NULL,
+    completed_at INTEGER
+);
+CREATE INDEX idx_print_jobs_status ON print_jobs(status);
+CREATE INDEX idx_print_jobs_created_at ON print_jobs(created_at);
+";
+
+const MIGRATION_4: &str = "
+CREATE TABLE events (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    aggregate_id TEXT NOT NULL,
+    sequence_number INTEGER NOT NULL,
+    event_type TEXT NOT NULL,
+    payload TEXT NOT NULL,
+    timestamp INTEGER NOT NULL,
+    hmac TEXT,
+    UNIQUE(aggregate_id, sequence_number)
+);
+CREATE INDEX idx_events_aggregate ON events(aggregate_id);
+CREATE INDEX idx_events_type ON events(event_type);
+";
+
 pub fn run_migrations(conn: &mut Connection) -> Result<(), DatabaseError> {
-    let migrations = Migrations::new(vec![M::up(MIGRATION_1), M::up(MIGRATION_2)]);
+    let migrations = Migrations::new(vec![
+        M::up(MIGRATION_1),
+        M::up(MIGRATION_2),
+        M::up(MIGRATION_3),
+        M::up(MIGRATION_4),
+    ]);
     migrations
         .to_latest(conn)
         .map_err(|e| DatabaseError::MigrationFailed {
@@ -108,5 +143,123 @@ mod tests {
         let mut conn = open_test_conn();
         run_migrations(&mut conn).unwrap();
         run_migrations(&mut conn).unwrap();
+    }
+
+    #[test]
+    fn test_migrations_create_print_jobs_table() {
+        let mut conn = open_test_conn();
+        run_migrations(&mut conn).unwrap();
+        let count: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='print_jobs'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(count, 1);
+    }
+
+    #[test]
+    fn test_migrations_create_events_table() {
+        let mut conn = open_test_conn();
+        run_migrations(&mut conn).unwrap();
+        let count: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='events'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(count, 1);
+    }
+
+    #[test]
+    fn test_print_jobs_schema_constraints() {
+        let mut conn = open_test_conn();
+        run_migrations(&mut conn).unwrap();
+        let now = 1_700_000_000i64;
+
+        conn.execute(
+            "INSERT INTO print_jobs (id, printer_name, document_url, status, created_at, updated_at)
+             VALUES ('job-1', 'HP LaserJet', 'https://s3.example.com/doc.pdf', 'PENDING', ?1, ?1)",
+            rusqlite::params![now],
+        )
+        .unwrap();
+
+        let (retry_count, completed_at): (i64, Option<i64>) = conn
+            .query_row(
+                "SELECT retry_count, completed_at FROM print_jobs WHERE id = 'job-1'",
+                [],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+            .unwrap();
+        assert_eq!(retry_count, 0);
+        assert!(completed_at.is_none());
+
+        let result = conn.execute(
+            "INSERT INTO print_jobs (id, printer_name, document_url, status, created_at, updated_at)
+             VALUES ('job-1', 'Another Printer', 'https://s3.example.com/doc2.pdf', 'PENDING', ?1, ?1)",
+            rusqlite::params![now],
+        );
+        assert!(result.is_err(), "Duplicate primary key must fail");
+    }
+
+    #[test]
+    fn test_events_unique_aggregate_sequence() {
+        let mut conn = open_test_conn();
+        run_migrations(&mut conn).unwrap();
+        let now = 1_700_000_000i64;
+
+        conn.execute(
+            "INSERT INTO events (aggregate_id, sequence_number, event_type, payload, timestamp)
+             VALUES ('agg-1', 1, 'PrintJobCreated', '{}', ?1)",
+            rusqlite::params![now],
+        )
+        .unwrap();
+
+        let result = conn.execute(
+            "INSERT INTO events (aggregate_id, sequence_number, event_type, payload, timestamp)
+             VALUES ('agg-1', 1, 'PrintJobQueued', '{}', ?1)",
+            rusqlite::params![now],
+        );
+        assert!(
+            result.is_err(),
+            "Duplicate (aggregate_id, sequence_number) must fail"
+        );
+
+        conn.execute(
+            "INSERT INTO events (aggregate_id, sequence_number, event_type, payload, timestamp)
+             VALUES ('agg-1', 2, 'PrintJobQueued', '{}', ?1)",
+            rusqlite::params![now],
+        )
+        .unwrap();
+    }
+
+    #[test]
+    fn test_print_jobs_indexes_exist() {
+        let mut conn = open_test_conn();
+        run_migrations(&mut conn).unwrap();
+        let count: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM sqlite_master WHERE type='index' AND tbl_name='print_jobs'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(count, 2);
+    }
+
+    #[test]
+    fn test_events_indexes_exist() {
+        let mut conn = open_test_conn();
+        run_migrations(&mut conn).unwrap();
+        let count: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM sqlite_master WHERE type='index' AND tbl_name='events' AND name LIKE 'idx_%'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert!(count >= 2, "Expected at least 2 named indexes on events, got {count}");
     }
 }

@@ -14,5 +14,6 @@ mod secrets {
 }
 
 mod downloader_integration_test;
+mod migration_integration_test;
 mod renderer_integration_test;
 mod temp_file_integration_test;

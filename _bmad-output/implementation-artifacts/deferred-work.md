@@ -96,3 +96,8 @@
 - **CUPS PPD path traversal via printer name** — `ppd_has_pdf_filter()` constructs path `format!("/etc/cups/ppd/{}.ppd", printer_name)`. Printer name với `../` có thể read arbitrary files. Printer names thường từ CUPS API (không phải user input), nhưng defense-in-depth nên validate. Fix: reject names chứa `/`, `\`, `..`.
 - **lpstat substring match** — `lpstat_get_status()` dùng `line.contains(name)` thay vì exact match. Printer "HP" match "HP_LaserJet". Pre-existing code, không thay đổi trong story này.
 - **TOCTOU race in capability cache** — `check_capability()` drop lock giữa check và insert. Concurrent calls cho cùng printer sau TTL expiry sẽ gọi `supports_direct_pdf()` redundant. Result vẫn correct (idempotent), chỉ wasteful OS API calls.
+
+## Deferred from: code review of 3-6-create-print-job-tables-event-store-schema (2026-06-23)
+
+- `created_at`/`updated_at` không có DEFAULT hoặc trigger — pre-existing pattern từ MIGRATION_1/MIGRATION_2, client phải cung cấp đúng timestamp.
+- AC-6 cargo test/build/clippy/fmt không verifiable từ diff — Tauri native build constraint đã biết từ các story trước.
