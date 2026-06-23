@@ -1,6 +1,6 @@
 ---
 title: "Story 3.5: Implement RAII Temp File Management with Tiered Cleanup"
-status: ready-for-dev
+status: review
 story_id: "3.5"
 story_key: "3-5-implement-raii-temp-file-management-with-tiered-cleanup"
 epic: 3
@@ -11,7 +11,7 @@ created: 2026-06-23
 
 # Story 3.5: Implement RAII Temp File Management with Tiered Cleanup
 
-Status: ready-for-dev
+Status: done
 
 ## Story
 
@@ -330,29 +330,29 @@ mod temp_file_integration_test;
 
 ## Tasks / Subtasks
 
-- [ ] Task 1: Add `filetime` to `[dev-dependencies]` in `Cargo.toml`
-  - [ ] Append `filetime = "0.2"` under `[dev-dependencies]` section (hiện chỉ có `mockito = "1.0"`)
-- [ ] Task 2: Create `src-tauri/src/infrastructure/temp_file.rs` (AC-1, AC-2)
-  - [ ] Define `TempPdfFile` struct with `path: PathBuf`, `keep_on_drop: bool`
-  - [ ] Implement `new()`, `path()`, `keep()`, `release()` methods
-  - [ ] Implement `Drop` trait — `NotFound` silent, other errors `tracing::warn!`, no panic
-  - [ ] Define `pub(crate) const DEFERRED_RETENTION: Duration`
-  - [ ] Implement private `fn is_older_than_24h(path: &Path) -> bool`
-  - [ ] Implement `pub fn startup_cleanup(temp_dir: &Path)` — skip subdirs, best-effort
-- [ ] Task 3: Register module (AC-3)
-  - [ ] Add `pub mod temp_file;` to `src-tauri/src/infrastructure/mod.rs`
-- [ ] Task 4: Update `main.rs` (AC-4)
-  - [ ] Add `temp_dir` creation after `data_dir` block
-  - [ ] Call `startup_cleanup(&temp_dir)` before `DbPool::new()`
-- [ ] Task 5: Write inline unit tests (AC-5)
-  - [ ] All 10 test cases (gồm Send test và release() test)
-- [ ] Task 6: Write integration tests (AC-6)
-  - [ ] Create `src-tauri/tests/integration/temp_file_integration_test.rs`
-  - [ ] Add `mod temp_file_integration_test;` to `src-tauri/tests/integration/mod.rs`
-- [ ] Task 7: Final verification (AC-7)
-  - [ ] `cargo test` passes
-  - [ ] `cargo clippy -- -D warnings` clean
-  - [ ] `cargo fmt --check` passes
+- [x] Task 1: Add `filetime` to `[dev-dependencies]` in `Cargo.toml`
+  - [x] Append `filetime = "0.2"` under `[dev-dependencies]` section (hiện chỉ có `mockito = "1.0"`)
+- [x] Task 2: Create `src-tauri/src/infrastructure/temp_file.rs` (AC-1, AC-2)
+  - [x] Define `TempPdfFile` struct with `path: PathBuf`, `keep_on_drop: bool`
+  - [x] Implement `new()`, `path()`, `keep()`, `release()` methods
+  - [x] Implement `Drop` trait — `NotFound` silent, other errors `tracing::warn!`, no panic
+  - [x] Define `pub(crate) const DEFERRED_RETENTION: Duration`
+  - [x] Implement private `fn is_older_than_24h(path: &Path) -> bool`
+  - [x] Implement `pub fn startup_cleanup(temp_dir: &Path)` — skip subdirs, best-effort
+- [x] Task 3: Register module (AC-3)
+  - [x] Add `pub mod temp_file;` to `src-tauri/src/infrastructure/mod.rs`
+- [x] Task 4: Update `main.rs` (AC-4)
+  - [x] Add `temp_dir` creation after `data_dir` block
+  - [x] Call `startup_cleanup(&temp_dir)` before `DbPool::new()`
+- [x] Task 5: Write inline unit tests (AC-5)
+  - [x] All 10 test cases (gồm Send test và release() test)
+- [x] Task 6: Write integration tests (AC-6)
+  - [x] Create `src-tauri/tests/integration/temp_file_integration_test.rs`
+  - [x] Add `mod temp_file_integration_test;` to `src-tauri/tests/integration/mod.rs`
+- [x] Task 7: Final verification (AC-7)
+  - [x] `cargo test` passes
+  - [x] `cargo clippy -- -D warnings` clean
+  - [x] `cargo fmt --check` passes
 
 ## Dev Notes
 
@@ -543,8 +543,39 @@ No changes to `[dependencies]` needed. `TempPdfFile` runtime code uses only `std
 
 ### Agent Model Used
 
+Qwen Code
+
 ### Debug Log References
+
+- `release()` method: cannot move `self.path` out of `TempPdfFile` which implements `Drop`. Fixed by using `self.path.clone()` — Drop runs but `keep_on_drop = true` prevents deletion.
 
 ### Completion Notes List
 
+- Implemented `TempPdfFile` RAII wrapper with `Drop` trait for automatic temp PDF cleanup
+- Tiered cleanup: immediate (Drop with keep_on_drop=false), deferred (keep() survives Drop), startup (cleanup orphaned files >24h)
+- `startup_cleanup()` handles .tmp (always delete), .pdf (delete if >24h old), skips subdirectories
+- `main.rs` integration: creates `~/.sapo-printer/temp/` dir and runs startup cleanup before DB init
+- 10 inline unit tests covering all RAII behaviors, Send trait, startup cleanup scenarios
+- 3 integration tests covering full lifecycle (immediate, deferred, mixed startup cleanup)
+- All tests pass, clippy clean, fmt clean
+
 ### File List
+
+- `src-tauri/Cargo.toml` — added `filetime = "0.2"` to `[dev-dependencies]`
+- `src-tauri/src/infrastructure/temp_file.rs` — NEW: TempPdfFile struct + startup_cleanup() + 10 inline tests
+- `src-tauri/src/infrastructure/mod.rs` — added `pub mod temp_file;`
+- `src-tauri/src/main.rs` — added temp_dir creation + startup_cleanup() call before DbPool::new()
+- `src-tauri/tests/integration/temp_file_integration_test.rs` — NEW: 3 integration tests
+- `src-tauri/tests/integration/mod.rs` — added `mod temp_file_integration_test;`
+
+### Change Log
+
+- 2026-06-23: Implemented Story 3.5 — RAII temp file management with tiered cleanup (all 7 tasks complete)
+
+### Review Findings
+
+- [x] [Review][Decision] TempPdfFile không validate path — **Resolved:** Thêm `try_new(path, temp_dir) -> Result` với path validation. Giữ `new()` cho backward compatibility.
+- [x] [Review][Decision] Mid-session cleanup cho long-running sessions — **Resolved:** Deferred sang story khác (queue worker/monitoring).
+- [x] [Review][Patch] Clock skew gây xóa nhầm file gần đây [src-tauri/src/infrastructure/temp_file.rs:121] — Inner `unwrap_or(true)` trong `is_older_than()` treats future-dated files (clock skew backward) là "old". `duration_since()` returns `Err` khi `now < modified`, map thành `true` → file bị xóa. Fix: đổi inner `unwrap_or(true)` thành `unwrap_or(false)` — khi không xác định được tuổi file, giữ lại an toàn hơn.
+- [x] [Review][Defer] Subdirectory cleanup không recursive [src-tauri/src/infrastructure/temp_file.rs:80] — deferred, pre-existing
+- [x] [Review][Defer] Không có protection chống 2 TempPdfFile cùng wrap 1 path [src-tauri/src/infrastructure/temp_file.rs:21] — deferred, latent risk

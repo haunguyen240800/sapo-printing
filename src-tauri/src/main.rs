@@ -194,6 +194,16 @@ fn main() {
         eprintln!("Cannot create data directory: {e}");
         std::process::exit(1);
     });
+    // Create temp directory for PDF downloads
+    let temp_dir = data_dir.join("temp");
+    std::fs::create_dir_all(&temp_dir).unwrap_or_else(|e| {
+        eprintln!("Cannot create temp directory: {e}");
+        std::process::exit(1);
+    });
+
+    // Startup cleanup: remove orphaned .tmp files and old .pdf files (>24h)
+    sapo_printer::infrastructure::temp_file::startup_cleanup(&temp_dir);
+
     let db_path = data_dir.join("config.db");
     let db_path_str = db_path.to_str().unwrap_or_else(|| {
         eprintln!("Database path contains non-UTF-8 characters");

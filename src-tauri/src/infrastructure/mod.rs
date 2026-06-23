@@ -14,3 +14,4 @@ pub mod printer;
 pub mod queue;
 pub mod renderer;
 pub mod secrets;
+pub mod temp_file;

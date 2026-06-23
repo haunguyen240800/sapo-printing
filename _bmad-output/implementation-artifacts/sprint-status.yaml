@@ -35,7 +35,7 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 
 generated: 2026-06-22
-last_updated: 2026-06-23
+last_updated: 2026-06-23 (story 3-5 review complete, all patches applied)
 
 project_key: NOKEY
 tracking_system: file-system
@@ -68,8 +68,8 @@ development_status:
   3-2-implement-mupdf-renderer-with-color-mode-support: done
   3-3-implement-direct-pdf-strategy: done
   3-4-create-hybrid-strategy-selector-auto-detect-printer-capability: done
-  3-5-implement-raii-temp-file-management-with-tiered-cleanup: ready-for-dev
-  3-6-create-print-job-tables-event-store-schema: backlog
+  3-5-implement-raii-temp-file-management-with-tiered-cleanup: done
+  3-6-create-print-job-tables-event-store-schema: ready-for-dev
   3-7-implement-sqlite-print-job-repository: backlog
   3-3-implement-createprintjobusecase-with-event-publishing: backlog
   3-4-implement-durable-queue-manager-sqlite-backed: backlog

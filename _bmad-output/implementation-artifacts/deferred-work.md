@@ -84,6 +84,12 @@
 - **Broken symlink → wrong error variant** — Same root cause as IO misclassification above.
 
 
+## Deferred from: code review of story 3-5-implement-raii-temp-file-management-with-tiered-cleanup (2026-06-23)
+
+- **Mid-session cleanup cho long-running sessions** — `startup_cleanup` chỉ chạy 1 lần khi start. App chạy nhiều ngày (kiosk/POS) → deferred .pdf files tích lũy không giới hạn. Defer sang queue worker hoặc monitoring story.
+- **Subdirectory cleanup không recursive** [temp_file.rs:80] — `startup_cleanup` chỉ scan top-level entries. Nếu temp_dir chứa subdirectories, files bên trong không bao giờ bị cleanup. Hiện tại flat structure nên không issue, nhưng future change có thể tạo gap.
+- **Không có protection chống 2 TempPdfFile cùng wrap 1 path** [temp_file.rs:21] — Nếu caller tạo 2 instances cùng path, first drop xóa file, second drop gets NotFound (silently ignored). Latent risk vì chưa có production callers, nhưng API không guard được.
+
 ## Deferred from: code review of story 3-4-create-hybrid-strategy-selector-auto-detect-printer-capability (2026-06-23)
 
 - **Cache unbounded growth** — `StrategySelector` cache `HashMap<String, (bool, Instant)>` có TTL nhưng không có max size. Stale entries không bị evict. In print server environments với nhiều ephemeral network printers, đây là slow memory leak. Fix: thêm LRU eviction hoặc periodic cleanup.
