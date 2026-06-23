@@ -5,6 +5,7 @@ import * as yup from 'yup';
 import { invoke } from '@tauri-apps/api/core';
 import { PrinterSelector } from './PrinterSelector';
 import { PrinterStatus } from './PrinterStatus';
+import { PrinterDto, PrinterConfigDto } from '../../types/printer';
 
 interface PrinterConfigFormData {
   printer_name: string;
@@ -18,14 +19,6 @@ interface PrinterConfigFormData {
   margin_bottom: number;
 }
 
-interface PrinterDto {
-  name: string;
-  device_id: string;
-  status: string;
-  printer_type: string;
-  is_default?: boolean;
-}
-
 // Validation schema
 const schema = yup.object({
   printer_name: yup.string().required('Tên máy in không được để trống'),
@@ -34,6 +27,7 @@ const schema = yup.object({
     .number()
     .nullable()
     .transform((value, original) => (original === '' ? null : value))
+    .typeError('Phải là số')
     .when('paper_size', {
       is: 'Custom',
       then: (schema) =>
@@ -46,6 +40,7 @@ const schema = yup.object({
     .number()
     .nullable()
     .transform((value, original) => (original === '' ? null : value))
+    .typeError('Phải là số')
     .when('paper_size', {
       is: 'Custom',
       then: (schema) =>
@@ -57,21 +52,25 @@ const schema = yup.object({
   orientation: yup.string().required(),
   margin_left: yup
     .number()
+    .typeError('Phải là số')
     .required('Lề trái không được để trống')
     .min(0, 'Lề trái phải trong khoảng 0-100mm')
     .max(100, 'Lề trái phải trong khoảng 0-100mm'),
   margin_right: yup
     .number()
+    .typeError('Phải là số')
     .required('Lề phải không được để trống')
     .min(0, 'Lề phải phải trong khoảng 0-100mm')
     .max(100, 'Lề phải phải trong khoảng 0-100mm'),
   margin_top: yup
     .number()
+    .typeError('Phải là số')
     .required('Lề trên không được để trống')
     .min(0, 'Lề trên phải trong khoảng 0-100mm')
     .max(100, 'Lề trên phải trong khoảng 0-100mm'),
   margin_bottom: yup
     .number()
+    .typeError('Phải là số')
     .required('Lề dưới không được để trống')
     .min(0, 'Lề dưới phải trong khoảng 0-100mm')
     .max(100, 'Lề dưới phải trong khoảng 0-100mm'),
@@ -264,7 +263,7 @@ export const PrinterConfigForm: React.FC = () => {
             <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer' }}>
               <input
                 type="checkbox"
-                {...register('orientation')}
+                checked={watch('orientation') === 'Landscape'}
                 onChange={(e) => setValue('orientation', e.target.checked ? 'Landscape' : 'Portrait')}
                 style={{ width: '16px', height: '16px' }}
               />

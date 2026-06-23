@@ -1,13 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { invoke } from '@tauri-apps/api/core';
-
-interface PrinterDto {
-  name: string;
-  device_id: string;
-  status: string;
-  printer_type: string;
-  is_default?: boolean;
-}
+import { PrinterDto } from '../../types/printer';
 
 interface PrinterSelectorProps {
   value: string;

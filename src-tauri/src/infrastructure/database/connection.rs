@@ -36,7 +36,7 @@ impl DbPool {
     }
 
     pub fn get(&self) -> MutexGuard<'_, Connection> {
-        self.0.lock().expect("DB mutex poisoned")
+        self.0.lock().unwrap_or_else(|poisoned| poisoned.into_inner())
     }
 
     /// Get the underlying Arc<Mutex<Connection>> for repository construction

@@ -43,3 +43,12 @@
 - **Add config fields to domain model** — printer_configs table has paper_size, margins, color_mode but Printer aggregate doesn't expose these. Config persistence deferred to Story 2.5/2.6.
 
 - **Implement is_default logic** — AC-2 requires "unset other printers when saving default", but Printer aggregate lacks is_default field. Requires domain extension for printer configuration.
+
+
+## Deferred from: code review of 2-5-create-printer-configuration-ui-basic-settings-3-sections.md (2026-06-23)
+
+- **Configuration persistence** — Config fields (paper_size, margins, orientation) deferred to Story 2.6 - architectural separation between Printer aggregate and configuration table
+- **PrinterStatus no polling/refresh** — Status fetched once on mount, no real-time updates. [PrinterStatus.tsx:1629-1649] — Story 4.2 handles real-time status polling
+- **Margins default to 0mm** — May clip on printers with 3-5mm unprintable border. [PrinterConfigForm.tsx:1199-1202] — Product decision, not correctness bug
+- **Accessibility: missing aria-invalid** — Form inputs lack aria-invalid and aria-describedby for screen readers. [PrinterConfigForm.tsx:1290+] — Accessibility improvement, not blocking
+- **Default printer logic relies on unset is_default** — Frontend logic won't work until backend fixed. [PrinterConfigForm.tsx:1222-1224] — Blocked by is_default flag patch

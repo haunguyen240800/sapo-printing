@@ -22,16 +22,25 @@ fn list_printers(app_ctx: tauri::State<AppContextState>) -> Result<Vec<PrinterDt
     let discovered = app_ctx.printer_manager.discover_printers();
 
     // 2. Load saved configs from repository
-    let _saved_printers = app_ctx.printer_repo.find_all()
-        .map_err(|e| format!("Lỗi truy vấn cơ sở dữ liệu: {}", e))?;
+    let saved_printers = app_ctx.printer_repo.find_all()
+        .map_err(|e| format!("Không thể tải cấu hình máy in: {}", e))?;
 
     // 3. Map to DTOs - merge discovered with saved configs
     let dtos: Vec<PrinterDto> = discovered.iter().map(|printer| {
+        let printer_name = printer.name().as_str();
+
         // Check if this printer has saved config with is_default flag
-        // For now, we'll just map the discovered printer
+        let is_default = saved_printers.iter()
+            .find(|saved| saved.name().as_str() == printer_name)
+            .and_then(|_| {
+                // TODO: Once Printer aggregate includes is_default field, use it here
+                // For now, return None since domain model doesn't expose is_default yet
+                None
+            });
+
         PrinterDto {
-            name: printer.name().as_str().to_string(),
-            device_id: printer.name().as_str().to_string(), // device_id = printer_name
+            name: printer_name.to_string(),
+            device_id: printer_name.to_string(), // device_id = printer_name
             status: match printer.status() {
                 sapo_printer::domain::printer::PrinterStatus::Online => "Online".to_string(),
                 sapo_printer::domain::printer::PrinterStatus::Offline => "Offline".to_string(),
@@ -41,12 +50,9 @@ fn list_printers(app_ctx: tauri::State<AppContextState>) -> Result<Vec<PrinterDt
                 sapo_printer::domain::printer::PrinterType::Local => "Local".to_string(),
                 sapo_printer::domain::printer::PrinterType::Network => "Network".to_string(),
             },
-            is_default: None, // TODO: merge with saved configs to get is_default
+            is_default,
         }
     }).collect();
-
-    // TODO: Merge with saved_printers to set is_default flag
-    // For now, just return discovered printers
 
     Ok(dtos)
 }
@@ -77,9 +83,14 @@ fn save_printer_config(config: PrinterConfigDto, app_ctx: tauri::State<AppContex
         } else {
             return Err("Chiều cao giấy bắt buộc khi chọn khổ Custom".to_string());
         }
+    } else {
+        // Non-Custom paper size should not have dimensions
+        if config.paper_width.is_some() || config.paper_height.is_some() {
+            return Err("Không được cung cấp kích thước tùy chỉnh khi chọn khổ giấy chuẩn".to_string());
+        }
     }
 
-    // Margins validation (0-100mm range)
+    // Margins validation (0-100mm range, guard against u32 overflow)
     if config.margin_left > 100 {
         return Err("Lề trái phải trong khoảng 0-100mm".to_string());
     }
@@ -103,7 +114,7 @@ fn save_printer_config(config: PrinterConfigDto, app_ctx: tauri::State<AppContex
 
     let printer_name = PrinterName::new(config.printer_name.clone());
     let printer = match app_ctx.printer_repo.find_by_name(&printer_name)
-        .map_err(|e| format!("Lỗi truy vấn cơ sở dữ liệu: {}", e))? {
+        .map_err(|e| format!("Không thể tải cấu hình máy in: {}", e))? {
         Some(p) => p,
         None => {
             // Create new printer if not found
@@ -117,7 +128,7 @@ fn save_printer_config(config: PrinterConfigDto, app_ctx: tauri::State<AppContex
 
     // 4. Save printer (repository will handle config fields via UPSERT)
     app_ctx.printer_repo.save(&printer)
-        .map_err(|e| format!("Lỗi lưu cấu hình: {}", e))?;
+        .map_err(|e| format!("Không thể lưu cấu hình máy in: {}", e))?;
 
     // TODO: In future, extend repository to accept config parameters
     // For now, the basic save() works because repository has default values

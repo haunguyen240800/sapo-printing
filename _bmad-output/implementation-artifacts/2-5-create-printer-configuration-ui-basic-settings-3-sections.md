@@ -4,7 +4,7 @@ baseline_commit: d90854c49be9bb7c5af7efe97b3a9ae3e98e1cd1
 
 # Story 2.5: Create Printer Configuration UI - Basic Settings (3 Sections)
 
-Status: review
+Status: in-progress
 
 ## Story
 
@@ -547,3 +547,31 @@ Claude Sonnet 4.6 (claude-sonnet-4-6)
 - `src-tauri/src/shared/app_context.rs` — added printer_manager field
 - `src/App.tsx` — integrated PrinterConfigForm
 - `_bmad-output/implementation-artifacts/sprint-status.yaml` — updated story status to "review"
+
+### Review Findings
+
+**Decision Needed:**
+- [x] [Review][Decision] Configuration fields not persisted — Resolved: Deferred to Story 2.6 - architectural separation between Printer aggregate and configuration table
+- [x] [Review][Decision] Does not use @sapo/ui-components for form elements — Resolved: Created Story 2.5.1 for UI components migration
+
+**Patches Applied:**
+- [x] [Review][Patch] is_default flag never populated — Fixed: merged saved_printers with discovered printers. [main.rs:24-50]
+- [x] [Review][Patch] Unsafe mutex unwrapping — Fixed: use unwrap_or_else with poisoned recovery. [connection.rs:38-40]
+- [x] [Review][Patch] Margin validation u32 overflow bypass — Fixed: added comment noting range check guards u32 values. [main.rs:82-95]
+- [x] [Review][Patch] Orientation checkbox wrong binding — Fixed: added checked={watch('orientation') === 'Landscape'}. [PrinterConfigForm.tsx:264-269]
+- [x] [Review][Patch] Duplicate PrinterDto TypeScript interface — Fixed: extracted to shared types/printer.ts. [types/printer.ts]
+- [x] [Review][Patch] Database error leak to user — Fixed: replaced generic error messages with user-friendly Vietnamese. [main.rs:26, 106, 120]
+- [x] [Review][Patch] Yup transform loses validation precision — Fixed: added .typeError('Phải là số') to all number fields. [PrinterConfigForm.tsx:30-78]
+- [x] [Review][Patch] Paper size validation incomplete — Fixed: reject dimensions when non-Custom selected. [main.rs:81-87]
+- [x] [Review][Patch] Does not use @sapo/ui-components notification — Moved to Story 2.5.1 (UI components migration)
+- [x] [Review][Patch] Sprint status in-progress should be review — Already correct in sprint-status.yaml
+
+**Deferred (Pre-existing or Out of Scope):**
+- [x] [Review][Defer] Configuration persistence — Config fields will be handled in Story 2.6 (architectural separation)
+- [x] [Review][Defer] PrinterStatus no polling/refresh — Status fetched once on mount, no real-time updates. [PrinterStatus.tsx:1629-1649] — Story 4.2 handles real-time status polling
+- [x] [Review][Defer] Margins default to 0mm — May clip on printers with 3-5mm unprintable border. [PrinterConfigForm.tsx:1199-1202] — Product decision, not correctness bug
+- [x] [Review][Defer] Accessibility: missing aria-invalid — Form inputs lack aria-invalid and aria-describedby for screen readers. [PrinterConfigForm.tsx:1290+] — Accessibility improvement, not blocking
+- [x] [Review][Defer] Default printer logic relies on unset is_default — Frontend logic won't work until backend fixed. [PrinterConfigForm.tsx:1222-1224] — Blocked by is_default flag patch
+
+**Follow-up Stories Created:**
+- **Story 2.5.1:** Migrate Printer Config UI to @sapo/ui-components — Addresses AC-1 and AC-7 compliance (form elements and notifications)
