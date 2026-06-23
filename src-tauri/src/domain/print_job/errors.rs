@@ -9,6 +9,9 @@ pub enum DomainError {
     CannotCancelCompleted,
     CannotCancelFailed,
     CannotCancelCancelled,
+    RepositoryError { reason: String },
+    InvalidStatus { status: String },
+    InvalidJobId { raw: String, reason: String },
 }
 
 impl fmt::Display for DomainError {
@@ -21,6 +24,11 @@ impl fmt::Display for DomainError {
             Self::CannotCancelCompleted => write!(f, "Cannot cancel a completed job"),
             Self::CannotCancelFailed => write!(f, "Cannot cancel a failed job"),
             Self::CannotCancelCancelled => write!(f, "Cannot cancel a cancelled job"),
+            Self::RepositoryError { reason } => write!(f, "Repository error: {}", reason),
+            Self::InvalidStatus { status } => write!(f, "Invalid print status: {}", status),
+            Self::InvalidJobId { raw, reason } => {
+                write!(f, "Invalid job ID '{}': {}", raw, reason)
+            }
         }
     }
 }

@@ -260,6 +260,9 @@ mod tests {
                 |row| row.get(0),
             )
             .unwrap();
-        assert!(count >= 2, "Expected at least 2 named indexes on events, got {count}");
+        assert!(
+            count >= 2,
+            "Expected at least 2 named indexes on events, got {count}"
+        );
     }
 }

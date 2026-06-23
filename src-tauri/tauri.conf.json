@@ -4,8 +4,8 @@
   "version": "0.1.0",
   "identifier": "com.sapo.printer",
   "build": {
-    "beforeDevCommand": "pnpm run dev",
-    "beforeBuildCommand": "pnpm run build",
+    "beforeDevCommand": "pnpm run dev:web",
+    "beforeBuildCommand": "pnpm run build:web",
     "devUrl": "http://localhost:1420",
     "frontendDist": "../dist"
   },

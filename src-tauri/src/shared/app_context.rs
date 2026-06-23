@@ -2,6 +2,9 @@ use std::sync::Arc;
 
 use crate::domain::print_job::PrintJobRepository;
 use crate::domain::printer::PrinterRepository;
+use crate::infrastructure::database::{
+    run_migrations, DbPool, SqliteEventStore, SqlitePrintJobRepository, SqlitePrinterRepository,
+};
 use crate::infrastructure::printer::printer_manager::PrinterManager;
 use crate::infrastructure::renderer::document_renderer::{DocumentRenderer, RenderConfig};
 use crate::infrastructure::renderer::strategy_selector::StrategySelector;
@@ -27,9 +30,6 @@ use crate::infrastructure::secrets::WindowsCredentialManager;
 ///
 /// Holds `Arc`-wrapped trait objects for all cross-cutting dependencies.
 /// Constructed once in `main.rs` and shared across use cases.
-///
-/// Infrastructure implementations (repositories, event bus) are wired in
-/// Epic 2. Until then, `AppContext::new()` panics with `todo!()`.
 pub struct AppContext {
     pub job_repo: Arc<dyn PrintJobRepository>,
     pub printer_repo: Arc<dyn PrinterRepository>,
@@ -37,6 +37,7 @@ pub struct AppContext {
     pub event_bus: Arc<dyn EventBus>,
     pub secret_manager: Arc<dyn SecretManager>,
     pub strategy_selector: Arc<StrategySelector>,
+    pub event_store: Arc<SqliteEventStore>,
 }
 
 impl AppContext {
@@ -46,22 +47,48 @@ impl AppContext {
     /// Returns `InfrastructureError` if:
     /// - Linux: Secret Service daemon is not available
     /// - Any platform: Secret manager initialization fails
-    ///
-    /// # Panics
-    /// Panics with `todo!()` until Epic 2 wires in real infrastructure
-    /// implementations (`SqlitePrintJobRepository`, etc.).
-    pub fn new(_db_path: &str) -> Result<Self, InfrastructureError> {
+    /// - Database: Migration or pool creation fails
+    #[allow(unused_variables)]
+    pub fn new(db_path: &str) -> Result<Self, InfrastructureError> {
+        let pool = DbPool::new(db_path)?;
+        run_migrations(&mut pool.get()).map_err(|e| InfrastructureError::from(e))?;
+
+        let job_repo: Arc<dyn PrintJobRepository> =
+            Arc::new(SqlitePrintJobRepository::new(pool.get_arc()));
+        let printer_repo: Arc<dyn PrinterRepository> =
+            Arc::new(SqlitePrinterRepository::new(pool.get_arc()));
+        let event_store: Arc<SqliteEventStore> = Arc::new(SqliteEventStore::new(pool.get_arc()));
+
         // Platform-specific secret manager initialization
         #[cfg(target_os = "windows")]
-        let _secret_manager: Arc<dyn SecretManager> = Arc::new(WindowsCredentialManager::new());
+        let secret_manager: Arc<dyn SecretManager> = Arc::new(WindowsCredentialManager::new());
 
         #[cfg(target_os = "macos")]
-        let _secret_manager: Arc<dyn SecretManager> = Arc::new(MacOSKeychain::new());
+        let secret_manager: Arc<dyn SecretManager> = Arc::new(MacOSKeychain::new());
 
         #[cfg(target_os = "linux")]
-        let _secret_manager: Arc<dyn SecretManager> = Arc::new(LinuxSecretService::new()?);
+        let secret_manager: Arc<dyn SecretManager> = Arc::new(LinuxSecretService::new()?);
 
-        todo!("AppContext::new — infrastructure not yet implemented (Epic 2, Stories 2.1/2.4)")
+        // EventBus: in-memory for now (future: outbox pattern with persistent queue)
+        let event_bus: Arc<dyn EventBus> =
+            Arc::new(crate::shared::event_bus::InMemoryEventBus::new());
+
+        // PrinterManager and StrategySelector — platform-specific, wired in later stories
+        let printer_manager: Arc<dyn PrinterManager> = todo!("PrinterManager initialization");
+        // The following is unreachable due to todo!() above — placeholder for when PrinterManager is wired in
+        #[allow(unreachable_code)]
+        let strategy_selector = Arc::new(StrategySelector::new(printer_manager.clone()));
+
+        #[allow(unreachable_code)]
+        Ok(Self {
+            job_repo,
+            printer_repo,
+            printer_manager,
+            event_bus,
+            secret_manager,
+            strategy_selector,
+            event_store,
+        })
     }
 
     /// Returns the name of the platform-specific printer engine that will be

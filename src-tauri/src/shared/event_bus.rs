@@ -27,6 +27,30 @@ pub trait EventBus: Send + Sync {
     fn publish(&self, event_type: &str, payload: &str) -> Result<(), EventBusError>;
 }
 
+/// In-memory event bus — logs events but does not persist them.
+/// Future: replace with outbox-backed persistent queue.
+pub struct InMemoryEventBus;
+
+impl InMemoryEventBus {
+    pub fn new() -> Self {
+        Self
+    }
+}
+
+impl Default for InMemoryEventBus {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl EventBus for InMemoryEventBus {
+    fn publish(&self, _event_type: &str, _payload: &str) -> Result<(), EventBusError> {
+        // No-op for now — events are persisted via EventStore in the same transaction.
+        // The outbox worker will pick them up later.
+        Ok(())
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -37,5 +61,17 @@ mod tests {
             reason: "connection refused".to_string(),
         };
         assert!(err.to_string().contains("connection refused"));
+    }
+
+    #[test]
+    fn test_in_memory_event_bus_publish_returns_ok() {
+        let bus = InMemoryEventBus::new();
+        assert!(bus.publish("TestEvent", "{}").is_ok());
+    }
+
+    #[test]
+    fn test_in_memory_event_bus_default() {
+        let bus = InMemoryEventBus::default();
+        assert!(bus.publish("AnyEvent", "{\"key\":\"value\"}").is_ok());
     }
 }

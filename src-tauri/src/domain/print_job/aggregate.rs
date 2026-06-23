@@ -58,6 +58,25 @@ impl PrintJob {
         job
     }
 
+    /// Reconstructs a PrintJob from persisted state (no events emitted).
+    /// Fields created_at/updated_at/completed_at are infrastructure-only — not stored in aggregate.
+    pub fn reconstruct(
+        id: JobId,
+        status: PrintStatus,
+        retry_count: u32,
+        pdf_url: String,
+        printer_name: String,
+    ) -> Self {
+        Self {
+            id,
+            status,
+            retry_count,
+            pdf_url,
+            printer_name,
+            events: Vec::new(),
+        }
+    }
+
     fn push_event(&mut self, event: Box<dyn DomainEvent>) {
         self.events.push(event);
     }

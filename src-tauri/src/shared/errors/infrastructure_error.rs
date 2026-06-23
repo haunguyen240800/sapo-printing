@@ -1,3 +1,5 @@
+use crate::infrastructure::database::DatabaseError;
+
 #[derive(Debug)]
 pub enum InfrastructureError {
     PrinterError {
@@ -17,6 +19,10 @@ pub enum InfrastructureError {
     CircuitOpenError,
     /// PDFium-specific rendering failure (corrupt page, unsupported feature, etc.)
     RenderError(String),
+    /// Database operation failed (SQLite error, migration failure, etc.)
+    DatabaseError {
+        reason: String,
+    },
 }
 
 impl std::fmt::Display for InfrastructureError {
@@ -36,6 +42,7 @@ impl std::fmt::Display for InfrastructureError {
                 write!(f, "Circuit breaker is open — request rejected")
             }
             Self::RenderError(msg) => write!(f, "Render error: {}", msg),
+            Self::DatabaseError { reason } => write!(f, "Database error: {}", reason),
         }
     }
 }
@@ -77,6 +84,14 @@ impl From<pdfium_render::prelude::PdfiumError> for InfrastructureError {
             Self::ValidationError(format!("Invalid PDF document: {}", msg))
         } else {
             Self::RenderError(format!("PDFium error: {}", msg))
+        }
+    }
+}
+
+impl From<DatabaseError> for InfrastructureError {
+    fn from(err: DatabaseError) -> Self {
+        Self::DatabaseError {
+            reason: format!("{}", err),
         }
     }
 }

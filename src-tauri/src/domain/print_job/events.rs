@@ -14,6 +14,8 @@ fn now_unix() -> u64 {
 pub trait DomainEvent: Send + std::fmt::Debug {
     fn event_type(&self) -> &str;
     fn aggregate_id(&self) -> &JobId;
+    /// Serialize this event to a JSON string.
+    fn serialize_payload(&self) -> String;
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -42,6 +44,9 @@ impl DomainEvent for PrintJobCreated {
     fn aggregate_id(&self) -> &JobId {
         &self.job_id
     }
+    fn serialize_payload(&self) -> String {
+        serde_json::to_string(self).unwrap_or_else(|_| "{}".to_string())
+    }
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -65,6 +70,9 @@ impl DomainEvent for PrintJobQueued {
     }
     fn aggregate_id(&self) -> &JobId {
         &self.job_id
+    }
+    fn serialize_payload(&self) -> String {
+        serde_json::to_string(self).unwrap_or_else(|_| "{}".to_string())
     }
 }
 
@@ -90,6 +98,9 @@ impl DomainEvent for PrintJobDownloaded {
     fn aggregate_id(&self) -> &JobId {
         &self.job_id
     }
+    fn serialize_payload(&self) -> String {
+        serde_json::to_string(self).unwrap_or_else(|_| "{}".to_string())
+    }
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -113,6 +124,9 @@ impl DomainEvent for PrintJobSubmitted {
     }
     fn aggregate_id(&self) -> &JobId {
         &self.job_id
+    }
+    fn serialize_payload(&self) -> String {
+        serde_json::to_string(self).unwrap_or_else(|_| "{}".to_string())
     }
 }
 
@@ -138,6 +152,9 @@ impl DomainEvent for PrintJobPrinting {
     fn aggregate_id(&self) -> &JobId {
         &self.job_id
     }
+    fn serialize_payload(&self) -> String {
+        serde_json::to_string(self).unwrap_or_else(|_| "{}".to_string())
+    }
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -161,6 +178,9 @@ impl DomainEvent for PrintJobCompleted {
     }
     fn aggregate_id(&self) -> &JobId {
         &self.job_id
+    }
+    fn serialize_payload(&self) -> String {
+        serde_json::to_string(self).unwrap_or_else(|_| "{}".to_string())
     }
 }
 
@@ -190,6 +210,9 @@ impl DomainEvent for PrintJobFailed {
     fn aggregate_id(&self) -> &JobId {
         &self.job_id
     }
+    fn serialize_payload(&self) -> String {
+        serde_json::to_string(self).unwrap_or_else(|_| "{}".to_string())
+    }
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -213,6 +236,9 @@ impl DomainEvent for PrintJobCancelled {
     }
     fn aggregate_id(&self) -> &JobId {
         &self.job_id
+    }
+    fn serialize_payload(&self) -> String {
+        serde_json::to_string(self).unwrap_or_else(|_| "{}".to_string())
     }
 }
 

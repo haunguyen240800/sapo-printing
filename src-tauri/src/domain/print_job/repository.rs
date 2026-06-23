@@ -1,6 +1,6 @@
 use super::aggregate::PrintJob;
 use super::errors::DomainError;
-use super::value_objects::JobId;
+use super::value_objects::{JobId, PrintStatus};
 
 /// Repository trait for PrintJob aggregate persistence.
 ///
@@ -16,4 +16,10 @@ pub trait PrintJobRepository {
     /// Finds a PrintJob by its unique ID.
     /// Returns None if not found.
     fn find_by_id(&self, id: &JobId) -> Result<Option<PrintJob>, DomainError>;
+
+    /// Finds all PrintJobs with the given status.
+    fn find_by_status(&self, status: &PrintStatus) -> Result<Vec<PrintJob>, DomainError>;
+
+    /// Finds all PrintJobs in the database.
+    fn find_all(&self) -> Result<Vec<PrintJob>, DomainError>;
 }
