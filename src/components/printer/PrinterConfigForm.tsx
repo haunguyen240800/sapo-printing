@@ -18,6 +18,10 @@ interface PrinterConfigFormData {
   margin_right: number;
   margin_top: number;
   margin_bottom: number;
+  print_as_image: boolean;
+  color_mode: string;
+  enable_buffer: boolean;
+  buffer_size_kb: number | null | undefined;
 }
 
 // Validation schema
@@ -75,6 +79,36 @@ const schema = yup.object({
     .required('Lề dưới không được để trống')
     .min(0, 'Lề dưới phải trong khoảng 0-100mm')
     .max(100, 'Lề dưới phải trong khoảng 0-100mm'),
+  print_as_image: yup.boolean().required(),
+  color_mode: yup
+    .string()
+    .when('print_as_image', {
+      is: true,
+      then: (schema) =>
+        schema
+          .required('Loại ảnh in bắt buộc khi bật chế độ in ảnh')
+          .oneOf(['RGB', 'ARGB', 'BGR', 'GRAY', 'BINARY'], 'Loại ảnh in không hợp lệ'),
+    }),
+  enable_buffer: yup.boolean().required(),
+  buffer_size_kb: yup
+    .number()
+    .nullable()
+    .transform((value, original) => (original === '' ? null : value))
+    .typeError('Phải là số')
+    .when('enable_buffer', {
+      is: true,
+      then: (schema) =>
+        schema
+          .required('Kích thước buffer bắt buộc khi bật buffer')
+          .min(1, 'Kích thước buffer phải trong khoảng 1-1024 KB')
+          .max(1024, 'Kích thước buffer phải trong khoảng 1-1024 KB'),
+      otherwise: (schema) =>
+        schema.test(
+          'buffer-disabled',
+          'Không thể đặt kích thước buffer khi buffer đã tắt',
+          (value) => value === null || value === undefined
+        ),
+    }),
 }).required();
 
 export const PrinterConfigForm: React.FC = () => {
@@ -99,6 +133,10 @@ export const PrinterConfigForm: React.FC = () => {
       margin_right: 0,
       margin_top: 0,
       margin_bottom: 0,
+      print_as_image: false,
+      color_mode: 'RGB',
+      enable_buffer: false,
+      buffer_size_kb: undefined,
     },
   });
 
@@ -159,6 +197,17 @@ export const PrinterConfigForm: React.FC = () => {
       )}
 
       <form onSubmit={handleSubmit(onSubmit)}>
+        {/* Category: Basic Settings */}
+        <h2 style={{
+          fontSize: '20px',
+          fontWeight: 600,
+          marginBottom: '16px',
+          borderBottom: '2px solid #e0e0e0',
+          paddingBottom: '8px'
+        }}>
+          Cài đặt cơ bản
+        </h2>
+
         {/* Section 1: Printer Selection */}
         <div style={{ marginBottom: '24px', padding: '16px', border: '1px solid #e0e0e0', borderRadius: '4px' }}>
           <h2 style={{ marginBottom: '16px', fontSize: '18px' }}>1. Chọn máy in</h2>
@@ -297,6 +346,93 @@ export const PrinterConfigForm: React.FC = () => {
               )}
             />
           </div>
+        </div>
+
+        {/* Category: Advanced Settings */}
+        <h2 style={{
+          fontSize: '20px',
+          fontWeight: 600,
+          marginBottom: '16px',
+          marginTop: '32px',
+          borderBottom: '2px solid #e0e0e0',
+          paddingBottom: '8px'
+        }}>
+          Cài đặt nâng cao
+        </h2>
+
+        {/* Section 4: Print Mode */}
+        <div style={{ marginBottom: '24px', padding: '16px', border: '1px solid #e0e0e0', borderRadius: '4px' }}>
+          <h2 style={{ marginBottom: '16px', fontSize: '18px' }}>4. In ảnh</h2>
+
+          <div style={{ marginBottom: '16px' }}>
+            <Checkbox
+              label="In ảnh (render PDF thành ảnh trước khi in)"
+              checked={watch('print_as_image')}
+              onChange={(checked) => {
+                setValue('print_as_image', checked, { shouldValidate: true });
+                if (!checked) {
+                  setValue('color_mode', 'RGB', { shouldValidate: true });
+                }
+              }}
+            />
+          </div>
+
+          {watch('print_as_image') && (
+            <Controller
+              name="color_mode"
+              control={control}
+              render={({ field }) => (
+                <Select
+                  label="Loại ảnh in"
+                  options={[
+                    { label: 'RGB (24-bit)', value: 'RGB' },
+                    { label: 'ARGB (32-bit với alpha)', value: 'ARGB' },
+                    { label: 'BGR (Windows default)', value: 'BGR' },
+                    { label: 'GRAY (8-bit grayscale)', value: 'GRAY' },
+                    { label: 'BINARY (1-bit monochrome)', value: 'BINARY' },
+                  ]}
+                  value={field.value}
+                  onChange={field.onChange}
+                  error={errors.color_mode?.message}
+                />
+              )}
+            />
+          )}
+        </div>
+
+        {/* Section 5: Advanced */}
+        <div style={{ marginBottom: '24px', padding: '16px', border: '1px solid #e0e0e0', borderRadius: '4px' }}>
+          <h2 style={{ marginBottom: '16px', fontSize: '18px' }}>5. Cài đặt nâng cao</h2>
+
+          <div style={{ marginBottom: '16px' }}>
+            <Checkbox
+              label="Bật Printing Buffer"
+              checked={watch('enable_buffer')}
+              onChange={(checked) => {
+                setValue('enable_buffer', checked, { shouldValidate: true });
+                if (!checked) {
+                  setValue('buffer_size_kb', undefined, { shouldValidate: true });
+                }
+              }}
+            />
+          </div>
+
+          {watch('enable_buffer') && (
+            <Controller
+              name="buffer_size_kb"
+              control={control}
+              render={({ field }) => (
+                <TextField
+                  label="Kích thước Buffer (KB)"
+                  type="number"
+                  value={field.value?.toString() || ''}
+                  onChange={field.onChange}
+                  error={errors.buffer_size_kb?.message}
+                  helpText="Khoảng cho phép: 1-1024 KB"
+                />
+              )}
+            />
+          )}
         </div>
 
         {/* Submit Button */}

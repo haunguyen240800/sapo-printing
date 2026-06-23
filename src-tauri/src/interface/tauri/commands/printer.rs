@@ -25,14 +25,42 @@ pub fn list_printers() -> Result<Vec<PrinterDto>, String> {
 /// - `Ok(())` on success
 /// - `Err(String)` with Vietnamese error message on validation or save failure
 #[tauri::command]
-pub fn save_printer_config(_config: PrinterConfigDto) -> Result<(), String> {
-    // TODO: Implement in Task 3
-    // 1. Validate config (paper size, custom dimensions 50-500mm, margins 0-100mm)
-    // 2. Load or create Printer from repository
-    // 3. Update printer config fields
-    // 4. Call printer_repository.save()
-    // 5. Return Ok(()) or Vietnamese error message
-    Err("Chưa triển khai".to_string())
+pub fn save_printer_config(config: PrinterConfigDto) -> Result<(), String> {
+    // Validate buffer settings
+    if config.enable_buffer {
+        match config.buffer_size_kb {
+            Some(size) if (1..=1024).contains(&size) => {
+                // Valid buffer size
+            }
+            Some(size) => {
+                return Err(format!(
+                    "Kích thước buffer phải trong khoảng 1-1024 KB (nhận được: {} KB)",
+                    size
+                ));
+            }
+            None => {
+                return Err("Kích thước buffer bắt buộc khi bật buffer".to_string());
+            }
+        }
+    } else if config.buffer_size_kb.is_some() {
+        return Err("Không thể đặt kích thước buffer khi buffer đã tắt".to_string());
+    }
+
+    // Validate color mode
+    let valid_color_modes = ["RGB", "ARGB", "BGR", "GRAY", "BINARY"];
+    if !valid_color_modes.contains(&config.color_mode.as_str()) {
+        return Err(format!(
+            "Loại ảnh in không hợp lệ: '{}'. Chỉ chấp nhận: RGB, ARGB, BGR, GRAY, BINARY",
+            config.color_mode
+        ));
+    }
+
+    // TODO: Implement persistence in Story 2.6
+    // 1. Load or create Printer from repository
+    // 2. Update printer config fields (including new fields)
+    // 3. Call printer_repository.save()
+    // 4. Return Ok(()) or Vietnamese error message
+    Err("Chưa triển khai lưu cấu hình".to_string())
 }
 
 /// Get current printer status
@@ -76,10 +104,104 @@ mod tests {
             margin_right: 10,
             margin_top: 10,
             margin_bottom: 10,
+            print_as_image: false,
+            color_mode: "RGB".to_string(),
+            enable_buffer: false,
+            buffer_size_kb: None,
         };
         let result = save_printer_config(config);
         assert!(result.is_err());
-        assert_eq!(result.unwrap_err(), "Chưa triển khai");
+        assert_eq!(result.unwrap_err(), "Chưa triển khai lưu cấu hình");
+    }
+
+    #[test]
+    fn test_save_printer_config_validates_buffer_size_required() {
+        let config = PrinterConfigDto {
+            printer_name: "Test Printer".to_string(),
+            paper_size: "A4".to_string(),
+            paper_width: None,
+            paper_height: None,
+            orientation: "Portrait".to_string(),
+            margin_left: 10,
+            margin_right: 10,
+            margin_top: 10,
+            margin_bottom: 10,
+            print_as_image: false,
+            color_mode: "RGB".to_string(),
+            enable_buffer: true,
+            buffer_size_kb: None, // Invalid: buffer enabled but no size
+        };
+        let result = save_printer_config(config);
+        assert!(result.is_err());
+        assert_eq!(result.unwrap_err(), "Kích thước buffer bắt buộc khi bật buffer");
+    }
+
+    #[test]
+    fn test_save_printer_config_validates_buffer_size_range() {
+        let config = PrinterConfigDto {
+            printer_name: "Test Printer".to_string(),
+            paper_size: "A4".to_string(),
+            paper_width: None,
+            paper_height: None,
+            orientation: "Portrait".to_string(),
+            margin_left: 10,
+            margin_right: 10,
+            margin_top: 10,
+            margin_bottom: 10,
+            print_as_image: false,
+            color_mode: "RGB".to_string(),
+            enable_buffer: true,
+            buffer_size_kb: Some(2048), // Invalid: exceeds max 1024
+        };
+        let result = save_printer_config(config);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("1-1024 KB"));
+    }
+
+    #[test]
+    fn test_save_printer_config_rejects_buffer_size_when_disabled() {
+        let config = PrinterConfigDto {
+            printer_name: "Test Printer".to_string(),
+            paper_size: "A4".to_string(),
+            paper_width: None,
+            paper_height: None,
+            orientation: "Portrait".to_string(),
+            margin_left: 10,
+            margin_right: 10,
+            margin_top: 10,
+            margin_bottom: 10,
+            print_as_image: false,
+            color_mode: "RGB".to_string(),
+            enable_buffer: false,
+            buffer_size_kb: Some(512), // Invalid: buffer disabled but size provided
+        };
+        let result = save_printer_config(config);
+        assert!(result.is_err());
+        assert_eq!(result.unwrap_err(), "Không thể đặt kích thước buffer khi buffer đã tắt");
+    }
+
+    #[test]
+    fn test_save_printer_config_validates_color_mode() {
+        let config = PrinterConfigDto {
+            printer_name: "Test Printer".to_string(),
+            paper_size: "A4".to_string(),
+            paper_width: None,
+            paper_height: None,
+            orientation: "Portrait".to_string(),
+            margin_left: 10,
+            margin_right: 10,
+            margin_top: 10,
+            margin_bottom: 10,
+            print_as_image: true,
+            color_mode: "INVALID_MODE".to_string(), // Invalid color mode
+            enable_buffer: false,
+            buffer_size_kb: None,
+        };
+        let result = save_printer_config(config);
+        assert!(result.is_err());
+        let err_msg = result.unwrap_err();
+        assert!(err_msg.contains("Loại ảnh in không hợp lệ"));
+        assert!(err_msg.contains("RGB, ARGB, BGR, GRAY, BINARY"));
     }
 
     #[test]

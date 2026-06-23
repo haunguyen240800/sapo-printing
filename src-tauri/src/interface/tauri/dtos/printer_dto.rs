@@ -23,6 +23,10 @@ pub struct PrinterConfigDto {
     pub margin_right: u32,            // mm
     pub margin_top: u32,              // mm
     pub margin_bottom: u32,           // mm
+    pub print_as_image: bool,         // true = render as image before printing
+    pub color_mode: String,           // "RGB" | "ARGB" | "BGR" | "GRAY" | "BINARY"
+    pub enable_buffer: bool,          // true = enable printing buffer
+    pub buffer_size_kb: Option<u32>,  // KB, 1-1024, required when enable_buffer = true
 }
 
 /// DTO for printer status query response
@@ -76,6 +80,10 @@ mod tests {
             margin_right: 10,
             margin_top: 15,
             margin_bottom: 15,
+            print_as_image: false,
+            color_mode: "RGB".to_string(),
+            enable_buffer: false,
+            buffer_size_kb: None,
         };
         let json = serde_json::to_string(&config).unwrap();
         assert!(json.contains("A4"));
@@ -94,11 +102,17 @@ mod tests {
             margin_right: 5,
             margin_top: 5,
             margin_bottom: 5,
+            print_as_image: true,
+            color_mode: "ARGB".to_string(),
+            enable_buffer: true,
+            buffer_size_kb: Some(512),
         };
         let json = serde_json::to_string(&config).unwrap();
         let parsed: PrinterConfigDto = serde_json::from_str(&json).unwrap();
         assert_eq!(parsed.paper_width, Some(200));
         assert_eq!(parsed.paper_height, Some(300));
+        assert_eq!(parsed.print_as_image, true);
+        assert_eq!(parsed.buffer_size_kb, Some(512));
     }
 
     #[test]
