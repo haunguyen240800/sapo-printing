@@ -5,6 +5,8 @@ use std::fmt;
 pub enum PrinterDomainError {
     /// Attempted to assign a print job to a printer that is not online.
     PrinterNotOnline { printer_name: String },
+    /// Repository operation failed (persistence, query, etc.).
+    RepositoryError { reason: String },
 }
 
 impl fmt::Display for PrinterDomainError {
@@ -12,6 +14,9 @@ impl fmt::Display for PrinterDomainError {
         match self {
             PrinterDomainError::PrinterNotOnline { printer_name } => {
                 write!(f, "Printer '{}' is not online", printer_name)
+            }
+            PrinterDomainError::RepositoryError { reason } => {
+                write!(f, "Repository error: {}", reason)
             }
         }
     }

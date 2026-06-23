@@ -18,7 +18,13 @@
       "Bash(timeout 10 pnpm tauri dev)",
       "Bash(cargo check *)",
       "Bash(npx tsc *)",
-      "Bash(cargo tree *)"
+      "Bash(cargo tree *)",
+      "Bash(cargo test *)",
+      "Bash(cargo clippy *)",
+      "Bash(git diff *)",
+      "Read(//tmp/**)",
+      "Bash(git add *)",
+      "Bash(git commit -m ' *)"
     ]
   }
 }

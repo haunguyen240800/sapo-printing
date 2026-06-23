@@ -8,6 +8,8 @@ CREATE TABLE printer_configs (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     printer_name TEXT NOT NULL,
     device_id TEXT NOT NULL UNIQUE,
+    printer_type TEXT NOT NULL DEFAULT 'Local',
+    status TEXT NOT NULL DEFAULT 'Offline',
     paper_size TEXT NOT NULL DEFAULT 'A4',
     paper_width INTEGER,
     paper_height INTEGER,
