@@ -1,5 +1,5 @@
 # generated: 2026-06-22
-# last_updated: 2026-06-24 (story 4-3 → done)
+# last_updated: 2026-06-24 (story 4-4 → ready-for-dev)
 # project: sapo-printer
 # project_key: NOKEY
 # tracking_system: file-system
@@ -85,7 +85,7 @@ development_status:
   4-1-implement-native-messaging-protocol-json-commands: done
   4-2-implement-status-polling-sync-2s-interval: done
   4-3-setup-structured-logging-with-tracing-crate: done
-  4-4-implement-event-store-audit-trail-with-hmac-signing-30-days-retention: backlog
+  4-4-implement-event-store-audit-trail-with-hmac-signing-30-days-retention: ready-for-dev
   4-5-implement-metrics-collection-export: backlog
   4-6-setup-tauri-auto-update-with-code-signing: backlog
   4-7-create-auto-update-popup-ui: backlog
