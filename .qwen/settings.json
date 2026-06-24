@@ -39,7 +39,8 @@
       "Bash(volta *)",
       "Bash(pnpm *)",
       "Bash(npx *)",
-      "Skill(bmad-retrospective)"
+      "Skill(bmad-retrospective)",
+      "Bash(taskkill *)"
     ]
   },
   "$version": 4

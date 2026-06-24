@@ -1,5 +1,5 @@
 # generated: 2026-06-22
-# last_updated: 2026-06-24 (epic-3 retrospective complete, epic-3 status → done)
+# last_updated: 2026-06-24 (story 4-1 → review)
 # project: sapo-printer
 # project_key: NOKEY
 # tracking_system: file-system
@@ -35,7 +35,7 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 
 generated: 2026-06-22
-last_updated: 2026-06-24 (epic-3 retrospective complete, epic-3 status → done)
+last_updated: 2026-06-24 (story 4-1 → review)
 
 project_key: NOKEY
 tracking_system: file-system
@@ -81,8 +81,8 @@ development_status:
   epic-3-retrospective: done
 
   # Epic 4: System Integration & Production Readiness
-  epic-4: backlog
-  4-1-implement-native-messaging-protocol-json-commands: backlog
+  epic-4: in-progress
+  4-1-implement-native-messaging-protocol-json-commands: review
   4-2-implement-status-polling-sync-2s-interval: backlog
   4-3-setup-structured-logging-with-tracing-crate: backlog
   4-4-implement-event-store-audit-trail-with-hmac-signing-30-days-retention: backlog

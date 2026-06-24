@@ -234,7 +234,91 @@ fn get_printer_status(
     Ok(PrinterStatusDto { status: status_str })
 }
 
+/// Tauri command: register this app as a Chrome Native Messaging host.
+#[tauri::command]
+fn register_native_host() -> Result<(), String> {
+    sapo_printer::interface::native_messaging::registry::register_native_host(vec![])
+}
+
+/// Native Messaging mode: initialize deps without Tauri, run stdin/stdout loop.
+fn run_native_messaging_mode() -> Result<(), String> {
+    let home = std::env::var("USERPROFILE")
+        .or_else(|_| std::env::var("HOME"))
+        .unwrap_or_else(|_| ".".to_string());
+    let data_dir = std::path::PathBuf::from(&home).join(".sapo-printer");
+    std::fs::create_dir_all(&data_dir)
+        .map_err(|e| format!("Cannot create data directory: {}", e))?;
+
+    let db_path = data_dir.join("config.db");
+    let db_path_str = db_path
+        .to_str()
+        .ok_or_else(|| "Database path contains non-UTF-8".to_string())?
+        .to_string();
+
+    let pool = DbPool::new(&db_path_str)
+        .map_err(|e| format!("Database init failed: {}", e))?;
+
+    {
+        let mut conn = pool.get();
+        run_migrations(&mut conn)
+            .map_err(|e| format!("Migration failed: {}", e))?;
+    }
+
+    let job_repo = Arc::new(SqlitePrintJobRepository::new(pool.get_arc()));
+    let printer_repo = Arc::new(SqlitePrinterRepository::new(pool.get_arc()));
+    let event_store = Arc::new(SqliteEventStore::new(pool.get_arc()));
+    let event_bus: Arc<dyn EventBus> = Arc::new(sapo_printer::shared::event_bus::InMemoryEventBus::new());
+
+    #[cfg(target_os = "windows")]
+    let printer_manager: Arc<dyn PrinterManager> = Arc::new(Win32PrinterManager::new());
+    #[cfg(not(target_os = "windows"))]
+    let printer_manager: Arc<dyn PrinterManager> = Arc::new(CupsPrinterManager::new());
+
+    sapo_printer::interface::native_messaging::run_native_messaging(
+        job_repo,
+        printer_repo,
+        printer_manager,
+        event_store,
+        event_bus,
+    )
+}
+
 fn main() {
+    let args: Vec<String> = std::env::args().collect();
+
+    // Check for --register-native-host CLI flag (headless registration)
+    if args.iter().any(|a| a == "--register-native-host") {
+        match sapo_printer::interface::native_messaging::registry::register_native_host(vec![]) {
+            Ok(()) => std::process::exit(0),
+            Err(e) => {
+                eprintln!("Failed to register native host: {}", e);
+                std::process::exit(1);
+            }
+        }
+    }
+
+    // Check for --native-messaging flag (Chrome Native Messaging mode)
+    if args.iter().any(|a| a == "--native-messaging") {
+        if let Err(e) = run_native_messaging_mode() {
+            // Log to file, not stderr (would corrupt protocol)
+            let home = std::env::var("USERPROFILE")
+                .or_else(|_| std::env::var("HOME"))
+                .unwrap_or_else(|_| ".".to_string());
+            let log_path = std::path::PathBuf::from(&home)
+                .join(".sapo-printer")
+                .join("native-messaging.log");
+            let _ = std::fs::OpenOptions::new()
+                .create(true)
+                .append(true)
+                .open(&log_path)
+                .and_then(|mut f| {
+                    use std::io::Write;
+                    writeln!(f, "[FATAL] {}", e)
+                });
+        }
+        std::process::exit(0);
+    }
+
     // 1. Ensure ~/.sapo-printer/ data directory exists
     let home = std::env::var("USERPROFILE")
         .or_else(|_| std::env::var("HOME"))
@@ -380,6 +464,7 @@ fn main() {
             cancel_print_job,
             list_jobs,
             get_job_status,
+            register_native_host,
         ])
         .on_window_event(|window, event| {
             if let tauri::WindowEvent::CloseRequested { .. } = event {
