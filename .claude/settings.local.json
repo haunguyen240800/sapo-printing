@@ -36,7 +36,12 @@
       "Bash(where python *)",
       "Bash(where py *)",
       "Bash(cmd /c where python)",
-      "Bash(grep -E \"bmad-agent-dev\\\\.\\(toml|user\\\\.toml\\)$\")"
+      "Bash(grep -E \"bmad-agent-dev\\\\.\\(toml|user\\\\.toml\\)$\")",
+      "Bash(git show *)",
+      "Bash(grep -A 10 \"^---$\")",
+      "Bash(cargo fmt *)",
+      "Bash(npm run *)",
+      "Bash(npm list *)"
     ]
   }
 }

@@ -1,5 +1,5 @@
 # generated: 2026-06-22
-# last_updated: 2026-06-24 (story 3-9 code reviewed, fixes applied, status → done)
+# last_updated: 2026-06-24 (epic-3 retrospective complete, epic-3 status → done)
 # project: sapo-printer
 # project_key: NOKEY
 # tracking_system: file-system
@@ -35,7 +35,7 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 
 generated: 2026-06-22
-last_updated: 2026-06-24 (story 3-9 code reviewed, fixes applied, status → done)
+last_updated: 2026-06-24 (epic-3 retrospective complete, epic-3 status → done)
 
 project_key: NOKEY
 tracking_system: file-system
@@ -63,7 +63,7 @@ development_status:
   epic-2-retrospective: done
 
   # Epic 3: Bulk Print Job Management with Document Processing Pipeline
-  epic-3: in-progress
+  epic-3: done
   3-1-implement-s3-document-downloader-with-circuit-breaker: done
   3-2-implement-mupdf-renderer-with-color-mode-support: done
   3-3-implement-direct-pdf-strategy: done
@@ -78,7 +78,7 @@ development_status:
   3-7-implement-job-cancellation-use-case: done
   3-8-create-print-job-list-ui-with-filters: done
   3-9-add-real-time-status-updates-to-dashboard: done
-  epic-3-retrospective: optional
+  epic-3-retrospective: done
 
   # Epic 4: System Integration & Production Readiness
   epic-4: backlog

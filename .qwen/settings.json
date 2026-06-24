@@ -38,7 +38,8 @@
       "Skill(bmad-review-adversarial-general)",
       "Bash(volta *)",
       "Bash(pnpm *)",
-      "Bash(npx *)"
+      "Bash(npx *)",
+      "Skill(bmad-retrospective)"
     ]
   },
   "$version": 4
