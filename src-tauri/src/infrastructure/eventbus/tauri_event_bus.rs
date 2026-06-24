@@ -16,6 +16,12 @@ impl TauriEventBus {
 
 impl EventBus for TauriEventBus {
     fn publish(&self, event_type: &str, payload: &str) -> Result<(), EventBusError> {
+        tracing::debug!(
+            target = "sapo_printer::event_bus",
+            event_type = event_type,
+            bus = "tauri",
+            "EventBus: event published"
+        );
         let tauri_event = match event_type {
             "PrintJobCreated"
             | "PrintJobQueued"

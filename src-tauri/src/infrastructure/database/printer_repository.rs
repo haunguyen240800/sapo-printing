@@ -29,6 +29,13 @@ impl PrinterRepository for SqlitePrinterRepository {
             poisoned.into_inner()
         });
 
+        tracing::debug!(
+            target = "sapo_printer::repository::printer",
+            operation = "save",
+            printer_name = printer.name().as_str(),
+            "UPSERT INTO printer_configs"
+        );
+
         // Convert domain types to storage format
         let printer_name = printer.name().as_str();
         let printer_type_str = match printer.printer_type() {
@@ -95,8 +102,17 @@ impl PrinterRepository for SqlitePrinterRepository {
                 now,               // ?19 - updated_at
             ],
         )
-        .map_err(|e| PrinterDomainError::RepositoryError {
-            reason: format!("Failed to save printer: {}", e),
+        .map_err(|e| {
+            tracing::error!(
+                target = "sapo_printer::repository::printer",
+                operation = "save",
+                printer_name = printer_name,
+                error = %e,
+                "Failed to save printer"
+            );
+            PrinterDomainError::RepositoryError {
+                reason: format!("Failed to save printer: {}", e),
+            }
         })?;
 
         Ok(())
@@ -108,10 +124,24 @@ impl PrinterRepository for SqlitePrinterRepository {
             .lock()
             .unwrap_or_else(|poisoned| poisoned.into_inner());
 
+        tracing::debug!(
+            target = "sapo_printer::repository::printer",
+            operation = "find_all",
+            "SELECT FROM printer_configs"
+        );
+
         let mut stmt = conn
             .prepare("SELECT printer_name, printer_type, status FROM printer_configs")
-            .map_err(|e| PrinterDomainError::RepositoryError {
-                reason: format!("Failed to prepare query: {}", e),
+            .map_err(|e| {
+                tracing::error!(
+                    target = "sapo_printer::repository::printer",
+                    operation = "find_all",
+                    error = %e,
+                    "Failed to prepare query"
+                );
+                PrinterDomainError::RepositoryError {
+                    reason: format!("Failed to prepare query: {}", e),
+                }
             })?;
 
         let printer_iter = stmt
@@ -136,8 +166,16 @@ impl PrinterRepository for SqlitePrinterRepository {
 
                 Ok((printer_name, printer_type, status))
             })
-            .map_err(|e| PrinterDomainError::RepositoryError {
-                reason: format!("Failed to query printers: {}", e),
+            .map_err(|e| {
+                tracing::error!(
+                    target = "sapo_printer::repository::printer",
+                    operation = "find_all",
+                    error = %e,
+                    "Failed to query printers"
+                );
+                PrinterDomainError::RepositoryError {
+                    reason: format!("Failed to query printers: {}", e),
+                }
             })?;
 
         let mut printers = Vec::new();
@@ -169,10 +207,26 @@ impl PrinterRepository for SqlitePrinterRepository {
             .lock()
             .unwrap_or_else(|poisoned| poisoned.into_inner());
 
+        tracing::debug!(
+            target = "sapo_printer::repository::printer",
+            operation = "find_by_name",
+            printer_name = name.as_str(),
+            "SELECT FROM printer_configs WHERE printer_name"
+        );
+
         let mut stmt = conn
             .prepare("SELECT printer_name, printer_type, status FROM printer_configs WHERE printer_name = ?1")
-            .map_err(|e| PrinterDomainError::RepositoryError {
-                reason: format!("Failed to prepare query: {}", e),
+            .map_err(|e| {
+                tracing::error!(
+                    target = "sapo_printer::repository::printer",
+                    operation = "find_by_name",
+                    printer_name = name.as_str(),
+                    error = %e,
+                    "Failed to prepare query"
+                );
+                PrinterDomainError::RepositoryError {
+                    reason: format!("Failed to prepare query: {}", e),
+                }
             })?;
 
         let result = stmt.query_row([name.as_str()], |row| {
@@ -212,9 +266,18 @@ impl PrinterRepository for SqlitePrinterRepository {
                 Ok(Some(printer))
             }
             Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
-            Err(e) => Err(PrinterDomainError::RepositoryError {
-                reason: format!("Failed to query printer: {}", e),
-            }),
+            Err(e) => {
+                tracing::error!(
+                    target = "sapo_printer::repository::printer",
+                    operation = "find_by_name",
+                    printer_name = name.as_str(),
+                    error = %e,
+                    "Failed to query printer"
+                );
+                Err(PrinterDomainError::RepositoryError {
+                    reason: format!("Failed to query printer: {}", e),
+                })
+            },
         }
     }
 }

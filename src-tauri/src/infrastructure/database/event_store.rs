@@ -52,8 +52,18 @@ impl SqliteEventStore {
              VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
             rusqlite::params![aggregate_id, seq, event.event_type(), payload, now, None::<String>],
         )
-        .map_err(|e| DomainError::RepositoryError {
-            reason: format!("Failed to save event: {}", e),
+        .map_err(|e| {
+            tracing::error!(
+                target = "sapo_printer::repository::event_store",
+                operation = "save_event",
+                aggregate_id = aggregate_id,
+                event_type = event.event_type(),
+                error = %e,
+                "Failed to save event"
+            );
+            DomainError::RepositoryError {
+                reason: format!("Failed to save event: {}", e),
+            }
         })?;
 
         Ok(())
@@ -68,11 +78,28 @@ impl SqliteEventStore {
     ) -> Result<(), DomainError> {
         let mut conn = self.conn.lock().unwrap_or_else(|p| p.into_inner());
 
+        tracing::debug!(
+            target = "sapo_printer::repository::event_store",
+            operation = "save_all",
+            aggregate_id = aggregate_id,
+            event_count = events.len(),
+            "INSERT INTO events (batch)"
+        );
+
         let base_seq = self.next_sequence_number_inner(&conn, aggregate_id)?;
         let tx = conn
             .transaction()
-            .map_err(|e| DomainError::RepositoryError {
-                reason: format!("Failed to begin transaction: {}", e),
+            .map_err(|e| {
+                tracing::error!(
+                    target = "sapo_printer::repository::event_store",
+                    operation = "save_all",
+                    aggregate_id = aggregate_id,
+                    error = %e,
+                    "Failed to begin transaction"
+                );
+                DomainError::RepositoryError {
+                    reason: format!("Failed to begin transaction: {}", e),
+                }
             })?;
 
         for (i, event) in events.iter().enumerate() {
@@ -109,13 +136,29 @@ impl SqliteEventStore {
     pub fn find_by_aggregate(&self, aggregate_id: &str) -> Result<Vec<StoredEvent>, DomainError> {
         let conn = self.conn.lock().unwrap_or_else(|p| p.into_inner());
 
+        tracing::debug!(
+            target = "sapo_printer::repository::event_store",
+            operation = "find_by_aggregate",
+            aggregate_id = aggregate_id,
+            "SELECT FROM events WHERE aggregate_id"
+        );
+
         let mut stmt = conn
             .prepare(
                 "SELECT id, aggregate_id, sequence_number, event_type, payload, timestamp, hmac
                  FROM events WHERE aggregate_id = ?1 ORDER BY sequence_number ASC",
             )
-            .map_err(|e| DomainError::RepositoryError {
-                reason: format!("Failed to prepare query: {}", e),
+            .map_err(|e| {
+                tracing::error!(
+                    target = "sapo_printer::repository::event_store",
+                    operation = "find_by_aggregate",
+                    aggregate_id = aggregate_id,
+                    error = %e,
+                    "Failed to prepare query"
+                );
+                DomainError::RepositoryError {
+                    reason: format!("Failed to prepare query: {}", e),
+                }
             })?;
 
         let event_iter = stmt
@@ -130,8 +173,17 @@ impl SqliteEventStore {
                     hmac: row.get(6)?,
                 })
             })
-            .map_err(|e| DomainError::RepositoryError {
-                reason: format!("Failed to query events: {}", e),
+            .map_err(|e| {
+                tracing::error!(
+                    target = "sapo_printer::repository::event_store",
+                    operation = "find_by_aggregate",
+                    aggregate_id = aggregate_id,
+                    error = %e,
+                    "Failed to query events"
+                );
+                DomainError::RepositoryError {
+                    reason: format!("Failed to query events: {}", e),
+                }
             })?;
 
         let mut events = Vec::new();

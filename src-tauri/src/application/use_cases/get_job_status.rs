@@ -26,6 +26,12 @@ impl GetJobStatusUseCase {
     /// - `Err(ApplicationError::InvalidJobId)` if job_id is not a valid UUID
     /// - `Err(ApplicationError::RepositoryError)` on storage failure
     pub fn execute(&self, job_id: &str) -> Result<JobStatusDto, ApplicationError> {
+        tracing::info!(
+            target = "sapo_printer::use_case::get_job_status",
+            job_id = job_id,
+            "GetJobStatusUseCase: starting"
+        );
+
         // Parse JobId
         let job_id_parsed = job_id.parse::<JobId>().map_err(|_| ApplicationError::InvalidJobId {
             job_id: job_id.to_string(),
@@ -41,7 +47,16 @@ impl GetJobStatusUseCase {
             })?;
 
         // Convert to DTO
-        Ok(JobStatusDto::from(job))
+        let dto = JobStatusDto::from(job);
+
+        tracing::debug!(
+            target = "sapo_printer::use_case::get_job_status",
+            job_id = job_id,
+            status = dto.status,
+            "GetJobStatusUseCase: completed"
+        );
+
+        Ok(dto)
     }
 }
 

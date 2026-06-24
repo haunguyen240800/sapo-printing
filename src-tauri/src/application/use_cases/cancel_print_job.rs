@@ -40,6 +40,12 @@ impl CancelPrintJobUseCase {
     }
 
     pub fn execute(&self, request: CancelJobRequest) -> Result<(), ApplicationError> {
+        tracing::info!(
+            target = "sapo_printer::use_case::cancel_print_job",
+            job_id = request.job_id,
+            "CancelPrintJobUseCase: starting"
+        );
+
         // Parse JobId
         let job_id =
             request
@@ -109,6 +115,12 @@ impl CancelPrintJobUseCase {
 
         // Cleanup temp file (best-effort, don't fail if cleanup fails)
         self.cleanup_temp_file(&job_id);
+
+        tracing::debug!(
+            target = "sapo_printer::use_case::cancel_print_job",
+            job_id = %job_id,
+            "CancelPrintJobUseCase: completed"
+        );
 
         Ok(())
     }

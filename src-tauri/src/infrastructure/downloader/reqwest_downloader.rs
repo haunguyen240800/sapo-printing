@@ -99,9 +99,21 @@ impl ReqwestDownloader {
         final_path: &Path,
         url: &str,
     ) -> Result<PathBuf, InfrastructureError> {
+        tracing::info!(
+            target = "sapo_printer::downloader",
+            url = url,
+            "ReqwestDownloader: download started"
+        );
+
         let response = self.client.get(url).send()?;
 
         if !response.status().is_success() {
+            tracing::warn!(
+                target = "sapo_printer::downloader",
+                url = url,
+                status = %response.status(),
+                "ReqwestDownloader: download failed"
+            );
             return Err(InfrastructureError::NetworkError(format!(
                 "HTTP {}",
                 response.status()
@@ -128,6 +140,12 @@ impl ReqwestDownloader {
 
         // Atomic rename (only after validation)
         fs::rename(temp_path, final_path)?;
+
+        tracing::info!(
+            target = "sapo_printer::downloader",
+            url = url,
+            "ReqwestDownloader: download completed"
+        );
 
         Ok(final_path.to_path_buf())
     }

@@ -23,18 +23,38 @@ impl Default for CupsPrinterManager {
 #[cfg(not(target_os = "windows"))]
 impl PrinterManager for CupsPrinterManager {
     fn discover_printers(&self) -> Vec<Printer> {
+        tracing::info!(
+            target = "sapo_printer::printer::cups",
+            "CupsPrinterManager: discovery started"
+        );
         // Tier 1: CUPS API
         let printers = cups_api_discover();
         if !printers.is_empty() {
+            tracing::info!(
+                target = "sapo_printer::printer::cups",
+                count = printers.len(),
+                "CupsPrinterManager: discovery completed via CUPS API"
+            );
             return printers;
         }
         // Tier 2: lpstat
         let printers = lpstat_discover();
         if !printers.is_empty() {
+            tracing::info!(
+                target = "sapo_printer::printer::cups",
+                count = printers.len(),
+                "CupsPrinterManager: discovery completed via lpstat"
+            );
             return printers;
         }
         // Tier 3: printers.conf
-        conf_discover()
+        let printers = conf_discover();
+        tracing::info!(
+            target = "sapo_printer::printer::cups",
+            count = printers.len(),
+            "CupsPrinterManager: discovery completed via printers.conf"
+        );
+        printers
     }
 
     fn get_status(&self, name: &str) -> PrinterStatus {

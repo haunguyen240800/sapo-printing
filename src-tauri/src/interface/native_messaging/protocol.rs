@@ -214,14 +214,29 @@ impl NativeMessageHandler {
             None => return self.error_response("INVALID_REQUEST", "Missing command field"),
         };
 
-        match command.as_str() {
+        tracing::info!(
+            target = "sapo_printer::native_messaging",
+            command = command,
+            "NativeMessagingHandler: message received"
+        );
+
+        let result = match command.as_str() {
             "ping" => self.handle_ping(),
             "print_batch" => self.handle_print_batch(msg),
             "get_status" => self.handle_get_status(msg),
             "cancel_job" => self.handle_cancel_job(msg),
             "list_printers" => self.handle_list_printers(),
             unknown => self.error_response("UNKNOWN_COMMAND", &format!("Unknown command: {}", unknown)),
-        }
+        };
+
+        tracing::debug!(
+            target = "sapo_printer::native_messaging",
+            command = command,
+            response_truncated = result.chars().take(200).collect::<String>(),
+            "NativeMessagingHandler: response sent"
+        );
+
+        result
     }
 
     fn handle_ping(&self) -> String {

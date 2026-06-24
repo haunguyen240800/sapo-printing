@@ -21,6 +21,13 @@ impl ListJobsUseCase {
     }
 
     pub fn execute(&self, filter: JobFilterDto) -> Result<Vec<JobDto>, ApplicationError> {
+        tracing::info!(
+            target = "sapo_printer::use_case::list_jobs",
+            status_filter = ?filter.status,
+            printer_filter = ?filter.printer_name,
+            "ListJobsUseCase: starting"
+        );
+
         // Step 1: Load jobs from repository based on status filter
         let jobs = if let Some(status_str) = &filter.status {
             let status = parse_status(status_str)?;
@@ -54,6 +61,12 @@ impl ListJobsUseCase {
         if let Some(to) = filter.to_date {
             result.retain(|j| j.created_at <= to);
         }
+
+        tracing::debug!(
+            target = "sapo_printer::use_case::list_jobs",
+            result_count = result.len(),
+            "ListJobsUseCase: completed"
+        );
 
         Ok(result)
     }

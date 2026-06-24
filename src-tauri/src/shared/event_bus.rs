@@ -44,7 +44,13 @@ impl Default for InMemoryEventBus {
 }
 
 impl EventBus for InMemoryEventBus {
-    fn publish(&self, _event_type: &str, _payload: &str) -> Result<(), EventBusError> {
+    fn publish(&self, event_type: &str, _payload: &str) -> Result<(), EventBusError> {
+        tracing::debug!(
+            target = "sapo_printer::event_bus",
+            event_type = event_type,
+            bus = "in_memory",
+            "EventBus: event published"
+        );
         // No-op for now — events are persisted via EventStore in the same transaction.
         // The outbox worker will pick them up later.
         Ok(())

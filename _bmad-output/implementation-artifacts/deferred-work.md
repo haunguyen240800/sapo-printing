@@ -166,3 +166,19 @@
 - `status_to_string` duplicated between `job_dto.rs` and `job_status_dto.rs`. Follow same shared helper extraction pattern as `calculate_progress` in future refactor.
 - `handle_get_status` instantiates `GetJobStatusUseCase` per-request. Matches existing pattern for `handle_cancel_job` and `handle_print_batch`. Consider use-case-level injection across all handlers in future refactor.
 - `test_integration_rapid_polling_sequence` doesn't test state transitions. Adequate as stress test for happy path; state-transition-while-polling would require more complex test harness.
+
+## Deferred from: code review of 4-3-setup-structured-logging-with-tracing-crate (2026-06-24)
+
+- `read_dir` errors silently discarded in `cleanup_old_logs` — low risk since directory was just created.
+- Symlink handling in cleanup — low practical risk on Windows.
+- Regex recompilation on every `cleanup_old_logs` call — called once at startup, not a hot path.
+- Malformed filename dates silently skipped — correct behavior for invalid dates.
+- `&PathBuf` vs `&Path` parameter — idiomatic Rust style issue, not a correctness bug.
+- Response truncation allocates new String in native messaging — minor CPU overhead per message.
+- `chrono` and `regex` added as direct dependencies — reasonable implementation choice for cleanup logic.
+- Existing tracing calls preservation not confirmed in `temp_file.rs`, `sqlite_queue_manager.rs`, `win32_printer_manager.rs` — files not in diff.
+- `init_logging()` called at both `main()` and `run_native_messaging_mode()` — by design (idempotent).
+- Invalid input logged at INFO level in `ListJobsUseCase` — minor noise concern.
+- `job.status()` evaluated unconditionally before debug level check — not expensive currently.
+- `chrono::and_hms_opt` may be deprecated in future chrono versions — maintenance concern.
+

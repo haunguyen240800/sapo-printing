@@ -32,6 +32,13 @@ pub struct CreatePrintJobUseCase {
 
 impl CreatePrintJobUseCase {
     pub fn execute(&self, request: CreateJobRequest) -> Result<Vec<JobId>, ApplicationError> {
+        tracing::info!(
+            target = "sapo_printer::use_case::create_print_job",
+            url_count = request.pdf_urls.len(),
+            printer = request.printer_name,
+            "CreatePrintJobUseCase: starting"
+        );
+
         // 1. Validate request (Application layer)
         if request.pdf_urls.is_empty() {
             return Err(ApplicationError::EmptyJobList);
@@ -89,6 +96,18 @@ impl CreatePrintJobUseCase {
             let _ = self.event_bus.publish(event_type, payload);
             // EventBus publish failures are non-fatal — log but don't fail
         }
+
+        tracing::info!(
+            target = "sapo_printer::use_case::create_print_job",
+            job_count = all_job_ids.len(),
+            printer = request.printer_name,
+            "CreatePrintJobUseCase: completed"
+        );
+        tracing::debug!(
+            target = "sapo_printer::use_case::create_print_job",
+            job_ids = ?all_job_ids,
+            "CreatePrintJobUseCase: job IDs created"
+        );
 
         Ok(all_job_ids)
     }

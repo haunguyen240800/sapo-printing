@@ -33,6 +33,14 @@ impl PrintJobRepository for SqlitePrintJobRepository {
 
         let completed_at = completed_at_for_status(job.status(), now);
 
+        tracing::debug!(
+            target = "sapo_printer::repository::print_job",
+            operation = "save",
+            job_id = %job.id(),
+            status = ?job.status(),
+            "INSERT INTO print_jobs"
+        );
+
         let rows = conn
             .execute(
                 "INSERT INTO print_jobs (id, printer_name, document_url, status, retry_count, created_at, updated_at, completed_at, error_message)
@@ -50,6 +58,13 @@ impl PrintJobRepository for SqlitePrintJobRepository {
                 ],
             )
             .map_err(|e| {
+                tracing::error!(
+                    target = "sapo_printer::repository::print_job",
+                    operation = "save",
+                    job_id = %job.id(),
+                    error = %e,
+                    "Failed to save print job"
+                );
                 // rusqlite SQLITE_CONSTRAINT errors map to DatabaseError with code ConstraintViolation
                 if matches!(
                     &e,
@@ -90,6 +105,14 @@ impl PrintJobRepository for SqlitePrintJobRepository {
 
         let completed_at = completed_at_for_status(job.status(), now);
 
+        tracing::debug!(
+            target = "sapo_printer::repository::print_job",
+            operation = "update",
+            job_id = %job.id(),
+            status = ?job.status(),
+            "UPDATE print_jobs"
+        );
+
         let rows = conn
             .execute(
                 "UPDATE print_jobs SET status = ?1, retry_count = ?2, updated_at = ?3, completed_at = ?4, error_message = ?5 WHERE id = ?6",
@@ -102,8 +125,17 @@ impl PrintJobRepository for SqlitePrintJobRepository {
                     job.id().to_string(),
                 ],
             )
-            .map_err(|e| DomainError::RepositoryError {
-                reason: format!("Failed to update print job: {}", e),
+            .map_err(|e| {
+                tracing::error!(
+                    target = "sapo_printer::repository::print_job",
+                    operation = "update",
+                    job_id = %job.id(),
+                    error = %e,
+                    "Failed to update print job"
+                );
+                DomainError::RepositoryError {
+                    reason: format!("Failed to update print job: {}", e),
+                }
             })?;
 
         if rows == 0 {
@@ -118,13 +150,29 @@ impl PrintJobRepository for SqlitePrintJobRepository {
     fn find_by_id(&self, id: &JobId) -> Result<Option<PrintJob>, DomainError> {
         let conn = self.conn.lock().unwrap_or_else(|p| p.into_inner());
 
+        tracing::debug!(
+            target = "sapo_printer::repository::print_job",
+            operation = "find_by_id",
+            job_id = %id,
+            "SELECT FROM print_jobs"
+        );
+
         let mut stmt = conn
             .prepare(
                 "SELECT id, printer_name, document_url, status, retry_count, created_at, completed_at, error_message
                  FROM print_jobs WHERE id = ?1",
             )
-            .map_err(|e| DomainError::RepositoryError {
-                reason: format!("Failed to prepare query: {}", e),
+            .map_err(|e| {
+                tracing::error!(
+                    target = "sapo_printer::repository::print_job",
+                    operation = "find_by_id",
+                    job_id = %id,
+                    error = %e,
+                    "Failed to prepare query"
+                );
+                DomainError::RepositoryError {
+                    reason: format!("Failed to prepare query: {}", e),
+                }
             })?;
 
         let result = stmt.query_row([id.to_string()], |row| row_to_print_job(row));
@@ -132,34 +180,74 @@ impl PrintJobRepository for SqlitePrintJobRepository {
         match result {
             Ok(job) => Ok(Some(job)),
             Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
-            Err(e) => Err(DomainError::RepositoryError {
-                reason: format!("Failed to query print job: {}", e),
-            }),
+            Err(e) => {
+                tracing::error!(
+                    target = "sapo_printer::repository::print_job",
+                    operation = "find_by_id",
+                    job_id = %id,
+                    error = %e,
+                    "Failed to query print job"
+                );
+                Err(DomainError::RepositoryError {
+                    reason: format!("Failed to query print job: {}", e),
+                })
+            }
         }
     }
 
     fn find_by_status(&self, status: &PrintStatus) -> Result<Vec<PrintJob>, DomainError> {
         let conn = self.conn.lock().unwrap_or_else(|p| p.into_inner());
 
+        tracing::debug!(
+            target = "sapo_printer::repository::print_job",
+            operation = "find_by_status",
+            status = ?status,
+            "SELECT FROM print_jobs WHERE status"
+        );
+
         let mut stmt = conn
             .prepare(
                 "SELECT id, printer_name, document_url, status, retry_count, created_at, completed_at, error_message
                  FROM print_jobs WHERE status = ?1",
             )
-            .map_err(|e| DomainError::RepositoryError {
-                reason: format!("Failed to prepare query: {}", e),
+            .map_err(|e| {
+                tracing::error!(
+                    target = "sapo_printer::repository::print_job",
+                    operation = "find_by_status",
+                    error = %e,
+                    "Failed to prepare query"
+                );
+                DomainError::RepositoryError {
+                    reason: format!("Failed to prepare query: {}", e),
+                }
             })?;
 
         let job_iter = stmt
             .query_map([status_to_string(status)], |row| row_to_print_job(row))
-            .map_err(|e| DomainError::RepositoryError {
-                reason: format!("Failed to query print jobs: {}", e),
+            .map_err(|e| {
+                tracing::error!(
+                    target = "sapo_printer::repository::print_job",
+                    operation = "find_by_status",
+                    error = %e,
+                    "Failed to query print jobs"
+                );
+                DomainError::RepositoryError {
+                    reason: format!("Failed to query print jobs: {}", e),
+                }
             })?;
 
         let mut jobs = Vec::new();
         for job_result in job_iter {
-            jobs.push(job_result.map_err(|e| DomainError::RepositoryError {
-                reason: format!("Failed to read print job row: {}", e),
+            jobs.push(job_result.map_err(|e| {
+                tracing::error!(
+                    target = "sapo_printer::repository::print_job",
+                    operation = "find_by_status",
+                    error = %e,
+                    "Failed to read print job row"
+                );
+                DomainError::RepositoryError {
+                    reason: format!("Failed to read print job row: {}", e),
+                }
             })?);
         }
 
@@ -169,25 +257,55 @@ impl PrintJobRepository for SqlitePrintJobRepository {
     fn find_all(&self) -> Result<Vec<PrintJob>, DomainError> {
         let conn = self.conn.lock().unwrap_or_else(|p| p.into_inner());
 
+        tracing::debug!(
+            target = "sapo_printer::repository::print_job",
+            operation = "find_all",
+            "SELECT FROM print_jobs"
+        );
+
         let mut stmt = conn
             .prepare(
                 "SELECT id, printer_name, document_url, status, retry_count, created_at, completed_at, error_message
                  FROM print_jobs",
             )
-            .map_err(|e| DomainError::RepositoryError {
-                reason: format!("Failed to prepare query: {}", e),
+            .map_err(|e| {
+                tracing::error!(
+                    target = "sapo_printer::repository::print_job",
+                    operation = "find_all",
+                    error = %e,
+                    "Failed to prepare query"
+                );
+                DomainError::RepositoryError {
+                    reason: format!("Failed to prepare query: {}", e),
+                }
             })?;
 
         let job_iter = stmt
             .query_map([], |row| row_to_print_job(row))
-            .map_err(|e| DomainError::RepositoryError {
-                reason: format!("Failed to query print jobs: {}", e),
+            .map_err(|e| {
+                tracing::error!(
+                    target = "sapo_printer::repository::print_job",
+                    operation = "find_all",
+                    error = %e,
+                    "Failed to query print jobs"
+                );
+                DomainError::RepositoryError {
+                    reason: format!("Failed to query print jobs: {}", e),
+                }
             })?;
 
         let mut jobs = Vec::new();
         for job_result in job_iter {
-            jobs.push(job_result.map_err(|e| DomainError::RepositoryError {
-                reason: format!("Failed to read print job row: {}", e),
+            jobs.push(job_result.map_err(|e| {
+                tracing::error!(
+                    target = "sapo_printer::repository::print_job",
+                    operation = "find_all",
+                    error = %e,
+                    "Failed to read print job row"
+                );
+                DomainError::RepositoryError {
+                    reason: format!("Failed to read print job row: {}", e),
+                }
             })?);
         }
 

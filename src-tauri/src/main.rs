@@ -16,6 +16,7 @@ use sapo_printer::interface::tauri::dtos::printer_dto::{
     PrinterConfigDto, PrinterDto, PrinterStatusDto,
 };
 use sapo_printer::shared::event_bus::EventBus;
+use sapo_printer::shared::logger::init_logging;
 use sapo_printer::AppContextState;
 use std::sync::Arc;
 use tauri::Manager;
@@ -246,6 +247,9 @@ fn register_native_host(allowed_origins: Option<String>) -> Result<(), String> {
 
 /// Native Messaging mode: initialize deps without Tauri, run stdin/stdout loop.
 fn run_native_messaging_mode() -> Result<(), String> {
+    // Initialize logging early for native messaging mode
+    init_logging();
+
     let home = std::env::var("USERPROFILE")
         .or_else(|_| std::env::var("HOME"))
         .unwrap_or_else(|_| ".".to_string());
@@ -288,6 +292,9 @@ fn run_native_messaging_mode() -> Result<(), String> {
 }
 
 fn main() {
+    // Initialize structured logging FIRST, before any other operations
+    init_logging();
+
     let args: Vec<String> = std::env::args().collect();
 
     // Check for --register-native-host CLI flag (headless registration)

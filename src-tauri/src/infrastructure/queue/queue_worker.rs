@@ -184,10 +184,21 @@ impl QueueWorker {
     ) {
         const POLL_INTERVAL_MS: u64 = 500; // 0.5s poll interval
 
+        tracing::info!(
+            target = "sapo_printer::queue_worker",
+            "QueueWorker: processing loop started"
+        );
+
         while running.load(Ordering::SeqCst) {
             match queue_manager.pop() {
                 Ok(Some(job)) => {
                     let job_id = job.id().clone(); // Save ID before consuming job
+
+                    tracing::info!(
+                        target = "sapo_printer::queue_worker",
+                        job_id = %job_id,
+                        "QueueWorker: picked up job for processing"
+                    );
 
                     // Process job through pipeline
                     let result = Self::process_job(
@@ -201,6 +212,12 @@ impl QueueWorker {
                     );
 
                     if let Err(e) = result {
+                        tracing::error!(
+                            target = "sapo_printer::queue_worker",
+                            job_id = %job_id,
+                            error = e,
+                            "QueueWorker: job processing failed"
+                        );
                         // Load job from repo to get latest state after process_job mutations
                         if let Ok(Some(failed_job)) = job_repo.find_by_id(&job_id) {
                             Self::handle_job_failure(
@@ -212,8 +229,18 @@ impl QueueWorker {
                                 &event_bus,
                             );
                         } else {
-                            eprintln!("Worker: Could not load job {} for retry handling", job_id);
+                            tracing::error!(
+                                target = "sapo_printer::queue_worker",
+                                job_id = %job_id,
+                                "QueueWorker: Could not load job for retry handling"
+                            );
                         }
+                    } else {
+                        tracing::info!(
+                            target = "sapo_printer::queue_worker",
+                            job_id = %job_id,
+                            "QueueWorker: job completed successfully"
+                        );
                     }
                 }
                 Ok(None) => {
