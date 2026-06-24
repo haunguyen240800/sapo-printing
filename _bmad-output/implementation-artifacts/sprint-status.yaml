@@ -82,7 +82,7 @@ development_status:
 
   # Epic 4: System Integration & Production Readiness
   epic-4: in-progress
-  4-1-implement-native-messaging-protocol-json-commands: review
+  4-1-implement-native-messaging-protocol-json-commands: done
   4-2-implement-status-polling-sync-2s-interval: backlog
   4-3-setup-structured-logging-with-tracing-crate: backlog
   4-4-implement-event-store-audit-trail-with-hmac-signing-30-days-retention: backlog
