@@ -235,9 +235,13 @@ fn get_printer_status(
 }
 
 /// Tauri command: register this app as a Chrome Native Messaging host.
+/// Accepts a comma-separated list of allowed extension IDs.
 #[tauri::command]
-fn register_native_host() -> Result<(), String> {
-    sapo_printer::interface::native_messaging::registry::register_native_host(vec![])
+fn register_native_host(allowed_origins: Option<String>) -> Result<(), String> {
+    let origins: Vec<String> = allowed_origins
+        .map(|s| s.split(',').map(|s| s.trim().to_string()).filter(|s| !s.is_empty()).collect())
+        .unwrap_or_default();
+    sapo_printer::interface::native_messaging::registry::register_native_host(origins)
 }
 
 /// Native Messaging mode: initialize deps without Tauri, run stdin/stdout loop.
@@ -287,8 +291,13 @@ fn main() {
     let args: Vec<String> = std::env::args().collect();
 
     // Check for --register-native-host CLI flag (headless registration)
-    if args.iter().any(|a| a == "--register-native-host") {
-        match sapo_printer::interface::native_messaging::registry::register_native_host(vec![]) {
+    // Supports: --register-native-host extId1,extId2
+    if let Some(pos) = args.iter().position(|a| a == "--register-native-host") {
+        let origins: Vec<String> = args
+            .get(pos + 1)
+            .map(|s| s.split(',').map(|s| s.trim().to_string()).filter(|s| !s.is_empty()).collect())
+            .unwrap_or_default();
+        match sapo_printer::interface::native_messaging::registry::register_native_host(origins) {
             Ok(()) => std::process::exit(0),
             Err(e) => {
                 eprintln!("Failed to register native host: {}", e);
@@ -299,7 +308,8 @@ fn main() {
 
     // Check for --native-messaging flag (Chrome Native Messaging mode)
     if args.iter().any(|a| a == "--native-messaging") {
-        if let Err(e) = run_native_messaging_mode() {
+        let result = run_native_messaging_mode();
+        if let Err(e) = &result {
             // Log to file, not stderr (would corrupt protocol)
             let home = std::env::var("USERPROFILE")
                 .or_else(|_| std::env::var("HOME"))
@@ -316,7 +326,12 @@ fn main() {
                     writeln!(f, "[FATAL] {}", e)
                 });
         }
-        std::process::exit(0);
+        // Exit code 0 on success, 1 on fatal startup error.
+        // Chrome uses the exit code to determine if the native host is healthy.
+        match result {
+            Ok(()) => std::process::exit(0),
+            Err(_) => std::process::exit(1),
+        }
     }
 
     // 1. Ensure ~/.sapo-printer/ data directory exists

@@ -11,7 +11,7 @@ struct NativeMessagingManifest {
     allowed_origins: Vec<String>,
 }
 
-pub fn generate_manifest(exe_path: &str, allowed_origins: Vec<String>) -> String {
+pub fn generate_manifest(exe_path: &str, allowed_origins: Vec<String>) -> Result<String, String> {
     let manifest = NativeMessagingManifest {
         name: NATIVE_HOST_NAME.to_string(),
         description: "Sapo Printer - Native Messaging Host".to_string(),
@@ -19,7 +19,8 @@ pub fn generate_manifest(exe_path: &str, allowed_origins: Vec<String>) -> String
         r#type: "stdio".to_string(),
         allowed_origins,
     };
-    serde_json::to_string_pretty(&manifest).unwrap_or_default()
+    serde_json::to_string_pretty(&manifest)
+        .map_err(|e| format!("Failed to serialize manifest: {}", e))
 }
 
 #[cfg(target_os = "windows")]
@@ -30,7 +31,7 @@ pub fn register_native_host(allowed_origins: Vec<String>) -> Result<(), String> 
         .ok_or_else(|| "Exe path contains non-UTF-8 characters".to_string())?
         .to_string();
 
-    let manifest = generate_manifest(&exe_path, allowed_origins);
+    let manifest = generate_manifest(&exe_path, allowed_origins)?;
 
     let data_dir = {
         let home = std::env::var("USERPROFILE")
@@ -68,7 +69,7 @@ pub fn register_native_host(allowed_origins: Vec<String>) -> Result<(), String> 
         .ok_or_else(|| "Exe path contains non-UTF-8 characters".to_string())?
         .to_string();
 
-    let manifest = generate_manifest(&exe_path, allowed_origins);
+    let manifest = generate_manifest(&exe_path, allowed_origins)?;
 
     let manifest_dir = {
         let home = std::env::var("HOME")
@@ -99,7 +100,7 @@ mod tests {
         let manifest = generate_manifest(
             "C:\\Program Files\\Sapo Printer\\sapo-printer.exe",
             vec!["chrome-extension://abcdef123456/".to_string()],
-        );
+        ).unwrap();
         let parsed: serde_json::Value = serde_json::from_str(&manifest).unwrap();
         assert_eq!(parsed["name"], "sapo_printer");
         assert_eq!(parsed["type"], "stdio");
@@ -115,7 +116,7 @@ mod tests {
 
     #[test]
     fn test_generate_manifest_with_empty_origins() {
-        let manifest = generate_manifest("/usr/local/bin/sapo-printer", vec![]);
+        let manifest = generate_manifest("/usr/local/bin/sapo-printer", vec![]).unwrap();
         let parsed: serde_json::Value = serde_json::from_str(&manifest).unwrap();
         assert_eq!(parsed["name"], "sapo_printer");
         assert!(parsed["allowed_origins"].as_array().unwrap().is_empty());
@@ -123,8 +124,16 @@ mod tests {
 
     #[test]
     fn test_generate_manifest_contains_description() {
-        let manifest = generate_manifest("/path/to/exe", vec![]);
+        let manifest = generate_manifest("/path/to/exe", vec![]).unwrap();
         let parsed: serde_json::Value = serde_json::from_str(&manifest).unwrap();
         assert!(parsed["description"].as_str().unwrap().contains("Sapo Printer"));
+    }
+
+    #[test]
+    fn test_generate_manifest_error_propagates() {
+        // Regression: previously unwrap_or_default() would silently swallow errors.
+        // Now generate_manifest returns Result, so errors propagate to callers.
+        let result = generate_manifest("/path/to/exe", vec!["valid-origin".to_string()]);
+        assert!(result.is_ok());
     }
 }

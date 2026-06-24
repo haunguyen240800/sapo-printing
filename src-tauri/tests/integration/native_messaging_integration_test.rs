@@ -37,6 +37,20 @@ impl PrinterManager for NoopPrinterManager {
     }
 }
 
+struct OfflinePrinterManager;
+
+impl PrinterManager for OfflinePrinterManager {
+    fn discover_printers(&self) -> Vec<Printer> {
+        vec![]
+    }
+    fn get_status(&self, _name: &str) -> PrinterStatus {
+        PrinterStatus::Offline
+    }
+    fn supports_direct_pdf(&self, _name: &str) -> bool {
+        false
+    }
+}
+
 fn setup() -> (NativeMessageHandler, Arc<SqlitePrintJobRepository>, Arc<SqlitePrinterRepository>, Arc<Mutex<Connection>>) {
     let mut conn = Connection::open_in_memory().unwrap();
     run_migrations(&mut conn).unwrap();
@@ -239,4 +253,42 @@ fn test_cancel_completed_job_returns_invalid_state() {
     let resp = simulate_exchange(&handler, &request.to_string());
     assert_eq!(resp["success"], false);
     assert_eq!(resp["error"]["code"], "INVALID_STATE");
+}
+
+// AC-7 / M-8: print_batch with offline printer returns PRINTER_NOT_AVAILABLE
+fn setup_with_offline_printer() -> (NativeMessageHandler, Arc<SqlitePrinterRepository>, Arc<Mutex<Connection>>) {
+    let mut conn = Connection::open_in_memory().unwrap();
+    run_migrations(&mut conn).unwrap();
+    let arc_conn = Arc::new(Mutex::new(conn));
+
+    let job_repo = Arc::new(SqlitePrintJobRepository::new(arc_conn.clone()));
+    let printer_repo = Arc::new(SqlitePrinterRepository::new(arc_conn.clone()));
+    let event_store = Arc::new(SqliteEventStore::new(arc_conn.clone()));
+    let event_bus = Arc::new(InMemoryEventBus::new());
+    let printer_manager: Arc<dyn PrinterManager> = Arc::new(OfflinePrinterManager);
+
+    let handler = NativeMessageHandler::new(
+        job_repo as Arc<dyn sapo_printer::domain::print_job::repository::PrintJobRepository>,
+        printer_repo.clone() as Arc<dyn sapo_printer::domain::printer::repository::PrinterRepository>,
+        printer_manager,
+        event_store,
+        event_bus as Arc<dyn sapo_printer::shared::event_bus::EventBus>,
+    );
+
+    (handler, printer_repo, arc_conn)
+}
+
+#[test]
+fn test_print_batch_offline_printer_returns_not_available() {
+    let (handler, printer_repo, conn) = setup_with_offline_printer();
+    seed_online_printer(&printer_repo, &conn, "OfflinePrinter");
+
+    let request = serde_json::json!({
+        "command": "print_batch",
+        "pdf_urls": ["https://example.com/doc.pdf"],
+        "printer_name": "OfflinePrinter"
+    });
+    let resp = simulate_exchange(&handler, &request.to_string());
+    assert_eq!(resp["success"], false);
+    assert_eq!(resp["error"]["code"], "PRINTER_NOT_AVAILABLE");
 }
