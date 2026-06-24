@@ -120,7 +120,7 @@ impl PrintJobRepository for SqlitePrintJobRepository {
 
         let mut stmt = conn
             .prepare(
-                "SELECT id, printer_name, document_url, status, retry_count, created_at, error_message
+                "SELECT id, printer_name, document_url, status, retry_count, created_at, completed_at, error_message
                  FROM print_jobs WHERE id = ?1",
             )
             .map_err(|e| DomainError::RepositoryError {
@@ -143,7 +143,7 @@ impl PrintJobRepository for SqlitePrintJobRepository {
 
         let mut stmt = conn
             .prepare(
-                "SELECT id, printer_name, document_url, status, retry_count, created_at, error_message
+                "SELECT id, printer_name, document_url, status, retry_count, created_at, completed_at, error_message
                  FROM print_jobs WHERE status = ?1",
             )
             .map_err(|e| DomainError::RepositoryError {
@@ -171,7 +171,7 @@ impl PrintJobRepository for SqlitePrintJobRepository {
 
         let mut stmt = conn
             .prepare(
-                "SELECT id, printer_name, document_url, status, retry_count, created_at, error_message
+                "SELECT id, printer_name, document_url, status, retry_count, created_at, completed_at, error_message
                  FROM print_jobs",
             )
             .map_err(|e| DomainError::RepositoryError {
@@ -203,7 +203,8 @@ fn row_to_print_job(row: &rusqlite::Row<'_>) -> Result<PrintJob, rusqlite::Error
     let status_str: String = row.get(3)?;
     let retry_count: i64 = row.get(4)?;
     let created_at: i64 = row.get(5)?;
-    let error_message: Option<String> = row.get(6)?;
+    let completed_at: Option<i64> = row.get(6)?;
+    let error_message: Option<String> = row.get(7)?;
 
     let id: JobId = id_str.parse().map_err(|e: uuid::Error| {
         rusqlite::Error::InvalidColumnType(
@@ -228,6 +229,7 @@ fn row_to_print_job(row: &rusqlite::Row<'_>) -> Result<PrintJob, rusqlite::Error
         document_url,
         printer_name,
         created_at,
+        completed_at,
         error_message,
     ))
 }

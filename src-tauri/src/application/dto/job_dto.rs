@@ -36,7 +36,7 @@ impl From<PrintJob> for JobDto {
 }
 
 /// Helper: tính progress percentage dựa trên status.
-fn calculate_progress(status: &PrintStatus) -> u8 {
+pub(crate) fn calculate_progress(status: &PrintStatus) -> u8 {
     match status {
         PrintStatus::Pending => 0,
         PrintStatus::Queued => 10,

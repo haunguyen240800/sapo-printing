@@ -22,6 +22,7 @@ pub struct PrintJob {
     pdf_url: String,
     printer_name: String,
     created_at: i64,
+    completed_at: Option<i64>,
     error_message: Option<String>,
     #[serde(skip)]
     events: Vec<Box<dyn DomainEvent>>,
@@ -36,6 +37,7 @@ impl Clone for PrintJob {
             pdf_url: self.pdf_url.clone(),
             printer_name: self.printer_name.clone(),
             created_at: self.created_at,
+            completed_at: self.completed_at,
             error_message: self.error_message.clone(),
             events: Vec::new(),
         }
@@ -43,14 +45,18 @@ impl Clone for PrintJob {
 }
 
 impl PrintJob {
+    fn now() -> i64 {
+        SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_secs() as i64
+    }
+
     /// Creates a new PrintJob in PENDING status.
     /// Emits a PrintJobCreated event.
     pub fn new(pdf_url: String, printer_name: String) -> Self {
         let id = JobId::new();
-        let created_at = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .unwrap()
-            .as_secs() as i64;
+        let created_at = Self::now();
         let mut job = Self {
             id: id.clone(),
             status: PrintStatus::Pending,
@@ -58,6 +64,7 @@ impl PrintJob {
             pdf_url,
             printer_name,
             created_at,
+            completed_at: None,
             error_message: None,
             events: Vec::new(),
         };
@@ -77,6 +84,7 @@ impl PrintJob {
         pdf_url: String,
         printer_name: String,
         created_at: i64,
+        completed_at: Option<i64>,
         error_message: Option<String>,
     ) -> Self {
         Self {
@@ -86,6 +94,7 @@ impl PrintJob {
             pdf_url,
             printer_name,
             created_at,
+            completed_at,
             error_message,
             events: Vec::new(),
         }
@@ -159,6 +168,7 @@ impl PrintJob {
             });
         }
         self.status = PrintStatus::Completed;
+        self.completed_at = Some(Self::now());
         self.push_event(Box::new(PrintJobCompleted::new(self.id.clone())));
         Ok(())
     }
@@ -172,6 +182,7 @@ impl PrintJob {
             });
         }
         self.status = PrintStatus::Failed;
+        self.completed_at = Some(Self::now());
         self.error_message = Some(reason.clone());
         self.push_event(Box::new(PrintJobFailed::new(
             self.id.clone(),
@@ -207,6 +218,7 @@ impl PrintJob {
             PrintStatus::Cancelled => Err(DomainError::CannotCancelCancelled),
             _ => {
                 self.status = PrintStatus::Cancelled;
+                self.completed_at = Some(Self::now());
                 self.push_event(Box::new(PrintJobCancelled::new(self.id.clone())));
                 Ok(())
             }
@@ -243,6 +255,10 @@ impl PrintJob {
 
     pub fn created_at(&self) -> i64 {
         self.created_at
+    }
+
+    pub fn completed_at(&self) -> Option<i64> {
+        self.completed_at
     }
 
     pub fn error_message(&self) -> Option<&String> {

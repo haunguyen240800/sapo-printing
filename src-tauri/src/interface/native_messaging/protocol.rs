@@ -5,10 +5,10 @@ use serde::{Deserialize, Serialize};
 
 use crate::application::dto::create_job_request::CreateJobRequest;
 use crate::application::dto::cancel_job_request::CancelJobRequest;
-use crate::application::dto::job_dto::JobDto;
 use crate::application::use_cases::cancel_print_job::CancelPrintJobUseCase;
 use crate::application::use_cases::create_print_job::CreatePrintJobUseCase;
 use crate::application::use_cases::errors::ApplicationError;
+use crate::application::use_cases::get_job_status::GetJobStatusUseCase;
 use crate::domain::print_job::repository::PrintJobRepository;
 use crate::domain::printer::repository::PrinterRepository;
 use crate::infrastructure::database::SqliteEventStore;
@@ -294,24 +294,19 @@ impl NativeMessageHandler {
             _ => return self.error_response("VALIDATION_ERROR", "Missing or empty job_id"),
         };
 
-        let job_id = match job_id_str.parse() {
-            Ok(id) => id,
-            Err(_) => return self.error_response("VALIDATION_ERROR", "Invalid job_id format"),
-        };
+        let use_case = GetJobStatusUseCase::new(self.job_repo.clone());
 
-        let job = match self.job_repo.find_by_id(&job_id) {
-            Ok(Some(job)) => job,
-            Ok(None) => return self.error_response("JOB_NOT_FOUND", &format!("Job not found: {}", job_id_str)),
-            Err(e) => return self.error_response("INTERNAL_ERROR", &format!("Repository error: {}", e)),
-        };
-
-        let dto = JobDto::from(job);
-        let resp = SuccessResponse {
-            success: true,
-            data: dto,
-        };
-        serde_json::to_string(&resp)
-            .unwrap_or_else(|_| self.error_response("INTERNAL_ERROR", "Serialization failed"))
+        match use_case.execute(&job_id_str) {
+            Ok(dto) => {
+                let resp = SuccessResponse {
+                    success: true,
+                    data: dto,
+                };
+                serde_json::to_string(&resp)
+                    .unwrap_or_else(|_| self.error_response("INTERNAL_ERROR", "Serialization failed"))
+            }
+            Err(e) => self.application_error_response(&e),
+        }
     }
 
     fn handle_cancel_job(&self, msg: RawMessage) -> String {
@@ -713,6 +708,277 @@ mod tests {
         assert_eq!(parsed["success"], true);
         assert_eq!(parsed["data"]["job_id"], job_id);
         assert_eq!(parsed["data"]["status"], "PENDING");
+    }
+
+    #[test]
+    fn test_get_status_with_empty_job_id_returns_validation_error() {
+        let handler = setup_handler();
+        let resp = handler.handle_message(r#"{"command":"get_status","job_id":""}"#);
+        let parsed: serde_json::Value = serde_json::from_str(&resp).unwrap();
+        assert_eq!(parsed["success"], false);
+        assert_eq!(parsed["error"]["code"], "VALIDATION_ERROR");
+    }
+
+    #[test]
+    fn test_get_status_with_missing_job_id_returns_validation_error() {
+        let handler = setup_handler();
+        let resp = handler.handle_message(r#"{"command":"get_status"}"#);
+        let parsed: serde_json::Value = serde_json::from_str(&resp).unwrap();
+        assert_eq!(parsed["success"], false);
+        assert_eq!(parsed["error"]["code"], "VALIDATION_ERROR");
+    }
+
+    #[test]
+    fn test_get_status_with_invalid_uuid_returns_validation_error() {
+        let handler = setup_handler();
+        let resp = handler.handle_message(r#"{"command":"get_status","job_id":"not-a-uuid"}"#);
+        let parsed: serde_json::Value = serde_json::from_str(&resp).unwrap();
+        assert_eq!(parsed["success"], false);
+        assert_eq!(parsed["error"]["code"], "VALIDATION_ERROR");
+    }
+
+    #[test]
+    fn test_get_status_returns_job_status_dto_with_all_fields() {
+        let handler = setup_handler();
+        let job = PrintJob::new("https://example.com/doc.pdf".to_string(), "HP_LaserJet".to_string());
+        let job_id = job.id().to_string();
+        handler.job_repo.save(&job).unwrap();
+
+        let payload = serde_json::json!({
+            "command": "get_status",
+            "job_id": job_id
+        });
+        let resp = handler.handle_message(&payload.to_string());
+        let parsed: serde_json::Value = serde_json::from_str(&resp).unwrap();
+
+        assert_eq!(parsed["success"], true);
+        assert_eq!(parsed["data"]["job_id"], job_id);
+        assert_eq!(parsed["data"]["status"], "PENDING");
+        assert_eq!(parsed["data"]["progress"], 0);
+        assert_eq!(parsed["data"]["printer_name"], "HP_LaserJet");
+        assert!(parsed["data"]["created_at"].is_number());
+        assert!(parsed["data"]["updated_at"].is_null());
+        assert!(parsed["data"]["completed_at"].is_null());
+        assert!(parsed["data"]["error_message"].is_null());
+    }
+
+    #[test]
+    fn test_get_status_returns_progress_per_state() {
+        let handler = setup_handler();
+
+        // PENDING
+        let job = PrintJob::new("https://example.com/doc.pdf".to_string(), "HP".to_string());
+        let job_id = job.id().to_string();
+        handler.job_repo.save(&job).unwrap();
+        let resp = handler.handle_message(&serde_json::json!({"command":"get_status","job_id":&job_id}).to_string());
+        let parsed: serde_json::Value = serde_json::from_str(&resp).unwrap();
+        assert_eq!(parsed["data"]["status"], "PENDING");
+        assert_eq!(parsed["data"]["progress"], 0);
+
+        // QUEUED
+        let mut job = PrintJob::new("https://example.com/doc.pdf".to_string(), "HP".to_string());
+        job.queue().unwrap();
+        let job_id = job.id().to_string();
+        handler.job_repo.save(&job).unwrap();
+        let resp = handler.handle_message(&serde_json::json!({"command":"get_status","job_id":&job_id}).to_string());
+        let parsed: serde_json::Value = serde_json::from_str(&resp).unwrap();
+        assert_eq!(parsed["data"]["status"], "QUEUED");
+        assert_eq!(parsed["data"]["progress"], 10);
+
+        // PRINTING
+        let mut job = PrintJob::new("https://example.com/doc.pdf".to_string(), "HP".to_string());
+        job.queue().unwrap();
+        job.mark_downloaded().unwrap();
+        job.mark_submitted().unwrap();
+        job.mark_printing().unwrap();
+        let job_id = job.id().to_string();
+        handler.job_repo.save(&job).unwrap();
+        let resp = handler.handle_message(&serde_json::json!({"command":"get_status","job_id":&job_id}).to_string());
+        let parsed: serde_json::Value = serde_json::from_str(&resp).unwrap();
+        assert_eq!(parsed["data"]["status"], "PRINTING");
+        assert_eq!(parsed["data"]["progress"], 80);
+
+        // COMPLETED
+        let mut job = PrintJob::new("https://example.com/doc.pdf".to_string(), "HP".to_string());
+        job.queue().unwrap();
+        job.mark_downloaded().unwrap();
+        job.mark_submitted().unwrap();
+        job.mark_printing().unwrap();
+        job.complete().unwrap();
+        let job_id = job.id().to_string();
+        handler.job_repo.save(&job).unwrap();
+        let resp = handler.handle_message(&serde_json::json!({"command":"get_status","job_id":&job_id}).to_string());
+        let parsed: serde_json::Value = serde_json::from_str(&resp).unwrap();
+        assert_eq!(parsed["data"]["status"], "COMPLETED");
+        assert_eq!(parsed["data"]["progress"], 100);
+
+        // FAILED
+        let mut job = PrintJob::new("https://example.com/doc.pdf".to_string(), "HP".to_string());
+        job.queue().unwrap();
+        job.fail("err".to_string()).unwrap();
+        let job_id = job.id().to_string();
+        handler.job_repo.save(&job).unwrap();
+        let resp = handler.handle_message(&serde_json::json!({"command":"get_status","job_id":&job_id}).to_string());
+        let parsed: serde_json::Value = serde_json::from_str(&resp).unwrap();
+        assert_eq!(parsed["data"]["status"], "FAILED");
+        assert_eq!(parsed["data"]["progress"], 0);
+
+        // DOWNLOADED
+        let mut job = PrintJob::new("https://example.com/doc.pdf".to_string(), "HP".to_string());
+        job.queue().unwrap();
+        job.mark_downloaded().unwrap();
+        let job_id = job.id().to_string();
+        handler.job_repo.save(&job).unwrap();
+        let resp = handler.handle_message(&serde_json::json!({"command":"get_status","job_id":&job_id}).to_string());
+        let parsed: serde_json::Value = serde_json::from_str(&resp).unwrap();
+        assert_eq!(parsed["data"]["status"], "DOWNLOADED");
+        assert_eq!(parsed["data"]["progress"], 40);
+
+        // SUBMITTED_TO_QUEUE
+        let mut job = PrintJob::new("https://example.com/doc.pdf".to_string(), "HP".to_string());
+        job.queue().unwrap();
+        job.mark_downloaded().unwrap();
+        job.mark_submitted().unwrap();
+        let job_id = job.id().to_string();
+        handler.job_repo.save(&job).unwrap();
+        let resp = handler.handle_message(&serde_json::json!({"command":"get_status","job_id":&job_id}).to_string());
+        let parsed: serde_json::Value = serde_json::from_str(&resp).unwrap();
+        assert_eq!(parsed["data"]["status"], "SUBMITTED_TO_QUEUE");
+        assert_eq!(parsed["data"]["progress"], 60);
+
+        // CANCELLED
+        let mut job = PrintJob::new("https://example.com/doc.pdf".to_string(), "HP".to_string());
+        job.cancel().unwrap();
+        let job_id = job.id().to_string();
+        handler.job_repo.save(&job).unwrap();
+        let resp = handler.handle_message(&serde_json::json!({"command":"get_status","job_id":&job_id}).to_string());
+        let parsed: serde_json::Value = serde_json::from_str(&resp).unwrap();
+        assert_eq!(parsed["data"]["status"], "CANCELLED");
+        assert_eq!(parsed["data"]["progress"], 0);
+    }
+
+    #[test]
+    fn test_integration_poll_multiple_jobs_with_different_statuses() {
+        // Integration test: simulate web app polling multiple jobs
+        // AC-5: Create handler with in-memory SQLite, create multiple test jobs,
+        // simulate polling sequence, verify progress values match expected per status
+        let handler = setup_handler();
+
+        // Create jobs with different statuses
+        let mut jobs_and_expected = Vec::new();
+
+        // Job 1: PENDING
+        let job = PrintJob::new("https://example.com/doc1.pdf".to_string(), "HP".to_string());
+        jobs_and_expected.push((job, "PENDING", 0));
+
+        // Job 2: QUEUED
+        let mut job = PrintJob::new("https://example.com/doc2.pdf".to_string(), "HP".to_string());
+        job.queue().unwrap();
+        jobs_and_expected.push((job, "QUEUED", 10));
+
+        // Job 3: DOWNLOADED
+        let mut job = PrintJob::new("https://example.com/doc3.pdf".to_string(), "HP".to_string());
+        job.queue().unwrap();
+        job.mark_downloaded().unwrap();
+        jobs_and_expected.push((job, "DOWNLOADED", 40));
+
+        // Job 4: SUBMITTED_TO_QUEUE
+        let mut job = PrintJob::new("https://example.com/doc4.pdf".to_string(), "HP".to_string());
+        job.queue().unwrap();
+        job.mark_downloaded().unwrap();
+        job.mark_submitted().unwrap();
+        jobs_and_expected.push((job, "SUBMITTED_TO_QUEUE", 60));
+
+        // Job 5: PRINTING
+        let mut job = PrintJob::new("https://example.com/doc5.pdf".to_string(), "HP".to_string());
+        job.queue().unwrap();
+        job.mark_downloaded().unwrap();
+        job.mark_submitted().unwrap();
+        job.mark_printing().unwrap();
+        jobs_and_expected.push((job, "PRINTING", 80));
+
+        // Job 6: COMPLETED
+        let mut job = PrintJob::new("https://example.com/doc6.pdf".to_string(), "HP".to_string());
+        job.queue().unwrap();
+        job.mark_downloaded().unwrap();
+        job.mark_submitted().unwrap();
+        job.mark_printing().unwrap();
+        job.complete().unwrap();
+        jobs_and_expected.push((job, "COMPLETED", 100));
+
+        // Job 7: FAILED
+        let mut job = PrintJob::new("https://example.com/doc7.pdf".to_string(), "HP".to_string());
+        job.queue().unwrap();
+        job.fail("Print error".to_string()).unwrap();
+        jobs_and_expected.push((job, "FAILED", 0));
+
+        // Job 8: CANCELLED
+        let mut job = PrintJob::new("https://example.com/doc8.pdf".to_string(), "HP".to_string());
+        job.cancel().unwrap();
+        jobs_and_expected.push((job, "CANCELLED", 0));
+
+        // Save all jobs
+        for (job, _, _) in &jobs_and_expected {
+            handler.job_repo.save(job).unwrap();
+        }
+
+        // Simulate polling sequence
+        for (job, expected_status, expected_progress) in &jobs_and_expected {
+            let job_id = job.id().to_string();
+            let payload = serde_json::json!({
+                "command": "get_status",
+                "job_id": job_id
+            });
+            let resp = handler.handle_message(&payload.to_string());
+            let parsed: serde_json::Value = serde_json::from_str(&resp).unwrap();
+
+            assert_eq!(parsed["success"], true, "Poll should succeed for job {}", expected_status);
+            assert_eq!(
+                parsed["data"]["status"], *expected_status,
+                "Job {} status mismatch", expected_status
+            );
+            assert_eq!(
+                parsed["data"]["progress"], *expected_progress as u64,
+                "Job {} progress mismatch", expected_status
+            );
+
+            // Verify terminal states have completed_at set as a valid timestamp
+            if ["COMPLETED", "FAILED", "CANCELLED"].contains(expected_status) {
+                assert!(
+                    parsed["data"]["completed_at"].is_number(),
+                    "Terminal state {} should have completed_at as a number",
+                    expected_status
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn test_integration_rapid_polling_sequence() {
+        // Integration test: rapid polling (multiple requests in quick succession)
+        // AC-5: Test rapid polling scenario
+        let handler = setup_handler();
+
+        // Create a single job
+        let mut job = PrintJob::new("https://example.com/doc.pdf".to_string(), "HP".to_string());
+        job.queue().unwrap();
+        let job_id = job.id().to_string();
+        handler.job_repo.save(&job).unwrap();
+
+        // Simulate rapid polling: send 10 requests in quick succession
+        for _ in 0..10 {
+            let payload = serde_json::json!({
+                "command": "get_status",
+                "job_id": &job_id
+            });
+            let resp = handler.handle_message(&payload.to_string());
+            let parsed: serde_json::Value = serde_json::from_str(&resp).unwrap();
+
+            assert_eq!(parsed["success"], true);
+            assert_eq!(parsed["data"]["job_id"], job_id);
+            assert_eq!(parsed["data"]["status"], "QUEUED");
+            assert_eq!(parsed["data"]["progress"], 10);
+        }
     }
 
     #[test]

@@ -159,3 +159,10 @@
 - **D-2: Filter printer_name in-memory thay vì repository** — `result.retain()` filter printer_name sau khi load tất cả jobs. Performance concern khi có nhiều jobs. Cần repository method `find_by_printer_name()`.
 - **D-3: PENDING và QUEUED cùng label "Đang chờ"** — User không phân biệt được 2 trạng thái trên UI. UX improvement, cần label khác nhau.
 - **D-4: Race condition khi thay đổi filter nhanh** — Nhiều `loadJobs()` async chạy song song, response cũ có thể ghi đè response mới. Cần AbortController hoặc request cancellation.
+
+## Deferred from: code review of 4-2-implement-status-polling-sync-2s-interval (2026-06-24)
+
+- `updated_at` always `None` — dead field. `PrintJob` aggregate needs an `updated_at` field to support this DTO field. Track as future story.
+- `status_to_string` duplicated between `job_dto.rs` and `job_status_dto.rs`. Follow same shared helper extraction pattern as `calculate_progress` in future refactor.
+- `handle_get_status` instantiates `GetJobStatusUseCase` per-request. Matches existing pattern for `handle_cancel_job` and `handle_print_batch`. Consider use-case-level injection across all handlers in future refactor.
+- `test_integration_rapid_polling_sequence` doesn't test state transitions. Adequate as stress test for happy path; state-transition-while-polling would require more complex test harness.
