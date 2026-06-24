@@ -1,5 +1,5 @@
 # generated: 2026-06-22
-# last_updated: 2026-06-24 (story 3-9 implemented, status → review)
+# last_updated: 2026-06-24 (story 3-9 code reviewed, fixes applied, status → done)
 # project: sapo-printer
 # project_key: NOKEY
 # tracking_system: file-system
@@ -35,7 +35,7 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 
 generated: 2026-06-22
-last_updated: 2026-06-24 (story 3-9 implemented, status → review)
+last_updated: 2026-06-24 (story 3-9 code reviewed, fixes applied, status → done)
 
 project_key: NOKEY
 tracking_system: file-system
@@ -77,7 +77,7 @@ development_status:
   3-6-implement-auto-retry-logic-with-exponential-backoff: done
   3-7-implement-job-cancellation-use-case: done
   3-8-create-print-job-list-ui-with-filters: done
-  3-9-add-real-time-status-updates-to-dashboard: review
+  3-9-add-real-time-status-updates-to-dashboard: done
   epic-3-retrospective: optional
 
   # Epic 4: System Integration & Production Readiness

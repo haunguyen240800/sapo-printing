@@ -1,6 +1,6 @@
 # Story 3.9: Add Real-time Status Updates to Dashboard
 
-Status: review
+Status: done
 baseline_commit: 84fbb75c1a99371d33bf7e886415e3f30eba12f9
 
 ## Story
