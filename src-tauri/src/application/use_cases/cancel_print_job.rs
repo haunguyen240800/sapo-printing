@@ -97,10 +97,14 @@ impl CancelPrintJobUseCase {
 
         // Publish events (after commit)
         for event in &events {
-            let _ = self
-                .event_bus
-                .publish(event.event_type(), &event.serialize_payload());
-            // EventBus publish failures are non-fatal
+            let payload = event.serialize_payload();
+            if let Err(e) = self.event_bus.publish(event.event_type(), &payload) {
+                eprintln!(
+                    "Warning: Failed to publish cancel event {}: {}",
+                    event.event_type(),
+                    e
+                );
+            }
         }
 
         // Cleanup temp file (best-effort, don't fail if cleanup fails)
