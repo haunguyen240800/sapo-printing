@@ -11,6 +11,14 @@ pub enum ApplicationError {
     PrinterNotAvailable { name: String },
     DomainError(DomainError),
     RepositoryError(String),
+    InvalidJobId { job_id: String },
+    JobNotFound { job_id: String },
+    CannotCancelCompleted { job_id: String },
+    CannotCancelFailed { job_id: String },
+    CannotCancelCancelled { job_id: String },
+    DomainRuleViolation { reason: String },
+    EventStoreError { reason: String },
+    EventBusError { reason: String },
 }
 
 impl fmt::Display for ApplicationError {
@@ -27,6 +35,22 @@ impl fmt::Display for ApplicationError {
             }
             Self::DomainError(e) => write!(f, "Lỗi domain: {}", e),
             Self::RepositoryError(msg) => write!(f, "Lỗi lưu trữ: {}", msg),
+            Self::InvalidJobId { job_id } => write!(f, "Job ID không hợp lệ: {}", job_id),
+            Self::JobNotFound { job_id } => write!(f, "Không tìm thấy job với ID: {}", job_id),
+            Self::CannotCancelCompleted { job_id } => {
+                write!(f, "Không thể hủy job đã hoàn thành: {}", job_id)
+            }
+            Self::CannotCancelFailed { job_id } => {
+                write!(f, "Không thể hủy job đã thất bại: {}", job_id)
+            }
+            Self::CannotCancelCancelled { job_id } => {
+                write!(f, "Không thể hủy job đã bị hủy: {}", job_id)
+            }
+            Self::DomainRuleViolation { reason } => {
+                write!(f, "Vi phạm quy tắc nghiệp vụ: {}", reason)
+            }
+            Self::EventStoreError { reason } => write!(f, "Lỗi event store: {}", reason),
+            Self::EventBusError { reason } => write!(f, "Lỗi event bus: {}", reason),
         }
     }
 }

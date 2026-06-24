@@ -1,4 +1,6 @@
+use crate::application::dto::cancel_job_request::CancelJobRequest;
 use crate::application::dto::create_job_request::CreateJobRequest;
+use crate::application::use_cases::cancel_print_job::CancelPrintJobUseCase;
 use crate::application::use_cases::create_print_job::CreatePrintJobUseCase;
 use crate::application::use_cases::errors::ApplicationError;
 use crate::AppContextState;
@@ -8,6 +10,12 @@ use crate::AppContextState;
 pub struct CreateJobPayload {
     pub pdf_urls: Vec<String>,
     pub printer_name: String,
+}
+
+/// Payload received from the UI for cancelling a print job.
+#[derive(serde::Deserialize)]
+pub struct CancelJobPayload {
+    pub job_id: String,
 }
 
 /// Execute the create print job use case and map results to Tauri-compatible types.
@@ -44,6 +52,42 @@ pub fn execute_create_print_job(
         })
 }
 
+/// Execute the cancel print job use case and map results to Tauri-compatible types.
+/// Called from the `cancel_print_job` Tauri command in `main.rs`.
+pub fn execute_cancel_print_job(
+    payload: CancelJobPayload,
+    ctx: &AppContextState,
+) -> Result<(), String> {
+    let use_case = CancelPrintJobUseCase::new(
+        ctx.job_repo.clone(),
+        ctx.event_store.clone(),
+        ctx.event_bus.clone(),
+    );
+
+    let request = CancelJobRequest {
+        job_id: payload.job_id,
+    };
+
+    use_case.execute(request).map_err(|e| match &e {
+        ApplicationError::InvalidJobId { job_id } => {
+            format!("Job ID không hợp lệ: {}", job_id)
+        }
+        ApplicationError::JobNotFound { job_id } => {
+            format!("Không tìm thấy job với ID: {}", job_id)
+        }
+        ApplicationError::CannotCancelCompleted { job_id } => {
+            format!("Không thể hủy job đã hoàn thành: {}", job_id)
+        }
+        ApplicationError::CannotCancelFailed { job_id } => {
+            format!("Không thể hủy job đã thất bại: {}", job_id)
+        }
+        ApplicationError::CannotCancelCancelled { job_id } => {
+            format!("Job đã bị hủy trước đó: {}", job_id)
+        }
+        _ => format!("{}", e),
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -57,5 +101,14 @@ mod tests {
         let payload: CreateJobPayload = serde_json::from_str(json).unwrap();
         assert_eq!(payload.pdf_urls.len(), 1);
         assert_eq!(payload.printer_name, "HP_Test");
+    }
+
+    #[test]
+    fn test_cancel_job_payload_deserializes() {
+        let json = r#"{
+            "job_id": "12345678-1234-1234-1234-123456789abc"
+        }"#;
+        let payload: CancelJobPayload = serde_json::from_str(json).unwrap();
+        assert_eq!(payload.job_id, "12345678-1234-1234-1234-123456789abc");
     }
 }

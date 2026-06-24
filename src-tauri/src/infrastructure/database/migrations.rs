@@ -78,12 +78,19 @@ CREATE INDEX idx_events_aggregate ON events(aggregate_id);
 CREATE INDEX idx_events_type ON events(event_type);
 ";
 
+const MIGRATION_5: &str = "
+ALTER TABLE print_jobs ADD COLUMN scheduled_at INTEGER;
+CREATE INDEX idx_print_jobs_scheduled ON print_jobs(scheduled_at);
+UPDATE print_jobs SET scheduled_at = updated_at WHERE scheduled_at IS NULL;
+";
+
 pub fn run_migrations(conn: &mut Connection) -> Result<(), DatabaseError> {
     let migrations = Migrations::new(vec![
         M::up(MIGRATION_1),
         M::up(MIGRATION_2),
         M::up(MIGRATION_3),
         M::up(MIGRATION_4),
+        M::up(MIGRATION_5),
     ]);
     migrations
         .to_latest(conn)
@@ -264,5 +271,35 @@ mod tests {
             count >= 2,
             "Expected at least 2 named indexes on events, got {count}"
         );
+    }
+
+    #[test]
+    fn test_migration_5_adds_scheduled_at_column() {
+        let mut conn = open_test_conn();
+        run_migrations(&mut conn).unwrap();
+
+        // Verify column exists
+        let columns: Vec<String> = conn
+            .prepare("PRAGMA table_info(print_jobs)")
+            .unwrap()
+            .query_map([], |row| row.get::<_, String>(1))
+            .unwrap()
+            .collect::<Result<Vec<_>, _>>()
+            .unwrap();
+
+        assert!(
+            columns.contains(&"scheduled_at".to_string()),
+            "scheduled_at column should exist"
+        );
+
+        // Verify index exists
+        let count: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM sqlite_master WHERE type='index' AND name='idx_print_jobs_scheduled'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(count, 1, "scheduled_at index should exist");
     }
 }

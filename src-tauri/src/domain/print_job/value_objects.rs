@@ -66,6 +66,11 @@ impl PrintStatus {
     }
 
     /// Checks whether a transition to `target` is valid from this state.
+    ///
+    /// Valid transitions follow the job processing pipeline with failure exits:
+    /// - Forward progression: Pending → Queued → Downloaded → SubmittedToQueue → Printing → Completed
+    /// - Failure exits: Any intermediate state can transition to Failed
+    /// - Retry: Failed → Queued (for auto-retry logic)
     pub fn can_transition_to(&self, target: &PrintStatus) -> bool {
         matches!(
             (self, target),
@@ -73,11 +78,12 @@ impl PrintStatus {
                 | (PrintStatus::Queued, PrintStatus::Downloaded)
                 | (PrintStatus::Queued, PrintStatus::Failed)
                 | (PrintStatus::Downloaded, PrintStatus::SubmittedToQueue)
+                | (PrintStatus::Downloaded, PrintStatus::Failed) // Render failure
                 | (PrintStatus::SubmittedToQueue, PrintStatus::Printing)
                 | (PrintStatus::SubmittedToQueue, PrintStatus::Failed)
                 | (PrintStatus::Printing, PrintStatus::Completed)
                 | (PrintStatus::Printing, PrintStatus::Failed)
-                | (PrintStatus::Failed, PrintStatus::Queued)
+                | (PrintStatus::Failed, PrintStatus::Queued) // Retry transition
         )
     }
 }
@@ -153,6 +159,7 @@ mod tests {
         assert!(PrintStatus::Queued.can_transition_to(&PrintStatus::Downloaded));
         assert!(PrintStatus::Queued.can_transition_to(&PrintStatus::Failed));
         assert!(PrintStatus::Downloaded.can_transition_to(&PrintStatus::SubmittedToQueue));
+        assert!(PrintStatus::Downloaded.can_transition_to(&PrintStatus::Failed));
         assert!(PrintStatus::SubmittedToQueue.can_transition_to(&PrintStatus::Printing));
         assert!(PrintStatus::SubmittedToQueue.can_transition_to(&PrintStatus::Failed));
         assert!(PrintStatus::Printing.can_transition_to(&PrintStatus::Completed));

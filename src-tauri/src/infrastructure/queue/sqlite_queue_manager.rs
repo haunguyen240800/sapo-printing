@@ -20,6 +20,10 @@ impl QueueManager for SqliteQueueManager {
         let conn = self.conn.lock().unwrap_or_else(|p| p.into_inner());
         let id_str = job_id.to_string();
 
+        // Note: SQLite's default isolation level (SERIALIZABLE) prevents race conditions
+        // between push() setting scheduled_at and pop() reading it. The Mutex lock
+        // additionally ensures only one operation at a time per connection.
+
         // Check current status
         let result: rusqlite::Result<String> = conn.query_row(
             "SELECT status FROM print_jobs WHERE id = ?1",
@@ -41,13 +45,13 @@ impl QueueManager for SqliteQueueManager {
             Ok(_) => {} // Pending — proceed
         }
 
-        // Update to Queued
+        // Update to Queued with scheduled_at = now (immediate execution)
         let now = SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .unwrap()
             .as_secs() as i64;
         conn.execute(
-            "UPDATE print_jobs SET status = 'Queued', updated_at = ?1 WHERE id = ?2",
+            "UPDATE print_jobs SET status = 'Queued', scheduled_at = ?1, updated_at = ?1 WHERE id = ?2",
             rusqlite::params![now, id_str],
         )
         .map_err(|e| QueueError::RepositoryError(e.to_string()))?;
@@ -58,6 +62,12 @@ impl QueueManager for SqliteQueueManager {
     fn pop(&self) -> Result<Option<PrintJob>, QueueError> {
         let mut conn = self.conn.lock().unwrap_or_else(|p| p.into_inner());
 
+        // Get current timestamp
+        let now = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_secs() as i64;
+
         // Use transaction to avoid race condition between workers
         let tx = conn
             .transaction()
@@ -67,12 +77,15 @@ impl QueueManager for SqliteQueueManager {
             let mut stmt = tx
                 .prepare(
                     "SELECT id, printer_name, document_url, retry_count
-                     FROM print_jobs WHERE status = 'Queued'
-                     ORDER BY created_at ASC LIMIT 1",
+                     FROM print_jobs
+                     WHERE status = 'Queued'
+                       AND (scheduled_at IS NULL OR scheduled_at <= ?)
+                     ORDER BY created_at ASC
+                     LIMIT 1",
                 )
                 .map_err(|e| QueueError::RepositoryError(e.to_string()))?;
 
-            let result = stmt.query_row([], |row| {
+            let result = stmt.query_row(rusqlite::params![now], |row| {
                 let id_str: String = row.get(0)?;
                 let printer_name: String = row.get(1)?;
                 let document_url: String = row.get(2)?;
@@ -125,21 +138,23 @@ impl QueueManager for SqliteQueueManager {
         let conn = self.conn.lock().unwrap_or_else(|p| p.into_inner());
         let id_str = job_id.to_string();
 
-        // Log delay_secs but don't use it (Story 3.6 will handle)
-        if delay_secs > 0 {
-            tracing::debug!(
-                "Requeue requested with delay_secs={}, ignoring for now",
-                delay_secs
-            );
-        }
-
+        // Calculate scheduled_at timestamp (now + delay_secs)
         let now = SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .unwrap()
             .as_secs() as i64;
+        let scheduled_at = now.checked_add(delay_secs as i64).unwrap_or(i64::MAX);
+
+        tracing::info!(
+            "Requeue job {} with {}s delay (scheduled_at={})",
+            job_id,
+            delay_secs,
+            scheduled_at
+        );
+
         conn.execute(
-            "UPDATE print_jobs SET status = 'Queued', updated_at = ?1 WHERE id = ?2",
-            rusqlite::params![now, id_str],
+            "UPDATE print_jobs SET status = 'Queued', scheduled_at = ?1, updated_at = ?2 WHERE id = ?3",
+            rusqlite::params![scheduled_at, now, id_str],
         )
         .map_err(|e| QueueError::RepositoryError(e.to_string()))?;
 
@@ -345,5 +360,79 @@ mod tests {
 
         let popped3 = mgr.pop().unwrap().unwrap();
         assert_eq!(popped3.id(), &job_id3);
+    }
+
+    #[test]
+    fn test_pop_respects_scheduled_at() {
+        let (conn, mgr) = setup();
+        let job_id1 = JobId::new();
+        let job_id2 = JobId::new();
+
+        let now = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_secs() as i64;
+
+        // Job 1: scheduled in the past (should be popped)
+        let c = conn.lock().unwrap();
+        c.execute(
+            "INSERT INTO print_jobs (id, printer_name, document_url, status, retry_count, created_at, updated_at, scheduled_at)
+             VALUES (?1, 'HP', 'https://s3.example.com/doc.pdf', 'Queued', 0, ?2, ?2, ?3)",
+            rusqlite::params![job_id1.to_string(), now, now - 10],
+        )
+        .unwrap();
+
+        // Job 2: scheduled in the future (should NOT be popped)
+        c.execute(
+            "INSERT INTO print_jobs (id, printer_name, document_url, status, retry_count, created_at, updated_at, scheduled_at)
+             VALUES (?1, 'HP', 'https://s3.example.com/doc.pdf', 'Queued', 0, ?2, ?2, ?3)",
+            rusqlite::params![job_id2.to_string(), now, now + 100],
+        )
+        .unwrap();
+        drop(c);
+
+        // Pop should return job1 only
+        let popped = mgr.pop().unwrap();
+        assert!(popped.is_some());
+        assert_eq!(popped.unwrap().id(), &job_id1);
+
+        // Second pop should return None (job2 not ready yet)
+        let popped2 = mgr.pop().unwrap();
+        assert!(popped2.is_none());
+    }
+
+    #[test]
+    fn test_requeue_with_delay() {
+        let (conn, mgr) = setup();
+        let job_id = JobId::new();
+        insert_job(&conn, &job_id.to_string(), "Failed");
+
+        let before = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_secs() as i64;
+
+        // Requeue with 10s delay
+        let result = mgr.requeue(&job_id, 10);
+        assert!(result.is_ok());
+
+        let after = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_secs() as i64;
+
+        // Verify scheduled_at is set to now + 10s
+        let c = conn.lock().unwrap();
+        let (status, scheduled_at): (String, i64) = c
+            .query_row(
+                "SELECT status, scheduled_at FROM print_jobs WHERE id = ?1",
+                [job_id.to_string()],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+            .unwrap();
+
+        assert_eq!(status, "Queued");
+        assert!(scheduled_at >= before + 10);
+        assert!(scheduled_at <= after + 10);
     }
 }

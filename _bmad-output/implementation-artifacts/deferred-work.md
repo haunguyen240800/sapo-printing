@@ -102,7 +102,53 @@
 - `created_at`/`updated_at` không có DEFAULT hoặc trigger — pre-existing pattern từ MIGRATION_1/MIGRATION_2, client phải cung cấp đúng timestamp.
 - AC-6 cargo test/build/clippy/fmt không verifiable từ diff — Tauri native build constraint đã biết từ các story trước.
 
+## Deferred from: code review of story 3-6-implement-auto-retry-logic-with-exponential-backoff (2026-06-24)
+
+- **Race condition on job reload from DB** [queue_worker.rs:1701-1704] — If concurrent workers modify job between `process_job` failure and `find_by_id`, loaded job may be stale. Unlikely in single-worker (Story 3.5) but will break with concurrent workers. Defer to Story 4.x (concurrent workers).
+- **Race condition in requeue during shutdown** [queue_worker.rs:1920-1923] — `requeue()` may succeed but worker stops before processing, leaving job stuck in Queued state. Defer to Story 3.7 or 4.x (graceful shutdown improvements).
+- **Mutex poison recovery unsafe** [queue_worker.rs:1282, 1639, 1656] — `unwrap_or_else(|p| p.into_inner())` recovers poisoned mutex without validating data consistency. If panic occurred mid-write, data may be corrupt. Defer - requires architectural decision on panic recovery strategy.
+- **Test timing assertions flaky** [retry_integration_test.rs:4078-4082] — Fixed threshold `elapsed <= 45s` vulnerable to slow CI. May cause spurious failures. Defer to test infrastructure improvements (not story 3.6 scope).
+- **No persist after retry() fails** [queue_worker.rs:1936-1952] — When `retry()` fails (MaxRetryExceeded), error is printed but job not persisted. Job already FAILED in memory, should persist to avoid orphaned state. Defer - minor consistency issue, low impact.
+- **No validation for out-of-range retry_count** [retry_logic.rs:2920-2925] — `calculate_backoff_delay()` accepts u32 but only handles 0-2, falls through to `_ => 20` with comment "should never reach here". Defer - add debug_assert or explicit documentation (low priority).
+- **No warning for suspicious retry_count in pop()** [sqlite_queue_manager.rs:69-96] — DB corruption could allow job with retry_count >= 3 in Queued state. Current behavior safe (fails permanently) but no warning logged. Defer - defensive programming, not critical.
+- **String-based error classification cannot use typed is_retryable()** [queue_worker.rs:1897-1901] — `handle_job_failure()` receives `error: String` (formatted from InfrastructureError), cannot use typed `is_retryable(&InfrastructureError)`. Requires refactoring `process_job()` return type from `Result<(), String>` to `Result<(), InfrastructureError>`. Defer - architectural change affecting error propagation throughout worker pipeline.
+- **Spurious PrintJobFailed events before retry** [queue_worker.rs:1887-1894] — Domain constraint: `job.retry()` requires job in FAILED state, so must call `job.fail()` first. External systems see "failed" event even when job will retry. Defer - requires domain model change to allow retry from non-FAILED states OR introduce "transient failure" vs "permanent failure" events.
+
+## Deferred from: code review of story 3-5-implement-queue-worker-with-batch-processing (2026-06-24)
+
+- **Failed jobs stuck in intermediate state** — When any pipeline step fails, process_job returns Err and the worker logs + continues. Job remains in last successful status (Queued/Downloaded/SubmittedToQueue/Printing) permanently. No PrintJobFailed event emitted. Spec defers to Story 3.6 (auto-retry with exponential backoff).
+- **rendered_data memory pressure** — renderer.render() returns Vec<u8> holding full rendered bitmap (~26MB per A4 page at 300 DPI). Held in memory across multiple state transitions and DB writes until print completes. For large documents + slow printers, memory is pinned indefinitely. MVP acceptable with sequential single-threaded processing.
+- **pop() error infinite retry with no backoff** — When queue_manager.pop() returns Err, worker logs, sleeps 500ms, retries indefinitely. No exponential backoff, no circuit breaker, no max retry count. Persistent DB issues cause endless stderr spam.
+- **Integration tests thread::sleep polling flakiness** — Tests poll with fixed 500ms intervals and total budgets of 5s/10s. Under heavy CI load, OS scheduling delays may cause timeouts. No diagnostic output on failure.
+- **AC-10 cargo clippy not clean** — Pre-existing clippy warnings in print_job_repository.rs and app_context.rs. Not caused by queue worker changes but blocks project-wide `cargo clippy -- -D warnings`.
+- **start() after failed stop() inconsistent state** — If stop() fails (thread panicked), running flag is false but shared Arc references may point to poisoned/inconsistent state (e.g., SQLite Mutex). A subsequent start() succeeds but inherits broken state.
+
 ## Deferred from: code review of story 3-3-implement-createprintjobusecase-with-event-publishing (2026-06-24)
 
 - **AC-4 Tauri Command Implementation Pattern Deviates from Spec** [src-tauri/src/interface/tauri/commands/print_job.rs, src-tauri/src/main.rs:2163-2172] — Spec shows `#[tauri::command]` on function in commands module, but implementation uses helper in lib crate + wrapper in main.rs. Auto-skill documents this is correct pattern for lib+bin crate split. Architectural improvement over spec.
 - **AppContextState Location Differs from Spec Guidance** [src-tauri/src/lib.rs:2120-2140] — Spec indicates struct should be in main.rs but implementation moved to lib.rs as public struct. Required for crate visibility across lib+bin boundary per auto-skill pattern.
+
+## Deferred from: code review of story 3-6-implement-auto-retry-logic (fresh review 2026-06-24)
+
+- **AC-3 Deviation - Job marked FAILED before retry decision** [queue_worker.rs:489-493] — Domain constraint requires `job.retry()` to be called on FAILED job, so must call `job.fail()` first. Event stream shows false "failed" events for transient errors that successfully retry. Defer - requires domain architecture change to allow retry from non-FAILED states OR introduce separate "transient failure" vs "permanent failure" events.
+- **Migration UPDATE may hang on table lock** [migrations.rs:34] — `UPDATE print_jobs SET scheduled_at = updated_at WHERE scheduled_at IS NULL` may block indefinitely if table locked during concurrent writes. No timeout or retry logic. Defer - pre-existing migration pattern used across all migrations, should be addressed project-wide.
+
+## Deferred from: code review of story 3-7-implement-job-cancellation-use-case (2026-06-24)
+
+- **Race condition on concurrent job mutations** [queue_worker.rs:451-463] — If concurrent workers modify job between process_job failure and find_by_id, loaded job may be stale. Story 3.5 issue, documented as "will break with concurrent workers". Defer to Story 4.x.
+- **Mutex poison recovery unsafe** [queue_worker.rs:1282, 1639, 1656] — unwrap_or_else(|p| p.into_inner()) recovers poisoned mutex without validating data consistency. If panic occurred mid-write, data may be corrupt. Story 3.5 architectural decision needed.
+- **Failed jobs orphaned in intermediate state** — When pipeline step fails, job remains in last successful status (Queued/Downloaded/Printing) permanently. Resolved by Story 3.6 auto-retry logic.
+- **Requeue during shutdown leaves job stuck** [queue_worker.rs:1920-1923] — requeue() may succeed but worker stops before processing. Story 3.6 issue, requires graceful shutdown improvements.
+- **pop() error infinite retry with no backoff** — When queue_manager.pop() returns Err, worker retries indefinitely with 500ms sleep. Story 3.5 issue, needs circuit breaker.
+- **Retry failure not persisted** [queue_worker.rs:1936-1952] — When retry() fails (MaxRetryExceeded), job is FAILED in memory but not persisted. Story 3.6 consistency issue.
+- **String-based error classification loses type safety** [queue_worker.rs:1897-1901] — handle_job_failure receives error: String, cannot use typed is_retryable(). Story 3.6 architectural change needed.
+- **Spurious PrintJobFailed events before retry** [queue_worker.rs:1887-1894] — Domain constraint: job.retry() requires FAILED state, so job.fail() must be called first. External systems see false failures. Story 3.6 domain model change needed.
+- **rendered_data memory pressure** — renderer.render() returns Vec<u8> (~26MB per A4 page) held in memory across state transitions. Story 3.5 acceptable for MVP with sequential processing.
+- **Migration UPDATE may hang on table lock** [migrations.rs:180] — UPDATE print_jobs WHERE scheduled_at IS NULL has no timeout. Pre-existing migration pattern, should be addressed project-wide.
+- **start() after failed stop() inherits broken state** — If stop() fails (thread panic), running flag is false but Arc refs may be poisoned. Story 3.5 issue.
+- **No validation for out-of-range retry_count** [retry_logic.rs:1654-1660] — calculate_backoff_delay accepts u32 but only handles 0-2, falls through to _ => 20. Story 3.6 low priority defensive check.
+- **No warning for suspicious retry_count in pop()** — DB corruption could allow retry_count >= 3 in Queued state. Story 3.6 defensive programming, behavior safe but no warning.
+- **Test timing assertions flaky** [retry_integration_test.rs:4078-4082] — Fixed threshold elapsed <= 45s vulnerable to slow CI. Test infrastructure improvement needed.
+- **Integration tests fixed sleep polling** — Tests poll with 500ms intervals and 5s/10s budgets. Heavy CI load may cause timeouts. Test infrastructure improvement needed.
+- **requeue success but persist fails rollback** [queue_worker.rs:665-672] — If queue_manager.requeue succeeds but persist_and_publish fails, job requeued in DB but memory state FAILED. Story 3.6 rollback logic exists.
+- **persist fails twice after MaxRetryExceeded** [queue_worker.rs:693-710] — When retry() returns MaxRetryExceeded and persist fails twice, failed job state may be lost. Story 3.6 retry logic present.

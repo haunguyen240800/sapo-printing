@@ -7,8 +7,9 @@
 use sapo_printer::infrastructure::database::{
     run_migrations, DbPool, SqliteEventStore, SqlitePrintJobRepository, SqlitePrinterRepository,
 };
+use sapo_printer::infrastructure::downloader::ReqwestDownloader;
 use sapo_printer::infrastructure::printer::PrinterManager;
-use sapo_printer::infrastructure::queue::SqliteQueueManager;
+use sapo_printer::infrastructure::queue::{QueueWorker, SqliteQueueManager};
 use sapo_printer::infrastructure::secrets::SecretManager;
 use sapo_printer::interface::tauri::dtos::printer_dto::{
     PrinterConfigDto, PrinterDto, PrinterStatusDto,
@@ -16,6 +17,7 @@ use sapo_printer::interface::tauri::dtos::printer_dto::{
 use sapo_printer::shared::event_bus::{EventBus, InMemoryEventBus};
 use sapo_printer::AppContextState;
 use std::sync::Arc;
+use tauri::Manager;
 
 /// Tauri command: create print job(s) via CreatePrintJobUseCase.
 #[tauri::command]
@@ -24,6 +26,18 @@ fn create_print_job(
     ctx: tauri::State<'_, AppContextState>,
 ) -> Result<Vec<String>, String> {
     sapo_printer::interface::tauri::commands::print_job::execute_create_print_job(
+        payload,
+        ctx.inner(),
+    )
+}
+
+/// Tauri command: cancel a print job via CancelPrintJobUseCase.
+#[tauri::command]
+fn cancel_print_job(
+    payload: sapo_printer::interface::tauri::commands::print_job::CancelJobPayload,
+    ctx: tauri::State<'_, AppContextState>,
+) -> Result<(), String> {
+    sapo_printer::interface::tauri::commands::print_job::execute_cancel_print_job(
         payload,
         ctx.inner(),
     )
@@ -274,7 +288,40 @@ fn main() {
         }
     });
 
-    // 5. Start Tauri — AppContext registered as managed state
+    // 5. Initialize QueueWorker dependencies
+    let downloader = Arc::new(ReqwestDownloader::new());
+
+    // For MVP: Use PdfiumRenderer directly (300 DPI default)
+    // Future: Integrate StrategySelector per-job based on printer capabilities
+    let renderer: Arc<dyn sapo_printer::infrastructure::renderer::DocumentRenderer> = Arc::new(
+        sapo_printer::infrastructure::renderer::PdfiumRenderer::new(300),
+    );
+
+    // printer_manager implements PrinterManager, we need PrinterEngine
+    #[cfg(target_os = "windows")]
+    let printer_engine: Arc<dyn sapo_printer::infrastructure::printer::PrinterEngine> =
+        Arc::new(sapo_printer::infrastructure::printer::windows::WindowsPrinterEngine::new());
+
+    #[cfg(not(target_os = "windows"))]
+    let printer_engine: Arc<dyn sapo_printer::infrastructure::printer::PrinterEngine> =
+        Arc::new(sapo_printer::infrastructure::printer::cups::CupsPrinterEngine::new());
+
+    // 6. Create and start QueueWorker
+    let worker = Arc::new(QueueWorker::new(
+        Arc::clone(&queue_manager),
+        job_repo.clone() as Arc<dyn sapo_printer::domain::print_job::PrintJobRepository>,
+        Arc::clone(&event_store),
+        Arc::clone(&event_bus),
+        downloader,
+        renderer,
+        printer_engine,
+    ));
+
+    worker.start().expect("Failed to start queue worker");
+    println!("Queue worker started successfully");
+
+    // 7. Start Tauri — AppContext registered as managed state
+    let worker_for_shutdown = Arc::clone(&worker);
     tauri::Builder::default()
         .manage(AppContextState {
             printer_repo,
@@ -284,17 +331,32 @@ fn main() {
             event_store,
             event_bus,
             queue_manager,
+            queue_worker: worker,
         })
         .invoke_handler(tauri::generate_handler![
             list_printers,
             save_printer_config,
             get_printer_status,
             create_print_job,
+            cancel_print_job,
         ])
+        .on_window_event(|window, event| {
+            if let tauri::WindowEvent::CloseRequested { .. } = event {
+                let state = window.state::<AppContextState>();
+                if let Err(e) = state.queue_worker.stop() {
+                    eprintln!("Warning: Failed to stop queue worker gracefully: {}", e);
+                } else {
+                    println!("Queue worker stopped gracefully");
+                }
+            }
+        })
         .run(tauri::generate_context!())
         .unwrap_or_else(|e| {
             eprintln!("Failed to start Tauri application:");
             eprintln!("  {e}");
             std::process::exit(1);
         });
+
+    // Ensure worker is stopped if Tauri exits normally
+    let _ = worker_for_shutdown.stop();
 }
