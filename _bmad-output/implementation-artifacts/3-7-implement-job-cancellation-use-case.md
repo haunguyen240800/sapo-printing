@@ -4,7 +4,7 @@ baseline_commit: fed70c08b48ff8fdedd9fdfb021fdc5d3954ac5b
 
 # Story 3.7: Implement Job Cancellation Use Case
 
-Status: review
+Status: done
 
 ## Story
 

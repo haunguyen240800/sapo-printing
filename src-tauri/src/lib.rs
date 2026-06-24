@@ -29,4 +29,5 @@ pub struct AppContextState {
     pub event_bus: Arc<dyn shared::event_bus::EventBus>,
     pub queue_manager: Arc<dyn infrastructure::queue::QueueManager>,
     pub queue_worker: Arc<infrastructure::queue::QueueWorker>,
+    pub app_handle: tauri::AppHandle,
 }

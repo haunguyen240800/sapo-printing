@@ -106,6 +106,8 @@ impl QueueManager for SqliteQueueManager {
                     retry_count as u32,
                     document_url,
                     printer_name,
+                    0, // created_at not needed for queue pop
+                    None, // error_message not needed for queue pop
                 ))
             });
 

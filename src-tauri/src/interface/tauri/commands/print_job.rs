@@ -1,9 +1,13 @@
 use crate::application::dto::cancel_job_request::CancelJobRequest;
 use crate::application::dto::create_job_request::CreateJobRequest;
+use crate::application::dto::{JobDto, JobFilterDto};
 use crate::application::use_cases::cancel_print_job::CancelPrintJobUseCase;
 use crate::application::use_cases::create_print_job::CreatePrintJobUseCase;
 use crate::application::use_cases::errors::ApplicationError;
+use crate::application::use_cases::list_jobs::ListJobsUseCase;
+use crate::domain::print_job::value_objects::JobId;
 use crate::AppContextState;
+use std::str::FromStr;
 
 /// Payload received from the UI for creating a print job.
 #[derive(serde::Deserialize)]
@@ -86,6 +90,34 @@ pub fn execute_cancel_print_job(
         }
         _ => format!("{}", e),
     })
+}
+
+/// Execute the list jobs use case with filtering.
+/// Called from the `list_jobs` Tauri command in `main.rs`.
+pub fn execute_list_jobs(
+    filter: JobFilterDto,
+    ctx: &AppContextState,
+) -> Result<Vec<JobDto>, String> {
+    let use_case = ListJobsUseCase::new(ctx.job_repo.clone());
+
+    use_case
+        .execute(filter)
+        .map_err(|e| format!("Lấy danh sách job thất bại: {:?}", e))
+}
+
+/// Execute get job status by ID.
+/// Called from the `get_job_status` Tauri command in `main.rs`.
+pub fn execute_get_job_status(job_id: String, ctx: &AppContextState) -> Result<JobDto, String> {
+    let job_id = JobId::from_str(&job_id)
+        .map_err(|_| format!("Job ID không hợp lệ: {}", job_id))?;
+
+    let job = ctx
+        .job_repo
+        .find_by_id(&job_id)
+        .map_err(|e| format!("Lỗi khi lấy job: {:?}", e))?
+        .ok_or_else(|| format!("Không tìm thấy job: {}", job_id))?;
+
+    Ok(job.into())
 }
 
 #[cfg(test)]

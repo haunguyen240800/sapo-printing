@@ -1,4 +1,5 @@
 use serde::{Deserialize, Serialize};
+use std::time::{SystemTime, UNIX_EPOCH};
 
 use super::errors::DomainError;
 use super::events::*;
@@ -20,6 +21,8 @@ pub struct PrintJob {
     retry_count: u32,
     pdf_url: String,
     printer_name: String,
+    created_at: i64,
+    error_message: Option<String>,
     #[serde(skip)]
     events: Vec<Box<dyn DomainEvent>>,
 }
@@ -32,6 +35,8 @@ impl Clone for PrintJob {
             retry_count: self.retry_count,
             pdf_url: self.pdf_url.clone(),
             printer_name: self.printer_name.clone(),
+            created_at: self.created_at,
+            error_message: self.error_message.clone(),
             events: Vec::new(),
         }
     }
@@ -42,12 +47,18 @@ impl PrintJob {
     /// Emits a PrintJobCreated event.
     pub fn new(pdf_url: String, printer_name: String) -> Self {
         let id = JobId::new();
+        let created_at = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_secs() as i64;
         let mut job = Self {
             id: id.clone(),
             status: PrintStatus::Pending,
             retry_count: 0,
             pdf_url,
             printer_name,
+            created_at,
+            error_message: None,
             events: Vec::new(),
         };
         job.push_event(Box::new(PrintJobCreated::new(
@@ -59,13 +70,14 @@ impl PrintJob {
     }
 
     /// Reconstructs a PrintJob from persisted state (no events emitted).
-    /// Fields created_at/updated_at/completed_at are infrastructure-only — not stored in aggregate.
     pub fn reconstruct(
         id: JobId,
         status: PrintStatus,
         retry_count: u32,
         pdf_url: String,
         printer_name: String,
+        created_at: i64,
+        error_message: Option<String>,
     ) -> Self {
         Self {
             id,
@@ -73,6 +85,8 @@ impl PrintJob {
             retry_count,
             pdf_url,
             printer_name,
+            created_at,
+            error_message,
             events: Vec::new(),
         }
     }
@@ -158,6 +172,7 @@ impl PrintJob {
             });
         }
         self.status = PrintStatus::Failed;
+        self.error_message = Some(reason.clone());
         self.push_event(Box::new(PrintJobFailed::new(
             self.id.clone(),
             reason,
@@ -179,6 +194,7 @@ impl PrintJob {
         }
         self.retry_count += 1;
         self.status = PrintStatus::Queued;
+        self.error_message = None;
         self.push_event(Box::new(PrintJobQueued::new(self.id.clone())));
         Ok(())
     }
@@ -223,6 +239,14 @@ impl PrintJob {
 
     pub fn printer_name(&self) -> &str {
         &self.printer_name
+    }
+
+    pub fn created_at(&self) -> i64 {
+        self.created_at
+    }
+
+    pub fn error_message(&self) -> Option<&String> {
+        self.error_message.as_ref()
     }
 
     pub fn pending_events_count(&self) -> usize {

@@ -1,2 +1,1 @@
-// Event Bus implementation
-// Future: Domain event publishing and subscription
+pub mod tauri_event_bus;

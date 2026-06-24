@@ -84,6 +84,10 @@ CREATE INDEX idx_print_jobs_scheduled ON print_jobs(scheduled_at);
 UPDATE print_jobs SET scheduled_at = updated_at WHERE scheduled_at IS NULL;
 ";
 
+const MIGRATION_6: &str = "
+ALTER TABLE print_jobs ADD COLUMN error_message TEXT;
+";
+
 pub fn run_migrations(conn: &mut Connection) -> Result<(), DatabaseError> {
     let migrations = Migrations::new(vec![
         M::up(MIGRATION_1),
@@ -91,6 +95,7 @@ pub fn run_migrations(conn: &mut Connection) -> Result<(), DatabaseError> {
         M::up(MIGRATION_3),
         M::up(MIGRATION_4),
         M::up(MIGRATION_5),
+        M::up(MIGRATION_6),
     ]);
     migrations
         .to_latest(conn)

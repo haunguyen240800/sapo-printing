@@ -37,7 +37,8 @@
       "Bash(py *)",
       "Skill(bmad-review-adversarial-general)",
       "Bash(volta *)",
-      "Bash(pnpm *)"
+      "Bash(pnpm *)",
+      "Bash(npx *)"
     ]
   },
   "$version": 4

@@ -152,3 +152,10 @@
 - **Integration tests fixed sleep polling** — Tests poll with 500ms intervals and 5s/10s budgets. Heavy CI load may cause timeouts. Test infrastructure improvement needed.
 - **requeue success but persist fails rollback** [queue_worker.rs:665-672] — If queue_manager.requeue succeeds but persist_and_publish fails, job requeued in DB but memory state FAILED. Story 3.6 rollback logic exists.
 - **persist fails twice after MaxRetryExceeded** [queue_worker.rs:693-710] — When retry() returns MaxRetryExceeded and persist fails twice, failed job state may be lost. Story 3.6 retry logic present.
+
+## Deferred from: code review of story 3-8-create-print-job-list-ui-with-filters (2026-06-24)
+
+- **D-1: `execute_get_job_status` bypass use case layer** — Truy cập `job_repo.find_by_id()` trực tiếp thay vì qua use case. Architectural inconsistency với các command khác. Cần refactor khi có GetJobStatusUseCase.
+- **D-2: Filter printer_name in-memory thay vì repository** — `result.retain()` filter printer_name sau khi load tất cả jobs. Performance concern khi có nhiều jobs. Cần repository method `find_by_printer_name()`.
+- **D-3: PENDING và QUEUED cùng label "Đang chờ"** — User không phân biệt được 2 trạng thái trên UI. UX improvement, cần label khác nhau.
+- **D-4: Race condition khi thay đổi filter nhanh** — Nhiều `loadJobs()` async chạy song song, response cũ có thể ghi đè response mới. Cần AbortController hoặc request cancellation.

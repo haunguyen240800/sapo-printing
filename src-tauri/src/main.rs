@@ -8,13 +8,14 @@ use sapo_printer::infrastructure::database::{
     run_migrations, DbPool, SqliteEventStore, SqlitePrintJobRepository, SqlitePrinterRepository,
 };
 use sapo_printer::infrastructure::downloader::ReqwestDownloader;
+use sapo_printer::infrastructure::eventbus::tauri_event_bus::TauriEventBus;
 use sapo_printer::infrastructure::printer::PrinterManager;
 use sapo_printer::infrastructure::queue::{QueueWorker, SqliteQueueManager};
 use sapo_printer::infrastructure::secrets::SecretManager;
 use sapo_printer::interface::tauri::dtos::printer_dto::{
     PrinterConfigDto, PrinterDto, PrinterStatusDto,
 };
-use sapo_printer::shared::event_bus::{EventBus, InMemoryEventBus};
+use sapo_printer::shared::event_bus::EventBus;
 use sapo_printer::AppContextState;
 use std::sync::Arc;
 use tauri::Manager;
@@ -41,6 +42,24 @@ fn cancel_print_job(
         payload,
         ctx.inner(),
     )
+}
+
+/// Tauri command: list print jobs with filtering.
+#[tauri::command]
+fn list_jobs(
+    filter: sapo_printer::application::dto::JobFilterDto,
+    ctx: tauri::State<'_, AppContextState>,
+) -> Result<Vec<sapo_printer::application::dto::JobDto>, String> {
+    sapo_printer::interface::tauri::commands::print_job::execute_list_jobs(filter, ctx.inner())
+}
+
+/// Tauri command: get job status by ID.
+#[tauri::command]
+fn get_job_status(
+    job_id: String,
+    ctx: tauri::State<'_, AppContextState>,
+) -> Result<sapo_printer::application::dto::JobDto, String> {
+    sapo_printer::interface::tauri::commands::print_job::execute_get_job_status(job_id, ctx.inner())
 }
 
 #[cfg(target_os = "windows")]
@@ -239,99 +258,119 @@ fn main() {
     let db_path_str = db_path.to_str().unwrap_or_else(|| {
         eprintln!("Database path contains non-UTF-8 characters");
         std::process::exit(1);
-    });
+    })
+    .to_string();
 
-    // 2. Initialize database connection
-    let pool = DbPool::new(db_path_str).unwrap_or_else(|e| {
-        eprintln!("Database init failed: {e}");
-        std::process::exit(1);
-    });
-
-    // 3. Run migrations
-    {
-        let mut conn = pool.get();
-        run_migrations(&mut conn).unwrap_or_else(|e| {
-            eprintln!("Migration failed: {e}");
-            std::process::exit(1);
-        });
-    }
-
-    // 4. Initialize AppContext dependencies
-    let printer_repo = Arc::new(SqlitePrinterRepository::new(pool.get_arc()));
-    let job_repo = Arc::new(SqlitePrintJobRepository::new(pool.get_arc()));
-    let event_store = Arc::new(SqliteEventStore::new(pool.get_arc()));
-    let event_bus: Arc<dyn EventBus> = Arc::new(InMemoryEventBus::new());
-    let queue_manager: Arc<dyn sapo_printer::infrastructure::queue::QueueManager> =
-        Arc::new(SqliteQueueManager::new(pool.get_arc()));
-
-    #[cfg(target_os = "windows")]
-    let printer_manager: Arc<dyn PrinterManager> = Arc::new(Win32PrinterManager::new());
-
-    #[cfg(not(target_os = "windows"))]
-    let printer_manager: Arc<dyn PrinterManager> = Arc::new(CupsPrinterManager::new());
-
-    // Initialize secret manager
-    #[cfg(target_os = "windows")]
-    let secret_manager: Arc<dyn SecretManager> = Arc::new(WindowsCredentialManager::new());
-
-    #[cfg(target_os = "macos")]
-    let secret_manager: Arc<dyn SecretManager> = Arc::new(MacOSKeychain::new());
-
-    #[cfg(target_os = "linux")]
-    let secret_manager: Arc<dyn SecretManager> = Arc::new(match LinuxSecretService::new() {
-        Ok(service) => service,
-        Err(e) => {
-            eprintln!("Warning: Secret Service unavailable: {}", e);
-            eprintln!("Device tokens and secrets will not be persisted securely.");
-            eprintln!("Install gnome-keyring or use environment variables for secrets.");
-            std::process::exit(1);
-        }
-    });
-
-    // 5. Initialize QueueWorker dependencies
-    let downloader = Arc::new(ReqwestDownloader::new());
-
-    // For MVP: Use PdfiumRenderer directly (300 DPI default)
-    // Future: Integrate StrategySelector per-job based on printer capabilities
-    let renderer: Arc<dyn sapo_printer::infrastructure::renderer::DocumentRenderer> = Arc::new(
-        sapo_printer::infrastructure::renderer::PdfiumRenderer::new(300),
-    );
-
-    // printer_manager implements PrinterManager, we need PrinterEngine
-    #[cfg(target_os = "windows")]
-    let printer_engine: Arc<dyn sapo_printer::infrastructure::printer::PrinterEngine> =
-        Arc::new(sapo_printer::infrastructure::printer::windows::WindowsPrinterEngine::new());
-
-    #[cfg(not(target_os = "windows"))]
-    let printer_engine: Arc<dyn sapo_printer::infrastructure::printer::PrinterEngine> =
-        Arc::new(sapo_printer::infrastructure::printer::cups::CupsPrinterEngine::new());
-
-    // 6. Create and start QueueWorker
-    let worker = Arc::new(QueueWorker::new(
-        Arc::clone(&queue_manager),
-        job_repo.clone() as Arc<dyn sapo_printer::domain::print_job::PrintJobRepository>,
-        Arc::clone(&event_store),
-        Arc::clone(&event_bus),
-        downloader,
-        renderer,
-        printer_engine,
-    ));
-
-    worker.start().expect("Failed to start queue worker");
-    println!("Queue worker started successfully");
-
-    // 7. Start Tauri — AppContext registered as managed state
-    let worker_for_shutdown = Arc::clone(&worker);
+    // 2. Start Tauri — all dependency init moved into .setup() to access AppHandle
     tauri::Builder::default()
-        .manage(AppContextState {
-            printer_repo,
-            printer_manager,
-            _secret_manager: secret_manager,
-            job_repo,
-            event_store,
-            event_bus,
-            queue_manager,
-            queue_worker: worker,
+        .setup(move |app| {
+            let app_handle = app.handle().clone();
+
+            // Initialize database connection
+            let pool = DbPool::new(&db_path_str).unwrap_or_else(|e| {
+                eprintln!("Database init failed: {e}");
+                std::process::exit(1);
+            });
+
+            // Run migrations
+            {
+                let mut conn = pool.get();
+                run_migrations(&mut conn).unwrap_or_else(|e| {
+                    eprintln!("Migration failed: {e}");
+                    std::process::exit(1);
+                });
+            }
+
+            // Initialize AppContext dependencies
+            let printer_repo = Arc::new(SqlitePrinterRepository::new(pool.get_arc()));
+            let job_repo = Arc::new(SqlitePrintJobRepository::new(pool.get_arc()));
+            let event_store = Arc::new(SqliteEventStore::new(pool.get_arc()));
+            let event_bus: Arc<dyn EventBus> =
+                Arc::new(TauriEventBus::new(app_handle.clone()));
+            let queue_manager: Arc<dyn sapo_printer::infrastructure::queue::QueueManager> =
+                Arc::new(SqliteQueueManager::new(pool.get_arc()));
+
+            #[cfg(target_os = "windows")]
+            let printer_manager: Arc<dyn PrinterManager> = Arc::new(Win32PrinterManager::new());
+
+            #[cfg(not(target_os = "windows"))]
+            let printer_manager: Arc<dyn PrinterManager> = Arc::new(CupsPrinterManager::new());
+
+            // Initialize secret manager
+            #[cfg(target_os = "windows")]
+            let secret_manager: Arc<dyn SecretManager> =
+                Arc::new(WindowsCredentialManager::new());
+
+            #[cfg(target_os = "macos")]
+            let secret_manager: Arc<dyn SecretManager> = Arc::new(MacOSKeychain::new());
+
+            #[cfg(target_os = "linux")]
+            let secret_manager: Arc<dyn SecretManager> = Arc::new(
+                match LinuxSecretService::new() {
+                    Ok(service) => service,
+                    Err(e) => {
+                        eprintln!("Warning: Secret Service unavailable: {}", e);
+                        eprintln!(
+                            "Device tokens and secrets will not be persisted securely."
+                        );
+                        eprintln!(
+                            "Install gnome-keyring or use environment variables for secrets."
+                        );
+                        std::process::exit(1);
+                    }
+                },
+            );
+
+            // Initialize QueueWorker dependencies
+            let downloader = Arc::new(ReqwestDownloader::new());
+
+            let renderer: Arc<
+                dyn sapo_printer::infrastructure::renderer::DocumentRenderer,
+            > = Arc::new(sapo_printer::infrastructure::renderer::PdfiumRenderer::new(300));
+
+            #[cfg(target_os = "windows")]
+            let printer_engine: Arc<
+                dyn sapo_printer::infrastructure::printer::PrinterEngine,
+            > = Arc::new(
+                sapo_printer::infrastructure::printer::windows::WindowsPrinterEngine::new(),
+            );
+
+            #[cfg(not(target_os = "windows"))]
+            let printer_engine: Arc<
+                dyn sapo_printer::infrastructure::printer::PrinterEngine,
+            > = Arc::new(
+                sapo_printer::infrastructure::printer::cups::CupsPrinterEngine::new(),
+            );
+
+            // Create and start QueueWorker
+            let worker = Arc::new(QueueWorker::new(
+                Arc::clone(&queue_manager),
+                job_repo.clone()
+                    as Arc<dyn sapo_printer::domain::print_job::PrintJobRepository>,
+                Arc::clone(&event_store),
+                Arc::clone(&event_bus),
+                downloader,
+                renderer,
+                printer_engine,
+            ));
+
+            worker.start().expect("Failed to start queue worker");
+            println!("Queue worker started successfully");
+
+            // Register managed state
+            app.manage(AppContextState {
+                printer_repo,
+                printer_manager,
+                _secret_manager: secret_manager,
+                job_repo,
+                event_store,
+                event_bus,
+                queue_manager,
+                queue_worker: worker,
+                app_handle,
+            });
+
+            Ok(())
         })
         .invoke_handler(tauri::generate_handler![
             list_printers,
@@ -339,6 +378,8 @@ fn main() {
             get_printer_status,
             create_print_job,
             cancel_print_job,
+            list_jobs,
+            get_job_status,
         ])
         .on_window_event(|window, event| {
             if let tauri::WindowEvent::CloseRequested { .. } = event {
@@ -356,7 +397,4 @@ fn main() {
             eprintln!("  {e}");
             std::process::exit(1);
         });
-
-    // Ensure worker is stopped if Tauri exits normally
-    let _ = worker_for_shutdown.stop();
 }

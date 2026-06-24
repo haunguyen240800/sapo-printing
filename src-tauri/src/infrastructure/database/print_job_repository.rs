@@ -35,8 +35,8 @@ impl PrintJobRepository for SqlitePrintJobRepository {
 
         let rows = conn
             .execute(
-                "INSERT INTO print_jobs (id, printer_name, document_url, status, retry_count, created_at, updated_at, completed_at)
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+                "INSERT INTO print_jobs (id, printer_name, document_url, status, retry_count, created_at, updated_at, completed_at, error_message)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
                 rusqlite::params![
                     job.id().to_string(),
                     job.printer_name(),
@@ -46,6 +46,7 @@ impl PrintJobRepository for SqlitePrintJobRepository {
                     now,
                     now,
                     completed_at,
+                    job.error_message(),
                 ],
             )
             .map_err(|e| {
@@ -91,12 +92,13 @@ impl PrintJobRepository for SqlitePrintJobRepository {
 
         let rows = conn
             .execute(
-                "UPDATE print_jobs SET status = ?1, retry_count = ?2, updated_at = ?3, completed_at = ?4 WHERE id = ?5",
+                "UPDATE print_jobs SET status = ?1, retry_count = ?2, updated_at = ?3, completed_at = ?4, error_message = ?5 WHERE id = ?6",
                 rusqlite::params![
                     status_to_string(job.status()),
                     job.retry_count() as i64,
                     now,
                     completed_at,
+                    job.error_message(),
                     job.id().to_string(),
                 ],
             )
@@ -118,7 +120,7 @@ impl PrintJobRepository for SqlitePrintJobRepository {
 
         let mut stmt = conn
             .prepare(
-                "SELECT id, printer_name, document_url, status, retry_count
+                "SELECT id, printer_name, document_url, status, retry_count, created_at, error_message
                  FROM print_jobs WHERE id = ?1",
             )
             .map_err(|e| DomainError::RepositoryError {
@@ -141,7 +143,7 @@ impl PrintJobRepository for SqlitePrintJobRepository {
 
         let mut stmt = conn
             .prepare(
-                "SELECT id, printer_name, document_url, status, retry_count
+                "SELECT id, printer_name, document_url, status, retry_count, created_at, error_message
                  FROM print_jobs WHERE status = ?1",
             )
             .map_err(|e| DomainError::RepositoryError {
@@ -169,7 +171,7 @@ impl PrintJobRepository for SqlitePrintJobRepository {
 
         let mut stmt = conn
             .prepare(
-                "SELECT id, printer_name, document_url, status, retry_count
+                "SELECT id, printer_name, document_url, status, retry_count, created_at, error_message
                  FROM print_jobs",
             )
             .map_err(|e| DomainError::RepositoryError {
@@ -200,6 +202,8 @@ fn row_to_print_job(row: &rusqlite::Row<'_>) -> Result<PrintJob, rusqlite::Error
     let document_url: String = row.get(2)?;
     let status_str: String = row.get(3)?;
     let retry_count: i64 = row.get(4)?;
+    let created_at: i64 = row.get(5)?;
+    let error_message: Option<String> = row.get(6)?;
 
     let id: JobId = id_str.parse().map_err(|e: uuid::Error| {
         rusqlite::Error::InvalidColumnType(
@@ -223,6 +227,8 @@ fn row_to_print_job(row: &rusqlite::Row<'_>) -> Result<PrintJob, rusqlite::Error
         retry_count as u32,
         document_url,
         printer_name,
+        created_at,
+        error_message,
     ))
 }
 
