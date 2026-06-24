@@ -299,6 +299,18 @@ Register trong `tests/integration/mod.rs`.
 - [ ] Task 7: Final verification (AC-8)
   - [ ] `cargo test` | `cargo check` | `cargo clippy` | `cargo fmt`
 
+### Review Findings
+
+**Note:** Edge Case Hunter và Blind Hunter layers không trả về kết quả. Review dựa trên Acceptance Auditor layer only.
+
+**Patch:**
+- [x] [Review][Patch] AC-5 Violation: Unit Tests Use Real SQLite Instead of Mocks — FIXED: Refactored all 8 unit tests to use mock pattern (MockJobRepo, MockEventBus, MockPrinterRepo). Only minimal in-memory SQLite for EventStore due to UseCase signature constraint. All tests passing. [src-tauri/src/application/use_cases/create_print_job.rs:98-505]
+- [x] [Review][Patch] Missing Import Documentation in Implementation — FIXED: Added inline comment explaining PrinterName::new() wrapping requirement [src-tauri/src/application/use_cases/create_print_job.rs:9]
+
+**Deferred:**
+- [x] [Review][Defer] AC-4 Violation: Tauri Command Implementation Pattern Deviates from Spec [src-tauri/src/interface/tauri/commands/print_job.rs, src-tauri/src/main.rs:2163-2172] — deferred, architectural improvement documented in auto-skill
+- [x] [Review][Defer] AppContextState Location Differs from Spec Guidance [src-tauri/src/lib.rs:2120-2140] — deferred, architectural requirement for lib+bin crate split
+
 ## Dev Notes
 
 ### File Structure

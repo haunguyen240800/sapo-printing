@@ -16,6 +16,7 @@ mod secrets {
 mod create_print_job_integration_test;
 mod downloader_integration_test;
 mod migration_integration_test;
+mod queue_manager_integration_test;
 mod renderer_integration_test;
 mod repository_integration_test;
 mod temp_file_integration_test;

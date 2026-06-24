@@ -8,6 +8,7 @@ use sapo_printer::infrastructure::database::{
     run_migrations, DbPool, SqliteEventStore, SqlitePrintJobRepository, SqlitePrinterRepository,
 };
 use sapo_printer::infrastructure::printer::PrinterManager;
+use sapo_printer::infrastructure::queue::SqliteQueueManager;
 use sapo_printer::infrastructure::secrets::SecretManager;
 use sapo_printer::interface::tauri::dtos::printer_dto::{
     PrinterConfigDto, PrinterDto, PrinterStatusDto,
@@ -246,6 +247,8 @@ fn main() {
     let job_repo = Arc::new(SqlitePrintJobRepository::new(pool.get_arc()));
     let event_store = Arc::new(SqliteEventStore::new(pool.get_arc()));
     let event_bus: Arc<dyn EventBus> = Arc::new(InMemoryEventBus::new());
+    let queue_manager: Arc<dyn sapo_printer::infrastructure::queue::QueueManager> =
+        Arc::new(SqliteQueueManager::new(pool.get_arc()));
 
     #[cfg(target_os = "windows")]
     let printer_manager: Arc<dyn PrinterManager> = Arc::new(Win32PrinterManager::new());
@@ -271,9 +274,6 @@ fn main() {
         }
     });
 
-    // TODO: Wire job_repo and event_bus when those are implemented
-    // For now, we'll create a minimal AppContext structure inline
-
     // 5. Start Tauri — AppContext registered as managed state
     tauri::Builder::default()
         .manage(AppContextState {
@@ -283,6 +283,7 @@ fn main() {
             job_repo,
             event_store,
             event_bus,
+            queue_manager,
         })
         .invoke_handler(tauri::generate_handler![
             list_printers,

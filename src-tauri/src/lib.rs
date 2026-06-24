@@ -27,4 +27,5 @@ pub struct AppContextState {
     pub job_repo: Arc<dyn domain::print_job::PrintJobRepository>,
     pub event_store: Arc<infrastructure::database::SqliteEventStore>,
     pub event_bus: Arc<dyn shared::event_bus::EventBus>,
+    pub queue_manager: Arc<dyn infrastructure::queue::QueueManager>,
 }

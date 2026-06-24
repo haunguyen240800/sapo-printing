@@ -101,3 +101,8 @@
 
 - `created_at`/`updated_at` không có DEFAULT hoặc trigger — pre-existing pattern từ MIGRATION_1/MIGRATION_2, client phải cung cấp đúng timestamp.
 - AC-6 cargo test/build/clippy/fmt không verifiable từ diff — Tauri native build constraint đã biết từ các story trước.
+
+## Deferred from: code review of story 3-3-implement-createprintjobusecase-with-event-publishing (2026-06-24)
+
+- **AC-4 Tauri Command Implementation Pattern Deviates from Spec** [src-tauri/src/interface/tauri/commands/print_job.rs, src-tauri/src/main.rs:2163-2172] — Spec shows `#[tauri::command]` on function in commands module, but implementation uses helper in lib crate + wrapper in main.rs. Auto-skill documents this is correct pattern for lib+bin crate split. Architectural improvement over spec.
+- **AppContextState Location Differs from Spec Guidance** [src-tauri/src/lib.rs:2120-2140] — Spec indicates struct should be in main.rs but implementation moved to lib.rs as public struct. Required for crate visibility across lib+bin boundary per auto-skill pattern.

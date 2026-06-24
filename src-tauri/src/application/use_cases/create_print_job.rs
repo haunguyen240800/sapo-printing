@@ -6,6 +6,7 @@ use crate::domain::print_job::aggregate::PrintJob;
 use crate::domain::print_job::repository::PrintJobRepository;
 use crate::domain::print_job::value_objects::JobId;
 use crate::domain::printer::repository::PrinterRepository;
+// PrinterName is a value object wrapping String - find_by_name(&PrinterName) requires this wrapper
 use crate::domain::printer::value_objects::{PrinterName, PrinterStatus};
 use crate::infrastructure::database::SqliteEventStore;
 use crate::shared::event_bus::EventBus;
@@ -98,58 +99,179 @@ impl CreatePrintJobUseCase {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::infrastructure::database::migrations::run_migrations;
-    use rusqlite::Connection;
+    use crate::domain::print_job::errors::DomainError;
+    use crate::domain::print_job::events::DomainEvent;
+    use crate::domain::printer::aggregate::Printer;
+    use crate::domain::printer::errors::PrinterDomainError;
+    use crate::domain::printer::value_objects::{PrinterName, PrinterType};
+    use crate::shared::event_bus::EventBusError;
+    use std::sync::atomic::{AtomicUsize, Ordering};
     use std::sync::Mutex;
 
-    /// Seed a printer with `Online` status directly via the connection.
-    fn setup_online_printer(conn: &Arc<Mutex<Connection>>, name: &str) {
-        let c = conn.lock().unwrap_or_else(|p| p.into_inner());
-        let now = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap()
-            .as_secs() as i64;
-        c.execute(
-            "INSERT INTO printer_configs (printer_name, device_id, printer_type, status, created_at, updated_at) \
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
-            rusqlite::params![name, name, "Local", "Online", now, now],
-        )
-        .unwrap();
+    // ── Mock PrintJobRepository ──
+    struct MockJobRepo {
+        saved_count: Arc<Mutex<usize>>,
     }
 
-    fn make_use_case_with_online_printer(
-        printer_name: &str,
-    ) -> (CreatePrintJobUseCase, Arc<Mutex<Connection>>) {
-        let mut conn = Connection::open_in_memory().unwrap();
-        run_migrations(&mut conn).unwrap();
-        let arc_conn = Arc::new(Mutex::new(conn));
+    impl MockJobRepo {
+        fn new() -> Self {
+            Self {
+                saved_count: Arc::new(Mutex::new(0)),
+            }
+        }
 
-        // Seed online printer
-        setup_online_printer(&arc_conn, printer_name);
+        fn count(&self) -> usize {
+            *self.saved_count.lock().unwrap()
+        }
+    }
 
-        let job_repo: Arc<dyn PrintJobRepository> = Arc::new(
-            crate::infrastructure::database::SqlitePrintJobRepository::new(arc_conn.clone()),
-        );
-        let event_store = Arc::new(SqliteEventStore::new(arc_conn.clone()));
-        let event_bus: Arc<dyn EventBus> =
-            Arc::new(crate::shared::event_bus::InMemoryEventBus::new());
-        let printer_repo: Arc<dyn PrinterRepository> = Arc::new(
-            crate::infrastructure::database::SqlitePrinterRepository::new(arc_conn.clone()),
-        );
+    impl PrintJobRepository for MockJobRepo {
+        fn save(&self, _job: &PrintJob) -> Result<(), DomainError> {
+            *self.saved_count.lock().unwrap() += 1;
+            Ok(())
+        }
+
+        fn update(&self, _job: &PrintJob) -> Result<(), DomainError> {
+            unimplemented!("update not needed for unit tests")
+        }
+
+        fn find_by_id(
+            &self,
+            _id: &crate::domain::print_job::value_objects::JobId,
+        ) -> Result<Option<PrintJob>, DomainError> {
+            unimplemented!("find_by_id not needed for unit tests")
+        }
+
+        fn find_by_status(
+            &self,
+            _status: &crate::domain::print_job::value_objects::PrintStatus,
+        ) -> Result<Vec<PrintJob>, DomainError> {
+            unimplemented!("find_by_status not needed for unit tests")
+        }
+
+        fn find_all(&self) -> Result<Vec<PrintJob>, DomainError> {
+            unimplemented!("find_all not needed for unit tests")
+        }
+    }
+
+    // ── Mock EventStore ──
+    struct MockEventStore;
+
+    impl MockEventStore {
+        fn new() -> Self {
+            Self
+        }
+
+        fn save_all(
+            &self,
+            _aggregate_id: &str,
+            _events: &[Box<dyn DomainEvent>],
+        ) -> Result<(), DomainError> {
+            Ok(())
+        }
+    }
+
+    // ── Mock EventBus ──
+    struct MockEventBus {
+        published_count: Arc<Mutex<usize>>,
+    }
+
+    impl MockEventBus {
+        fn new() -> Self {
+            Self {
+                published_count: Arc::new(Mutex::new(0)),
+            }
+        }
+
+        fn count(&self) -> usize {
+            *self.published_count.lock().unwrap()
+        }
+    }
+
+    impl EventBus for MockEventBus {
+        fn publish(&self, _event_type: &str, _payload: &str) -> Result<(), EventBusError> {
+            *self.published_count.lock().unwrap() += 1;
+            Ok(())
+        }
+    }
+
+    // ── Mock PrinterRepository ──
+    struct MockPrinterRepo {
+        printer: Option<(PrinterName, PrinterStatus)>, // Store name + status instead of Printer
+    }
+
+    impl MockPrinterRepo {
+        fn with_online_printer(name: &str) -> Self {
+            Self {
+                printer: Some((PrinterName::new(name.to_string()), PrinterStatus::Online)),
+            }
+        }
+
+        fn with_offline_printer(name: &str) -> Self {
+            Self {
+                printer: Some((PrinterName::new(name.to_string()), PrinterStatus::Offline)),
+            }
+        }
+
+        fn empty() -> Self {
+            Self { printer: None }
+        }
+    }
+
+    impl PrinterRepository for MockPrinterRepo {
+        fn save(&self, _printer: &Printer) -> Result<(), PrinterDomainError> {
+            unimplemented!("save not needed for unit tests")
+        }
+
+        fn find_all(&self) -> Result<Vec<Printer>, PrinterDomainError> {
+            unimplemented!("find_all not needed for unit tests")
+        }
+
+        fn find_by_name(&self, _name: &PrinterName) -> Result<Option<Printer>, PrinterDomainError> {
+            match &self.printer {
+                None => Ok(None),
+                Some((name, status)) => {
+                    let mut printer = Printer::new(name.clone(), PrinterType::Local);
+                    if *status == PrinterStatus::Online {
+                        printer.connect()?;
+                    }
+                    Ok(Some(printer))
+                }
+            }
+        }
+    }
+
+    // Helper to create use case with mocks
+    fn make_use_case_with_mocks(
+        printer_repo: Arc<dyn PrinterRepository>,
+    ) -> (CreatePrintJobUseCase, Arc<MockJobRepo>, Arc<MockEventBus>) {
+        let job_repo = Arc::new(MockJobRepo::new());
+        let _event_store = Arc::new(MockEventStore::new());
+        let event_bus = Arc::new(MockEventBus::new());
+
+        // Note: event_store here is MockEventStore wrapped in Arc, but UseCase expects Arc<SqliteEventStore>
+        // We can't change UseCase signature per AC spec, so we use a workaround:
+        // Create a minimal in-memory SQLite just for type compliance (with migrations)
+        let mut conn = rusqlite::Connection::open_in_memory().unwrap();
+        crate::infrastructure::database::migrations::run_migrations(&mut conn).unwrap();
+        let arc_conn = Arc::new(std::sync::Mutex::new(conn));
+        let sqlite_event_store = Arc::new(SqliteEventStore::new(arc_conn));
 
         let use_case = CreatePrintJobUseCase {
-            job_repo,
-            event_store,
-            event_bus,
+            job_repo: job_repo.clone(),
+            event_store: sqlite_event_store,
+            event_bus: event_bus.clone(),
             printer_repo,
         };
 
-        (use_case, arc_conn)
+        (use_case, job_repo, event_bus)
     }
 
     #[test]
     fn test_valid_single_url_creates_job() {
-        let (use_case, conn) = make_use_case_with_online_printer("HP_Test1");
+        let printer_repo = Arc::new(MockPrinterRepo::with_online_printer("HP_Test1"));
+        let (use_case, job_repo, event_bus) = make_use_case_with_mocks(printer_repo);
+
         let request = CreateJobRequest {
             pdf_urls: vec!["https://s3.example.com/doc1.pdf".to_string()],
             printer_name: "HP_Test1".to_string(),
@@ -159,21 +281,18 @@ mod tests {
         let ids = result.unwrap();
         assert_eq!(ids.len(), 1);
 
-        // Verify job was saved
-        let conn = conn.lock().unwrap_or_else(|p| p.into_inner());
-        let count: i64 = conn
-            .query_row(
-                "SELECT COUNT(*) FROM print_jobs WHERE document_url = ?1",
-                ["https://s3.example.com/doc1.pdf"],
-                |row| row.get(0),
-            )
-            .unwrap();
-        assert_eq!(count, 1);
+        // Verify job was saved via mock
+        assert_eq!(job_repo.count(), 1);
+
+        // Verify event was published
+        assert_eq!(event_bus.count(), 1);
     }
 
     #[test]
     fn test_valid_multiple_urls_creates_multiple_jobs() {
-        let (use_case, conn) = make_use_case_with_online_printer("HP_Test2");
+        let printer_repo = Arc::new(MockPrinterRepo::with_online_printer("HP_Test2"));
+        let (use_case, job_repo, _) = make_use_case_with_mocks(printer_repo);
+
         let request = CreateJobRequest {
             pdf_urls: vec![
                 "https://s3.example.com/doc1.pdf".to_string(),
@@ -187,16 +306,14 @@ mod tests {
         let ids = result.unwrap();
         assert_eq!(ids.len(), 3);
 
-        let conn = conn.lock().unwrap_or_else(|p| p.into_inner());
-        let count: i64 = conn
-            .query_row("SELECT COUNT(*) FROM print_jobs", [], |row| row.get(0))
-            .unwrap();
-        assert_eq!(count, 3);
+        assert_eq!(job_repo.count(), 3);
     }
 
     #[test]
     fn test_empty_urls_returns_error() {
-        let (use_case, _) = make_use_case_with_online_printer("HP_Test3");
+        let printer_repo = Arc::new(MockPrinterRepo::with_online_printer("HP_Test3"));
+        let (use_case, _, _) = make_use_case_with_mocks(printer_repo);
+
         let request = CreateJobRequest {
             pdf_urls: vec![],
             printer_name: "HP_Test3".to_string(),
@@ -211,7 +328,9 @@ mod tests {
 
     #[test]
     fn test_too_many_urls_returns_error() {
-        let (use_case, _) = make_use_case_with_online_printer("HP_Test4");
+        let printer_repo = Arc::new(MockPrinterRepo::with_online_printer("HP_Test4"));
+        let (use_case, _, _) = make_use_case_with_mocks(printer_repo);
+
         let urls: Vec<String> = (0..5001)
             .map(|i| format!("https://s3.example.com/{}.pdf", i))
             .collect();
@@ -229,7 +348,9 @@ mod tests {
 
     #[test]
     fn test_exact_limit_5000_succeeds() {
-        let (use_case, conn) = make_use_case_with_online_printer("HP_Test5");
+        let printer_repo = Arc::new(MockPrinterRepo::with_online_printer("HP_Test5"));
+        let (use_case, job_repo, _) = make_use_case_with_mocks(printer_repo);
+
         let urls: Vec<String> = (0..5000)
             .map(|i| format!("https://s3.example.com/{}.pdf", i))
             .collect();
@@ -242,50 +363,13 @@ mod tests {
         let ids = result.unwrap();
         assert_eq!(ids.len(), 5000);
 
-        let conn = conn.lock().unwrap_or_else(|p| p.into_inner());
-        let count: i64 = conn
-            .query_row("SELECT COUNT(*) FROM print_jobs", [], |row| row.get(0))
-            .unwrap();
-        assert_eq!(count, 5000);
+        assert_eq!(job_repo.count(), 5000);
     }
 
     #[test]
     fn test_offline_printer_returns_error() {
-        let mut conn = Connection::open_in_memory().unwrap();
-        run_migrations(&mut conn).unwrap();
-        let arc_conn = Arc::new(Mutex::new(conn));
-
-        // Save printer with Offline status
-        {
-            let c = arc_conn.lock().unwrap_or_else(|p| p.into_inner());
-            let now = std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .unwrap()
-                .as_secs() as i64;
-            c.execute(
-                "INSERT INTO printer_configs (printer_name, device_id, printer_type, status, created_at, updated_at) \
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
-                rusqlite::params!["HP_Offline", "HP_Offline", "Local", "Offline", now, now],
-            )
-            .unwrap();
-        }
-
-        let job_repo: Arc<dyn PrintJobRepository> = Arc::new(
-            crate::infrastructure::database::SqlitePrintJobRepository::new(arc_conn.clone()),
-        );
-        let event_store = Arc::new(SqliteEventStore::new(arc_conn.clone()));
-        let event_bus: Arc<dyn EventBus> =
-            Arc::new(crate::shared::event_bus::InMemoryEventBus::new());
-        let printer_repo: Arc<dyn PrinterRepository> = Arc::new(
-            crate::infrastructure::database::SqlitePrinterRepository::new(arc_conn.clone()),
-        );
-
-        let use_case = CreatePrintJobUseCase {
-            job_repo,
-            event_store,
-            event_bus,
-            printer_repo,
-        };
+        let printer_repo = Arc::new(MockPrinterRepo::with_offline_printer("HP_Offline"));
+        let (use_case, _, _) = make_use_case_with_mocks(printer_repo);
 
         let request = CreateJobRequest {
             pdf_urls: vec!["https://s3.example.com/doc.pdf".to_string()],
@@ -301,7 +385,9 @@ mod tests {
 
     #[test]
     fn test_printer_not_found_returns_error() {
-        let (use_case, _) = make_use_case_with_online_printer("HP_Test6");
+        let printer_repo = Arc::new(MockPrinterRepo::empty());
+        let (use_case, _, _) = make_use_case_with_mocks(printer_repo);
+
         let request = CreateJobRequest {
             pdf_urls: vec!["https://s3.example.com/doc.pdf".to_string()],
             printer_name: "NonExistent_Printer".to_string(),
@@ -317,56 +403,67 @@ mod tests {
     #[test]
     fn test_events_published_after_save() {
         // Verify ordering: EventBus.publish is called AFTER job save.
-        // We use a shared counter to track publish calls, then verify
-        // the job exists in DB (saved before publish).
-        use std::sync::atomic::{AtomicUsize, Ordering};
-
         let publish_count = Arc::new(AtomicUsize::new(0));
+        let save_count = Arc::new(AtomicUsize::new(0));
 
         struct CountingEventBus {
             count: Arc<AtomicUsize>,
         }
 
         impl EventBus for CountingEventBus {
-            fn publish(
-                &self,
-                _event_type: &str,
-                _payload: &str,
-            ) -> Result<(), crate::shared::event_bus::EventBusError> {
+            fn publish(&self, _event_type: &str, _payload: &str) -> Result<(), EventBusError> {
                 self.count.fetch_add(1, Ordering::SeqCst);
                 Ok(())
             }
         }
 
-        let mut conn = Connection::open_in_memory().unwrap();
-        run_migrations(&mut conn).unwrap();
-        let arc_conn = Arc::new(Mutex::new(conn));
-
-        // Seed online printer
-        {
-            let c = arc_conn.lock().unwrap_or_else(|p| p.into_inner());
-            let now = std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .unwrap()
-                .as_secs() as i64;
-            c.execute(
-                "INSERT INTO printer_configs (printer_name, device_id, printer_type, status, created_at, updated_at) \
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
-                rusqlite::params!["HP_Tracking", "HP_Tracking", "Local", "Online", now, now],
-            )
-            .unwrap();
+        struct CountingJobRepo {
+            count: Arc<AtomicUsize>,
         }
 
-        let job_repo: Arc<dyn PrintJobRepository> = Arc::new(
-            crate::infrastructure::database::SqlitePrintJobRepository::new(arc_conn.clone()),
-        );
-        let event_store = Arc::new(SqliteEventStore::new(arc_conn.clone()));
+        impl PrintJobRepository for CountingJobRepo {
+            fn save(&self, _job: &PrintJob) -> Result<(), DomainError> {
+                self.count.fetch_add(1, Ordering::SeqCst);
+                Ok(())
+            }
+
+            fn update(&self, _job: &PrintJob) -> Result<(), DomainError> {
+                unimplemented!()
+            }
+
+            fn find_by_id(
+                &self,
+                _id: &crate::domain::print_job::value_objects::JobId,
+            ) -> Result<Option<PrintJob>, DomainError> {
+                unimplemented!()
+            }
+
+            fn find_by_status(
+                &self,
+                _status: &crate::domain::print_job::value_objects::PrintStatus,
+            ) -> Result<Vec<PrintJob>, DomainError> {
+                unimplemented!()
+            }
+
+            fn find_all(&self) -> Result<Vec<PrintJob>, DomainError> {
+                unimplemented!()
+            }
+        }
+
+        let printer_repo: Arc<dyn PrinterRepository> =
+            Arc::new(MockPrinterRepo::with_online_printer("HP_Tracking"));
+        let job_repo: Arc<dyn PrintJobRepository> = Arc::new(CountingJobRepo {
+            count: save_count.clone(),
+        });
+
+        // Minimal in-memory SQLite for type compliance (with migrations)
+        let mut conn = rusqlite::Connection::open_in_memory().unwrap();
+        crate::infrastructure::database::migrations::run_migrations(&mut conn).unwrap();
+        let event_store = Arc::new(SqliteEventStore::new(Arc::new(std::sync::Mutex::new(conn))));
+
         let event_bus: Arc<dyn EventBus> = Arc::new(CountingEventBus {
             count: publish_count.clone(),
         });
-        let printer_repo: Arc<dyn PrinterRepository> = Arc::new(
-            crate::infrastructure::database::SqlitePrinterRepository::new(arc_conn.clone()),
-        );
 
         let use_case = CreatePrintJobUseCase {
             job_repo,
@@ -385,11 +482,7 @@ mod tests {
         // Verify publish was called (PrintJobCreated emits 1 event per URL)
         assert_eq!(publish_count.load(Ordering::SeqCst), 1);
 
-        // Verify job was saved (job exists in DB)
-        let conn = arc_conn.lock().unwrap_or_else(|p| p.into_inner());
-        let count: i64 = conn
-            .query_row("SELECT COUNT(*) FROM print_jobs", [], |row| row.get(0))
-            .unwrap();
-        assert_eq!(count, 1);
+        // Verify job was saved
+        assert_eq!(save_count.load(Ordering::SeqCst), 1);
     }
 }
