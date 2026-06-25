@@ -300,9 +300,18 @@ impl QueueWorker {
         }
 
         // Step 2: Download document
+        let download_start = std::time::Instant::now();
         let pdf_path = downloader
             .download(job.pdf_url(), job.id())
             .map_err(|e| format!("Download failed: {:?}", e))?;
+        let download_duration = download_start.elapsed();
+        tracing::info!(
+            target = "sapo_printer::metrics",
+            job_id = %job.id(),
+            step = "download",
+            duration_ms = download_duration.as_millis() as u64,
+            "Pipeline step completed"
+        );
 
         // Wrap in TempPdfFile for RAII cleanup (auto-deletes on drop)
         let temp_file = TempPdfFile::new(pdf_path);
@@ -312,10 +321,19 @@ impl QueueWorker {
         Self::persist_and_publish(&mut job, job_repo, event_store, event_bus)?;
 
         // Step 3: Render document
+        let render_start = std::time::Instant::now();
         let render_config = RenderConfig::default();
         let rendered_data = renderer
             .render(temp_file.path(), &render_config)
             .map_err(|e| format!("Render failed: {:?}", e))?;
+        let render_duration = render_start.elapsed();
+        tracing::info!(
+            target = "sapo_printer::metrics",
+            job_id = %job.id(),
+            step = "render",
+            duration_ms = render_duration.as_millis() as u64,
+            "Pipeline step completed"
+        );
 
         job.mark_submitted()
             .map_err(|e| format!("Failed to mark submitted: {:?}", e))?;
@@ -326,9 +344,18 @@ impl QueueWorker {
             .map_err(|e| format!("Failed to mark printing: {:?}", e))?;
         Self::persist_and_publish(&mut job, job_repo, event_store, event_bus)?;
 
+        let print_start = std::time::Instant::now();
         printer_engine
             .print(job.printer_name(), &rendered_data)
             .map_err(|e| format!("Print failed: {:?}", e))?;
+        let print_duration = print_start.elapsed();
+        tracing::info!(
+            target = "sapo_printer::metrics",
+            job_id = %job.id(),
+            step = "print",
+            duration_ms = print_duration.as_millis() as u64,
+            "Pipeline step completed"
+        );
 
         // Step 5: Mark complete
         job.complete()

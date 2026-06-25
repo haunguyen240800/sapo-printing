@@ -17,7 +17,9 @@ use sapo_printer::infrastructure::database::migrations::run_migrations;
 use sapo_printer::infrastructure::database::{
     SqlitePrintJobRepository, SqlitePrinterRepository,
 };
+use sapo_printer::infrastructure::metrics::MetricsCollector;
 use sapo_printer::infrastructure::printer::PrinterManager;
+use sapo_printer::infrastructure::queue::SqliteQueueManager;
 use sapo_printer::interface::native_messaging::protocol::{
     read_message, write_message, NativeMessageHandler,
 };
@@ -70,6 +72,10 @@ fn setup() -> (NativeMessageHandler, Arc<SqlitePrintJobRepository>, Arc<SqlitePr
         printer_manager,
         event_store,
         event_bus as Arc<dyn sapo_printer::shared::event_bus::EventBus>,
+        Arc::new(MetricsCollector::new(
+            arc_conn.clone(),
+            Arc::new(SqliteQueueManager::new(arc_conn.clone())),
+        )),
     );
 
     (handler, job_repo, printer_repo, arc_conn)
@@ -275,6 +281,10 @@ fn setup_with_offline_printer() -> (NativeMessageHandler, Arc<SqlitePrinterRepos
         printer_manager,
         event_store,
         event_bus as Arc<dyn sapo_printer::shared::event_bus::EventBus>,
+        Arc::new(MetricsCollector::new(
+            arc_conn.clone(),
+            Arc::new(SqliteQueueManager::new(arc_conn.clone())),
+        )),
     );
 
     (handler, printer_repo, arc_conn)

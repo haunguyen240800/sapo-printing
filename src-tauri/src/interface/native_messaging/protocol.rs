@@ -184,6 +184,7 @@ pub struct NativeMessageHandler {
     pub printer_manager: Arc<dyn PrinterManager>,
     pub event_store: Arc<SqliteEventStore>,
     pub event_bus: Arc<dyn EventBus>,
+    pub metrics_collector: Arc<crate::infrastructure::metrics::MetricsCollector>,
 }
 
 impl NativeMessageHandler {
@@ -193,6 +194,7 @@ impl NativeMessageHandler {
         printer_manager: Arc<dyn PrinterManager>,
         event_store: Arc<SqliteEventStore>,
         event_bus: Arc<dyn EventBus>,
+        metrics_collector: Arc<crate::infrastructure::metrics::MetricsCollector>,
     ) -> Self {
         Self {
             job_repo,
@@ -200,6 +202,7 @@ impl NativeMessageHandler {
             printer_manager,
             event_store,
             event_bus,
+            metrics_collector,
         }
     }
 
@@ -469,6 +472,10 @@ impl NativeMessageHandler {
                 "INTERNAL_ERROR",
                 format!("Event bus error: {}", reason),
             ),
+            ApplicationError::MetricsError { reason } => (
+                "INTERNAL_ERROR",
+                format!("Metrics error: {}", reason),
+            ),
         };
         self.error_response(code, &message)
     }
@@ -682,8 +689,12 @@ mod tests {
             job_repo: Arc::new(MockJobRepo::new()),
             printer_repo: Arc::new(MockPrinterRepo),
             printer_manager: Arc::new(MockPrinterManager),
-            event_store: Arc::new(SqliteEventStore::new(arc_conn, Arc::new(MockSecretManager::new()))),
+            event_store: Arc::new(SqliteEventStore::new(arc_conn.clone(), Arc::new(MockSecretManager::new()))),
             event_bus: Arc::new(InMemoryEventBus::new()),
+            metrics_collector: Arc::new(crate::infrastructure::metrics::MetricsCollector::new(
+                arc_conn.clone(),
+                Arc::new(crate::infrastructure::queue::SqliteQueueManager::new(arc_conn)),
+            )),
         }
     }
 
@@ -1216,8 +1227,12 @@ mod tests {
             job_repo: Arc::new(MockJobRepo::new()),
             printer_repo: Arc::new(MockPrinterRepoOffline),
             printer_manager: Arc::new(OfflinePrinterManager),
-            event_store: Arc::new(SqliteEventStore::new(arc_conn, Arc::new(MockSecretManager::new()))),
+            event_store: Arc::new(SqliteEventStore::new(arc_conn.clone(), Arc::new(MockSecretManager::new()))),
             event_bus: Arc::new(InMemoryEventBus::new()),
+            metrics_collector: Arc::new(crate::infrastructure::metrics::MetricsCollector::new(
+                arc_conn.clone(),
+                Arc::new(crate::infrastructure::queue::SqliteQueueManager::new(arc_conn)),
+            )),
         }
     }
 

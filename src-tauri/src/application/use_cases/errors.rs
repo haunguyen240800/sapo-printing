@@ -20,6 +20,7 @@ pub enum ApplicationError {
     EventStoreError { reason: String },
     EventBusError { reason: String },
     ValidationError { reason: String },
+    MetricsError { reason: String },
 }
 
 impl fmt::Display for ApplicationError {
@@ -53,6 +54,7 @@ impl fmt::Display for ApplicationError {
             Self::EventStoreError { reason } => write!(f, "Lỗi event store: {}", reason),
             Self::EventBusError { reason } => write!(f, "Lỗi event bus: {}", reason),
             Self::ValidationError { reason } => write!(f, "Lỗi validation: {}", reason),
+            Self::MetricsError { reason } => write!(f, "Lỗi metrics: {}", reason),
         }
     }
 }

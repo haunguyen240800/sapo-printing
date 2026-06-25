@@ -182,6 +182,12 @@
 - `job.status()` evaluated unconditionally before debug level check — not expensive currently.
 - `chrono::and_hms_opt` may be deprecated in future chrono versions — maintenance concern.
 
+## Deferred from: code review of story 4-5 (2026-06-25)
+
+- **Mutex contention across 4 sequential queries** [collector.rs:collect_metrics] — Lock held across job, queue, printer, and performance queries including full-table scan of completed jobs. Blocks all other DB users during metrics collection. Performance concern at scale.
+- **`fetch_completed_durations` unbounded memory growth** [collector.rs:fetch_completed_durations] — No LIMIT on query, loads all completed job durations into Vec, then clones for sorting. Memory grows linearly with total completed jobs over app lifetime.
+- **Mutex poisoning unrecoverable** [collector.rs:collect_metrics] — If `queue_manager.queue_depth()` panics while Mutex is held, mutex becomes permanently poisoned. No recovery path. Pre-existing project-wide pattern from earlier stories.
+
 ## Deferred from: code review of story 4-4 (2026-06-25)
 
 - **Mutex poisoning recovery** — `unwrap_or_else(|p| p.into_inner())` silently recovers from poisoned Mutex<Connection> in event_store.rs. Pre-existing pattern from earlier stories.

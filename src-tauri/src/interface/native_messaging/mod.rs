@@ -7,6 +7,7 @@ use std::sync::Arc;
 use crate::domain::print_job::repository::PrintJobRepository;
 use crate::domain::printer::repository::PrinterRepository;
 use crate::infrastructure::database::SqliteEventStore;
+use crate::infrastructure::metrics::MetricsCollector;
 use crate::infrastructure::printer::PrinterManager;
 use crate::shared::event_bus::EventBus;
 
@@ -18,6 +19,7 @@ pub fn run_native_messaging(
     printer_manager: Arc<dyn PrinterManager>,
     event_store: Arc<SqliteEventStore>,
     event_bus: Arc<dyn EventBus>,
+    metrics_collector: Arc<MetricsCollector>,
 ) -> Result<(), String> {
     protocol::set_binary_mode();
 
@@ -34,6 +36,7 @@ pub fn run_native_messaging(
         printer_manager,
         event_store,
         event_bus,
+        metrics_collector,
     );
 
     let stdin = io::stdin();

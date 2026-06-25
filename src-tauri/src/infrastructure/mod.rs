@@ -10,6 +10,7 @@
 pub mod database;
 pub mod downloader;
 pub mod eventbus;
+pub mod metrics;
 pub mod printer;
 pub mod queue;
 pub mod renderer;

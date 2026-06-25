@@ -9,6 +9,7 @@ use sapo_printer::infrastructure::database::{
 };
 use sapo_printer::infrastructure::downloader::ReqwestDownloader;
 use sapo_printer::infrastructure::eventbus::tauri_event_bus::TauriEventBus;
+use sapo_printer::infrastructure::metrics::MetricsCollector;
 use sapo_printer::infrastructure::printer::PrinterManager;
 use sapo_printer::infrastructure::queue::{QueueWorker, SqliteQueueManager};
 use sapo_printer::infrastructure::secrets::SecretManager;
@@ -73,6 +74,14 @@ fn get_job_audit_trail(
         job_id,
         ctx.inner(),
     )
+}
+
+/// Tauri command: get operational metrics.
+#[tauri::command]
+fn get_metrics(
+    ctx: tauri::State<'_, AppContextState>,
+) -> Result<sapo_printer::interface::tauri::dtos::metrics::MetricsDto, String> {
+    sapo_printer::interface::tauri::commands::metrics::execute_get_metrics(ctx.inner())
 }
 
 #[cfg(target_os = "windows")]
@@ -307,6 +316,12 @@ fn run_native_messaging_mode() -> Result<(), String> {
     let event_store = Arc::new(SqliteEventStore::new(pool.get_arc(), secret_manager));
     let event_bus: Arc<dyn EventBus> = Arc::new(sapo_printer::shared::event_bus::InMemoryEventBus::new());
 
+    let queue_manager = Arc::new(SqliteQueueManager::new(pool.get_arc()));
+    let metrics_collector = Arc::new(MetricsCollector::new(
+        pool.get_arc(),
+        queue_manager.clone(),
+    ));
+
     #[cfg(target_os = "windows")]
     let printer_manager: Arc<dyn PrinterManager> = Arc::new(Win32PrinterManager::new());
     #[cfg(not(target_os = "windows"))]
@@ -338,6 +353,7 @@ fn run_native_messaging_mode() -> Result<(), String> {
         printer_manager,
         event_store,
         event_bus,
+        metrics_collector,
     )
 }
 
@@ -514,6 +530,12 @@ fn main() {
             worker.start().expect("Failed to start queue worker");
             println!("Queue worker started successfully");
 
+            // Create MetricsCollector
+            let metrics_collector = Arc::new(MetricsCollector::new(
+                pool.get_arc(),
+                queue_manager.clone(),
+            ));
+
             // Startup cleanup: purge events older than 30 days (best-effort)
             match sapo_printer::infrastructure::database::cleanup_old_events(&event_store, 30) {
                 Ok(deleted) => {
@@ -544,6 +566,7 @@ fn main() {
                 event_bus,
                 queue_manager,
                 queue_worker: worker,
+                metrics_collector,
                 app_handle,
             });
 
@@ -558,6 +581,7 @@ fn main() {
             list_jobs,
             get_job_status,
             get_job_audit_trail,
+            get_metrics,
             register_native_host,
         ])
         .on_window_event(|window, event| {

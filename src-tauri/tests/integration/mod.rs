@@ -27,3 +27,4 @@ mod repository_integration_test;
 mod retry_integration_test;
 mod temp_file_integration_test;
 mod audit_trail_integration_test;
+mod metrics_integration_test;
