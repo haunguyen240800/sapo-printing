@@ -17,3 +17,4 @@ pub mod renderer;
 pub mod secrets;
 pub mod temp_file;
 pub mod updater;
+pub mod config_store;

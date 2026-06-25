@@ -21,7 +21,6 @@ pub mod shared;
 /// Shared state registered with Tauri via `.manage()`.
 /// Commands access this via `tauri::State<'_, AppContextState>`.
 pub struct AppContextState {
-    pub printer_repo: Arc<dyn domain::printer::PrinterRepository>,
     pub printer_manager: Arc<dyn infrastructure::printer::PrinterManager>,
     pub secret_manager: Arc<dyn infrastructure::secrets::SecretManager>,
     pub job_repo: Arc<dyn domain::print_job::PrintJobRepository>,

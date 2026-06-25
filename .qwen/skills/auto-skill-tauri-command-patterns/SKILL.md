@@ -2,7 +2,7 @@
 name: tauri-command-patterns
 description: Tauri command architecture patterns for this project — lib vs bin crate boundaries, AppContextState placement, and repository trait bounds
 source: auto-skill
-extracted_at: '2026-06-23T16:40:00.000Z'
+extracted_at: '2026-06-25T10:03:10.861Z'
 ---
 
 # Tauri Command Architecture Patterns
@@ -64,14 +64,21 @@ fn create_print_job(
 ```rust
 // src/lib.rs
 pub struct AppContextState {
-    pub printer_repo: Arc<dyn domain::printer::PrinterRepository>,
     pub printer_manager: Arc<dyn infrastructure::printer::PrinterManager>,
-    pub _secret_manager: Arc<dyn infrastructure::secrets::SecretManager>,
+    pub secret_manager: Arc<dyn infrastructure::secrets::SecretManager>,
     pub job_repo: Arc<dyn domain::print_job::PrintJobRepository>,
     pub event_store: Arc<infrastructure::database::SqliteEventStore>,
     pub event_bus: Arc<dyn shared::event_bus::EventBus>,
+    pub queue_manager: Arc<dyn infrastructure::queue::QueueManager>,
+    pub queue_worker: Arc<infrastructure::queue::QueueWorker>,
+    pub metrics_collector: Arc<infrastructure::metrics::MetricsCollector>,
+    pub app_handle: tauri::AppHandle,
+    pub install_guard: infrastructure::updater::update_checker::InstallGuard,
+    pub last_emitted_update_version: std::sync::Mutex<Option<String>>,
 }
 ```
+
+**Note:** Printer configuration is now stored via `config_store` (JSON file), not a database repository. The `printer_manager` handles OS-level printer discovery and status queries.
 
 Then import in `main.rs`:
 
@@ -92,43 +99,22 @@ error[E0277]: `(dyn SomeTrait + 'static)` cannot be shared between threads safel
 **Check:** Every trait stored in `AppContextState` must have `Send + Sync`:
 
 ```rust
-// ✅ Already correct (from printer repository)
-pub trait PrinterRepository: Send + Sync { ... }
+// ✅ Already correct
+pub trait PrintJobRepository: Send + Sync { ... }
+pub trait PrinterManager: Send + Sync { ... }
 
 // ❌ Missing bounds (found in print_job repository — fixed during story 3-3)
-pub trait PrintJobRepository: Send + Sync { ... }  // was: pub trait PrintJobRepository { ... }
+pub trait PrintJobRepository { ... }  // was missing Send + Sync
 ```
 
 ## 4. Database table names — use the actual schema names
 
 This project's migrations define these tables:
-- `printer_configs` — stores Printer aggregates (paper size, margins, status, etc.)
 - `print_jobs` — stores PrintJob aggregates
 - `events` — stores domain events
-- `app_settings` — application configuration
+- `printer_configs` — legacy table (no longer used by application code; printer config is now stored via `config_store` JSON file)
 
-**Common mistake:** Inserting into `printers` instead of `printer_configs` in tests. The `PrinterRepository` saves to `printer_configs`, not a table called `printers`.
-
-**Correct test INSERT for a printer:**
-
-```rust
-conn.execute(
-    "INSERT INTO printer_configs (printer_name, device_id, printer_type, status, created_at, updated_at) \
-     VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
-    rusqlite::params![name, name, "Local", "Online", now, now],
-)
-.unwrap();
-```
-
-**Correct test UPDATE for printer status:**
-
-```rust
-c.execute(
-    "UPDATE printer_configs SET status = 'Online' WHERE printer_name = ?1",
-    [name],
-)
-.unwrap();
-```
+**Note:** The `PrinterRepository` and `SqlitePrinterRepository` were removed. Printer discovery and status queries now go through `PrinterManager` (OS-level API). Printer configuration is persisted to `~/.sapo-printer/config.json` via `config_store`.
 
 ## 5. ctx.inner() returns &T — no extra & needed
 
@@ -143,3 +129,40 @@ execute_create_print_job(payload, ctx.inner())
 ```
 
 `tauri::State::inner()` already returns `&T`. Adding `&` creates `&&T`.
+
+## 6. Commands accessing Tauri plugins — use `AppHandle` directly, not `AppContextState`
+
+When a command needs to access a Tauri plugin (e.g., updater, dialog, notification), take `AppHandle` as a parameter instead of `AppContextState`. Plugins are accessed via extension traits on `AppHandle`, not via managed state.
+
+**RIGHT** — plugin command pattern:
+
+```rust
+use tauri_plugin_updater::UpdaterExt;
+
+#[tauri::command]
+async fn check_for_updates(
+    app: tauri::AppHandle,
+) -> Result<UpdateCheckResponse, String> {
+    let updater = app.updater().map_err(|e| e.to_string())?;
+    let update = updater.check().await.map_err(|e| e.to_string())?;
+    // ...
+}
+```
+
+**WRONG** — trying to use AppContextState for plugin access:
+
+```rust
+#[tauri::command]
+fn check_for_updates(
+    ctx: tauri::State<'_, AppContextState>,
+) -> Result<UpdateCheckResponse, String> {
+    // ❌ AppContextState doesn't have updater access
+    // Plugins are accessed via AppHandle extension traits
+}
+```
+
+**When to use which:**
+- `AppContextState` — for commands that need domain services, repositories, infrastructure (print jobs, printers, metrics, etc.)
+- `AppHandle` — for commands that need Tauri plugins (updater, dialog, notification, etc.)
+
+**Note:** `AppHandle` is already in `AppContextState` if you need both. But for pure plugin commands, take `AppHandle` directly to keep the signature clean.

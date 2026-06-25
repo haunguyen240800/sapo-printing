@@ -1,9 +1,8 @@
 use std::sync::Arc;
 
 use crate::domain::print_job::PrintJobRepository;
-use crate::domain::printer::PrinterRepository;
 use crate::infrastructure::database::{
-    run_migrations, DbPool, SqliteEventStore, SqlitePrintJobRepository, SqlitePrinterRepository,
+    run_migrations, DbPool, SqliteEventStore, SqlitePrintJobRepository,
 };
 use crate::infrastructure::printer::printer_manager::PrinterManager;
 use crate::infrastructure::renderer::document_renderer::{DocumentRenderer, RenderConfig};
@@ -32,7 +31,6 @@ use crate::infrastructure::secrets::WindowsCredentialManager;
 /// Constructed once in `main.rs` and shared across use cases.
 pub struct AppContext {
     pub job_repo: Arc<dyn PrintJobRepository>,
-    pub printer_repo: Arc<dyn PrinterRepository>,
     pub printer_manager: Arc<dyn PrinterManager>,
     pub event_bus: Arc<dyn EventBus>,
     pub secret_manager: Arc<dyn SecretManager>,
@@ -55,8 +53,6 @@ impl AppContext {
 
         let job_repo: Arc<dyn PrintJobRepository> =
             Arc::new(SqlitePrintJobRepository::new(pool.get_arc()));
-        let printer_repo: Arc<dyn PrinterRepository> =
-            Arc::new(SqlitePrinterRepository::new(pool.get_arc()));
 
         // Platform-specific secret manager initialization
         #[cfg(target_os = "windows")]
@@ -83,7 +79,6 @@ impl AppContext {
         #[allow(unreachable_code)]
         Ok(Self {
             job_repo,
-            printer_repo,
             printer_manager,
             event_bus,
             secret_manager,

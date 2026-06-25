@@ -5,7 +5,6 @@ use std::io::{self, BufReader, BufWriter, Write};
 use std::sync::Arc;
 
 use crate::domain::print_job::repository::PrintJobRepository;
-use crate::domain::printer::repository::PrinterRepository;
 use crate::infrastructure::database::SqliteEventStore;
 use crate::infrastructure::metrics::MetricsCollector;
 use crate::infrastructure::printer::PrinterManager;
@@ -15,7 +14,6 @@ use self::protocol::{NativeMessageHandler, ProtocolError};
 
 pub fn run_native_messaging(
     job_repo: Arc<dyn PrintJobRepository>,
-    printer_repo: Arc<dyn PrinterRepository>,
     printer_manager: Arc<dyn PrinterManager>,
     event_store: Arc<SqliteEventStore>,
     event_bus: Arc<dyn EventBus>,
@@ -32,7 +30,6 @@ pub fn run_native_messaging(
 
     let handler = NativeMessageHandler::new(
         job_repo,
-        printer_repo,
         printer_manager,
         event_store,
         event_bus,

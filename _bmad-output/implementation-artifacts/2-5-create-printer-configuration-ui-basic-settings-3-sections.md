@@ -365,7 +365,7 @@ pub trait PrinterManager {
     
     <Divider />
     
-    {/* Section 2: Paper Settings */}
+    {/* Section 2: Paper Settings.tsx */}
     <Box>
       <Text variant="heading-sm">Cài đặt giấy</Text>
       <Select label="Khổ giấy" options={paperSizes} />

@@ -714,6 +714,10 @@ mod tests {
             self.published.lock().unwrap().push(event_type.to_string());
             Ok(())
         }
+
+        fn subscribe(&self, _event_type: &str, _handler: Arc<dyn crate::shared::event_bus::EventHandler>) {
+            // No-op for tests
+        }
     }
 
     // --- Mock DocumentDownloader ---

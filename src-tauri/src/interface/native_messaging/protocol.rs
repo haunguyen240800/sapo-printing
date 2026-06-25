@@ -10,7 +10,6 @@ use crate::application::use_cases::create_print_job::CreatePrintJobUseCase;
 use crate::application::use_cases::errors::ApplicationError;
 use crate::application::use_cases::get_job_status::GetJobStatusUseCase;
 use crate::domain::print_job::repository::PrintJobRepository;
-use crate::domain::printer::repository::PrinterRepository;
 use crate::infrastructure::database::SqliteEventStore;
 use crate::infrastructure::printer::PrinterManager;
 use crate::interface::tauri::dtos::printer_dto::PrinterDto;
@@ -180,7 +179,6 @@ struct ListPrintersData {
 
 pub struct NativeMessageHandler {
     pub job_repo: Arc<dyn PrintJobRepository>,
-    pub printer_repo: Arc<dyn PrinterRepository>,
     pub printer_manager: Arc<dyn PrinterManager>,
     pub event_store: Arc<SqliteEventStore>,
     pub event_bus: Arc<dyn EventBus>,
@@ -190,7 +188,6 @@ pub struct NativeMessageHandler {
 impl NativeMessageHandler {
     pub fn new(
         job_repo: Arc<dyn PrintJobRepository>,
-        printer_repo: Arc<dyn PrinterRepository>,
         printer_manager: Arc<dyn PrinterManager>,
         event_store: Arc<SqliteEventStore>,
         event_bus: Arc<dyn EventBus>,
@@ -198,7 +195,6 @@ impl NativeMessageHandler {
     ) -> Self {
         Self {
             job_repo,
-            printer_repo,
             printer_manager,
             event_store,
             event_bus,
@@ -284,7 +280,7 @@ impl NativeMessageHandler {
             job_repo: self.job_repo.clone(),
             event_store: self.event_store.clone(),
             event_bus: self.event_bus.clone(),
-            printer_repo: self.printer_repo.clone(),
+            printer_manager: self.printer_manager.clone(),
         };
 
         let request = CreateJobRequest {
@@ -357,17 +353,10 @@ impl NativeMessageHandler {
     fn handle_list_printers(&self) -> String {
         let discovered = self.printer_manager.discover_printers();
 
-        // Merge discovered OS printers with persisted configs from the repository.
-        // AC-2 spec: discover_printers() + merge with printer_repo.find_all()
-        let stored = self.printer_repo.find_all()
-            .unwrap_or_default();
-
-        let mut seen: std::collections::HashSet<String> = std::collections::HashSet::new();
-        let mut printers: Vec<PrinterDto> = discovered
+        let printers: Vec<PrinterDto> = discovered
             .iter()
             .map(|p| {
                 let name = p.name().as_str().to_string();
-                seen.insert(name.clone());
                 PrinterDto {
                     name,
                     device_id: p.name().as_str().to_string(),
@@ -384,23 +373,6 @@ impl NativeMessageHandler {
                 }
             })
             .collect();
-
-        // Append stored printers that weren't discovered (e.g., offline or network-unreachable).
-        for p in stored {
-            let name = p.name().as_str().to_string();
-            if !seen.contains(&name) {
-                printers.push(PrinterDto {
-                    name,
-                    device_id: p.name().as_str().to_string(),
-                    status: "Offline".to_string(),
-                    printer_type: match p.printer_type() {
-                        crate::domain::printer::PrinterType::Local => "Local".to_string(),
-                        crate::domain::printer::PrinterType::Network => "Network".to_string(),
-                    },
-                    is_default: None,
-                });
-            }
-        }
 
         let resp = SuccessResponse {
             success: true,
@@ -504,8 +476,6 @@ mod tests {
     use crate::domain::print_job::repository::PrintJobRepository;
     use crate::domain::print_job::value_objects::{JobId, PrintStatus};
     use crate::domain::printer::aggregate::Printer;
-    use crate::domain::printer::errors::PrinterDomainError;
-    use crate::domain::printer::repository::PrinterRepository;
     use crate::domain::printer::value_objects::{PrinterName, PrinterType};
     use crate::infrastructure::database::{run_migrations, SqliteEventStore};
     use crate::infrastructure::printer::PrinterManager;
@@ -650,22 +620,6 @@ mod tests {
         }
     }
 
-    struct MockPrinterRepo;
-
-    impl PrinterRepository for MockPrinterRepo {
-        fn save(&self, _printer: &Printer) -> Result<(), PrinterDomainError> {
-            Ok(())
-        }
-        fn find_all(&self) -> Result<Vec<Printer>, PrinterDomainError> {
-            Ok(vec![])
-        }
-        fn find_by_name(&self, name: &PrinterName) -> Result<Option<Printer>, PrinterDomainError> {
-            let mut p = Printer::new(name.clone(), PrinterType::Local);
-            p.connect()?;
-            Ok(Some(p))
-        }
-    }
-
     struct MockPrinterManager;
 
     impl PrinterManager for MockPrinterManager {
@@ -687,7 +641,6 @@ mod tests {
 
         NativeMessageHandler {
             job_repo: Arc::new(MockJobRepo::new()),
-            printer_repo: Arc::new(MockPrinterRepo),
             printer_manager: Arc::new(MockPrinterManager),
             event_store: Arc::new(SqliteEventStore::new(arc_conn.clone(), Arc::new(MockSecretManager::new()))),
             event_bus: Arc::new(InMemoryEventBus::new()),
@@ -1187,23 +1140,6 @@ mod tests {
     }
 
     // Offline printer → PRINTER_NOT_AVAILABLE (AC-7, M-8)
-    struct MockPrinterRepoOffline;
-
-    impl PrinterRepository for MockPrinterRepoOffline {
-        fn save(&self, _printer: &Printer) -> Result<(), PrinterDomainError> {
-            Ok(())
-        }
-        fn find_all(&self) -> Result<Vec<Printer>, PrinterDomainError> {
-            Ok(vec![])
-        }
-        fn find_by_name(&self, name: &PrinterName) -> Result<Option<Printer>, PrinterDomainError> {
-            let mut p = Printer::new(name.clone(), PrinterType::Local);
-            // Do NOT call connect() — leave printer offline.
-            let _ = p.disconnect();
-            Ok(Some(p))
-        }
-    }
-
     struct OfflinePrinterManager;
 
     impl PrinterManager for OfflinePrinterManager {
@@ -1225,7 +1161,6 @@ mod tests {
 
         NativeMessageHandler {
             job_repo: Arc::new(MockJobRepo::new()),
-            printer_repo: Arc::new(MockPrinterRepoOffline),
             printer_manager: Arc::new(OfflinePrinterManager),
             event_store: Arc::new(SqliteEventStore::new(arc_conn.clone(), Arc::new(MockSecretManager::new()))),
             event_bus: Arc::new(InMemoryEventBus::new()),

@@ -34,3 +34,7 @@ pub async fn execute_install_update(
 
     Ok(())
 }
+
+pub fn execute_restart_app() -> Result<(), String> {
+    std::process::exit(0);
+}

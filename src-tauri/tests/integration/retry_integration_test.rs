@@ -40,6 +40,10 @@ impl EventBus for MockEventBus {
     fn publish(&self, _event_type: &str, _payload: &str) -> Result<(), EventBusError> {
         Ok(())
     }
+
+    fn subscribe(&self, _event_type: &str, _handler: std::sync::Arc<dyn sapo_printer::shared::event_bus::EventHandler>) {
+        // No-op for tests
+    }
 }
 
 // --- Flaky Downloader (succeeds on Nth attempt) ---

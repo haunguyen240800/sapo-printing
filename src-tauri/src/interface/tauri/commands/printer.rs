@@ -10,9 +10,7 @@ pub fn list_printers() -> Result<Vec<PrinterDto>, String> {
     // TODO: Implement in Task 2
     // 1. Access PrinterManager from AppContext
     // 2. Call discover_printers()
-    // 3. Load saved configs from PrinterRepository
-    // 4. Merge discovered printers with configs (is_default flag)
-    // 5. Map to PrinterDto
+    // 3. Map to PrinterDto
     Ok(vec![])
 }
 
@@ -56,10 +54,8 @@ pub fn save_printer_config(config: PrinterConfigDto) -> Result<(), String> {
     }
 
     // TODO: Implement persistence in Story 2.6
-    // 1. Load or create Printer from repository
-    // 2. Update printer config fields (including new fields)
-    // 3. Call printer_repository.save()
-    // 4. Return Ok(()) or Vietnamese error message
+    // 1. Save config via config_store (JSON file)
+    // 2. Return Ok(()) or Vietnamese error message
     Err("Chưa triển khai lưu cấu hình".to_string())
 }
 

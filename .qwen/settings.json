@@ -40,7 +40,9 @@
       "Bash(pnpm *)",
       "Bash(npx *)",
       "Skill(bmad-retrospective)",
-      "Bash(taskkill *)"
+      "Bash(taskkill *)",
+      "Bash(do *)",
+      "Bash(done)"
     ]
   },
   "$version": 4

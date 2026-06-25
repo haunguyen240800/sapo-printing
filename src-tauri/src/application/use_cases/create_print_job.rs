@@ -5,10 +5,9 @@ use crate::application::use_cases::errors::ApplicationError;
 use crate::domain::print_job::aggregate::PrintJob;
 use crate::domain::print_job::repository::PrintJobRepository;
 use crate::domain::print_job::value_objects::JobId;
-use crate::domain::printer::repository::PrinterRepository;
-// PrinterName is a value object wrapping String - find_by_name(&PrinterName) requires this wrapper
-use crate::domain::printer::value_objects::{PrinterName, PrinterStatus};
+use crate::domain::printer::value_objects::PrinterStatus;
 use crate::infrastructure::database::SqliteEventStore;
+use crate::infrastructure::printer::PrinterManager;
 use crate::shared::event_bus::EventBus;
 
 const MAX_URLS: usize = 5000;
@@ -17,17 +16,18 @@ const MAX_URLS: usize = 5000;
 ///
 /// Flow:
 /// 1. Validate request (Application layer)
-/// 2. Verify printer ONLINE (via printer_repo)
+/// 2. Verify printer ONLINE (via printer_manager)
 /// 3. Create one PrintJob aggregate per URL
 /// 4. drain_events() from each job
 /// 5. job_repo.save() + event_store.save_all() — per-URL persistence
 /// 6. event_bus.publish() EACH event — ONLY AFTER save succeeds
-/// 7. Return Vec<JobId>
+/// 7. PushToQueueHandler (subscribed to PrintJobCreated) pushes job to queue
+/// 8. Return Vec<JobId>
 pub struct CreatePrintJobUseCase {
     pub job_repo: Arc<dyn PrintJobRepository>,
     pub event_store: Arc<SqliteEventStore>,
     pub event_bus: Arc<dyn EventBus>,
-    pub printer_repo: Arc<dyn PrinterRepository>,
+    pub printer_manager: Arc<dyn PrinterManager>,
 }
 
 impl CreatePrintJobUseCase {
@@ -49,17 +49,9 @@ impl CreatePrintJobUseCase {
             });
         }
 
-        // 2. Verify printer ONLINE
-        let printer_name_vo = PrinterName::new(request.printer_name.clone());
-        let printer = self
-            .printer_repo
-            .find_by_name(&printer_name_vo)
-            .map_err(|e| ApplicationError::RepositoryError(e.to_string()))?
-            .ok_or_else(|| ApplicationError::PrinterNotAvailable {
-                name: request.printer_name.clone(),
-            })?;
-
-        if *printer.status() != PrinterStatus::Online {
+        // 2. Verify printer ONLINE via PrinterManager
+        let status = self.printer_manager.get_status(&request.printer_name);
+        if status != PrinterStatus::Online {
             return Err(ApplicationError::PrinterNotAvailable {
                 name: request.printer_name.clone(),
             });
@@ -92,6 +84,7 @@ impl CreatePrintJobUseCase {
         }
 
         // 6. Publish AFTER all saves succeed
+        // PushToQueueHandler (subscribed to PrintJobCreated) will automatically push to queue
         for (event_type, payload) in &all_events {
             let _ = self.event_bus.publish(event_type, payload);
             // EventBus publish failures are non-fatal — log but don't fail
@@ -121,8 +114,6 @@ mod tests {
     use crate::domain::print_job::errors::DomainError;
     use crate::domain::print_job::events::DomainEvent;
     use crate::domain::printer::aggregate::Printer;
-    use crate::domain::printer::errors::PrinterDomainError;
-    use crate::domain::printer::value_objects::{PrinterName, PrinterType};
     use crate::shared::event_bus::EventBusError;
     use crate::infrastructure::secrets::SecretManager;
     use crate::shared::errors::InfrastructureError;
@@ -248,55 +239,43 @@ mod tests {
         }
     }
 
-    // ── Mock PrinterRepository ──
-    struct MockPrinterRepo {
-        printer: Option<(PrinterName, PrinterStatus)>, // Store name + status instead of Printer
+    // ── Mock PrinterManager ──
+    struct MockPrinterManager {
+        status: PrinterStatus,
+        known: bool,
     }
 
-    impl MockPrinterRepo {
-        fn with_online_printer(name: &str) -> Self {
-            Self {
-                printer: Some((PrinterName::new(name.to_string()), PrinterStatus::Online)),
-            }
+    impl MockPrinterManager {
+        fn with_online_printer() -> Self {
+            Self { status: PrinterStatus::Online, known: true }
         }
 
-        fn with_offline_printer(name: &str) -> Self {
-            Self {
-                printer: Some((PrinterName::new(name.to_string()), PrinterStatus::Offline)),
-            }
+        fn with_offline_printer() -> Self {
+            Self { status: PrinterStatus::Offline, known: true }
         }
 
         fn empty() -> Self {
-            Self { printer: None }
+            Self { status: PrinterStatus::Offline, known: false }
         }
     }
 
-    impl PrinterRepository for MockPrinterRepo {
-        fn save(&self, _printer: &Printer) -> Result<(), PrinterDomainError> {
-            unimplemented!("save not needed for unit tests")
+    impl PrinterManager for MockPrinterManager {
+        fn discover_printers(&self) -> Vec<Printer> {
+            unimplemented!("discover_printers not needed for unit tests")
         }
 
-        fn find_all(&self) -> Result<Vec<Printer>, PrinterDomainError> {
-            unimplemented!("find_all not needed for unit tests")
+        fn get_status(&self, _name: &str) -> PrinterStatus {
+            if self.known { self.status.clone() } else { PrinterStatus::Offline }
         }
 
-        fn find_by_name(&self, _name: &PrinterName) -> Result<Option<Printer>, PrinterDomainError> {
-            match &self.printer {
-                None => Ok(None),
-                Some((name, status)) => {
-                    let mut printer = Printer::new(name.clone(), PrinterType::Local);
-                    if *status == PrinterStatus::Online {
-                        printer.connect()?;
-                    }
-                    Ok(Some(printer))
-                }
-            }
+        fn supports_direct_pdf(&self, _name: &str) -> bool {
+            unimplemented!("supports_direct_pdf not needed for unit tests")
         }
     }
 
     // Helper to create use case with mocks
     fn make_use_case_with_mocks(
-        printer_repo: Arc<dyn PrinterRepository>,
+        printer_manager: Arc<dyn PrinterManager>,
     ) -> (CreatePrintJobUseCase, Arc<MockJobRepo>, Arc<MockEventBus>) {
         let job_repo = Arc::new(MockJobRepo::new());
         let _event_store = Arc::new(MockEventStore::new());
@@ -314,7 +293,7 @@ mod tests {
             job_repo: job_repo.clone(),
             event_store: sqlite_event_store,
             event_bus: event_bus.clone(),
-            printer_repo,
+            printer_manager,
         };
 
         (use_case, job_repo, event_bus)
@@ -322,8 +301,8 @@ mod tests {
 
     #[test]
     fn test_valid_single_url_creates_job() {
-        let printer_repo = Arc::new(MockPrinterRepo::with_online_printer("HP_Test1"));
-        let (use_case, job_repo, event_bus) = make_use_case_with_mocks(printer_repo);
+        let printer_manager = Arc::new(MockPrinterManager::with_online_printer());
+        let (use_case, job_repo, event_bus) = make_use_case_with_mocks(printer_manager);
 
         let request = CreateJobRequest {
             pdf_urls: vec!["https://s3.example.com/doc1.pdf".to_string()],
@@ -337,14 +316,14 @@ mod tests {
         // Verify job was saved via mock
         assert_eq!(job_repo.count(), 1);
 
-        // Verify event was published
+        // Verify event was published (PushToQueueHandler will handle it)
         assert_eq!(event_bus.count(), 1);
     }
 
     #[test]
     fn test_valid_multiple_urls_creates_multiple_jobs() {
-        let printer_repo = Arc::new(MockPrinterRepo::with_online_printer("HP_Test2"));
-        let (use_case, job_repo, _) = make_use_case_with_mocks(printer_repo);
+        let printer_manager = Arc::new(MockPrinterManager::with_online_printer());
+        let (use_case, job_repo, _) = make_use_case_with_mocks(printer_manager);
 
         let request = CreateJobRequest {
             pdf_urls: vec![
@@ -364,8 +343,8 @@ mod tests {
 
     #[test]
     fn test_empty_urls_returns_error() {
-        let printer_repo = Arc::new(MockPrinterRepo::with_online_printer("HP_Test3"));
-        let (use_case, _, _) = make_use_case_with_mocks(printer_repo);
+        let printer_manager = Arc::new(MockPrinterManager::with_online_printer());
+        let (use_case, _, _) = make_use_case_with_mocks(printer_manager);
 
         let request = CreateJobRequest {
             pdf_urls: vec![],
@@ -381,8 +360,8 @@ mod tests {
 
     #[test]
     fn test_too_many_urls_returns_error() {
-        let printer_repo = Arc::new(MockPrinterRepo::with_online_printer("HP_Test4"));
-        let (use_case, _, _) = make_use_case_with_mocks(printer_repo);
+        let printer_manager = Arc::new(MockPrinterManager::with_online_printer());
+        let (use_case, _, _) = make_use_case_with_mocks(printer_manager);
 
         let urls: Vec<String> = (0..5001)
             .map(|i| format!("https://s3.example.com/{}.pdf", i))
@@ -401,8 +380,8 @@ mod tests {
 
     #[test]
     fn test_exact_limit_5000_succeeds() {
-        let printer_repo = Arc::new(MockPrinterRepo::with_online_printer("HP_Test5"));
-        let (use_case, job_repo, _) = make_use_case_with_mocks(printer_repo);
+        let printer_manager = Arc::new(MockPrinterManager::with_online_printer());
+        let (use_case, job_repo, _) = make_use_case_with_mocks(printer_manager);
 
         let urls: Vec<String> = (0..5000)
             .map(|i| format!("https://s3.example.com/{}.pdf", i))
@@ -421,8 +400,8 @@ mod tests {
 
     #[test]
     fn test_offline_printer_returns_error() {
-        let printer_repo = Arc::new(MockPrinterRepo::with_offline_printer("HP_Offline"));
-        let (use_case, _, _) = make_use_case_with_mocks(printer_repo);
+        let printer_manager = Arc::new(MockPrinterManager::with_offline_printer());
+        let (use_case, _, _) = make_use_case_with_mocks(printer_manager);
 
         let request = CreateJobRequest {
             pdf_urls: vec!["https://s3.example.com/doc.pdf".to_string()],
@@ -438,8 +417,8 @@ mod tests {
 
     #[test]
     fn test_printer_not_found_returns_error() {
-        let printer_repo = Arc::new(MockPrinterRepo::empty());
-        let (use_case, _, _) = make_use_case_with_mocks(printer_repo);
+        let printer_manager = Arc::new(MockPrinterManager::empty());
+        let (use_case, _, _) = make_use_case_with_mocks(printer_manager);
 
         let request = CreateJobRequest {
             pdf_urls: vec!["https://s3.example.com/doc.pdf".to_string()],
@@ -467,6 +446,10 @@ mod tests {
             fn publish(&self, _event_type: &str, _payload: &str) -> Result<(), EventBusError> {
                 self.count.fetch_add(1, Ordering::SeqCst);
                 Ok(())
+            }
+
+            fn subscribe(&self, _event_type: &str, _handler: Arc<dyn crate::shared::event_bus::EventHandler>) {
+                // No-op for test
             }
         }
 
@@ -503,8 +486,8 @@ mod tests {
             }
         }
 
-        let printer_repo: Arc<dyn PrinterRepository> =
-            Arc::new(MockPrinterRepo::with_online_printer("HP_Tracking"));
+        let printer_manager: Arc<dyn PrinterManager> =
+            Arc::new(MockPrinterManager::with_online_printer());
         let job_repo: Arc<dyn PrintJobRepository> = Arc::new(CountingJobRepo {
             count: save_count.clone(),
         });
@@ -522,7 +505,7 @@ mod tests {
             job_repo,
             event_store,
             event_bus,
-            printer_repo,
+            printer_manager,
         };
 
         let request = CreateJobRequest {

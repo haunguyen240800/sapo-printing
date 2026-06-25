@@ -5,7 +5,7 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 use sapo_printer::infrastructure::database::{
-    run_migrations, DbPool, SqliteEventStore, SqlitePrintJobRepository, SqlitePrinterRepository,
+    run_migrations, DbPool, SqliteEventStore, SqlitePrintJobRepository,
 };
 use sapo_printer::infrastructure::downloader::ReqwestDownloader;
 use sapo_printer::infrastructure::eventbus::tauri_event_bus::TauriEventBus;
@@ -106,6 +106,12 @@ async fn install_update(
     .await
 }
 
+/// Tauri command: restart the application after update.
+#[tauri::command]
+fn restart_app() -> Result<(), String> {
+    sapo_printer::interface::tauri::commands::update::execute_restart_app()
+}
+
 #[cfg(target_os = "windows")]
 use sapo_printer::infrastructure::printer::windows::Win32PrinterManager;
 #[cfg(target_os = "windows")]
@@ -120,37 +126,19 @@ use sapo_printer::infrastructure::secrets::MacOSKeychain;
 #[cfg(target_os = "linux")]
 use sapo_printer::infrastructure::secrets::LinuxSecretService;
 
-/// List all available printers (discovered + saved configs)
+/// List all available printers (discovered from OS)
 #[tauri::command]
 fn list_printers(app_ctx: tauri::State<AppContextState>) -> Result<Vec<PrinterDto>, String> {
-    // 1. Discover printers from OS
     let discovered = app_ctx.printer_manager.discover_printers();
 
-    // 2. Load saved configs from repository
-    let saved_printers = app_ctx
-        .printer_repo
-        .find_all()
-        .map_err(|e| format!("Không thể tải cấu hình máy in: {}", e))?;
-
-    // 3. Map to DTOs - merge discovered with saved configs
     let dtos: Vec<PrinterDto> = discovered
         .iter()
         .map(|printer| {
             let printer_name = printer.name().as_str();
 
-            // Check if this printer has saved config with is_default flag
-            let is_default = saved_printers
-                .iter()
-                .find(|saved| saved.name().as_str() == printer_name)
-                .and({
-                    // TODO: Once Printer aggregate includes is_default field, use it here
-                    // For now, return None since domain model doesn't expose is_default yet
-                    None
-                });
-
             PrinterDto {
                 name: printer_name.to_string(),
-                device_id: printer_name.to_string(), // device_id = printer_name
+                device_id: printer_name.to_string(),
                 status: match printer.status() {
                     sapo_printer::domain::printer::PrinterStatus::Online => "Online".to_string(),
                     sapo_printer::domain::printer::PrinterStatus::Offline => "Offline".to_string(),
@@ -160,7 +148,7 @@ fn list_printers(app_ctx: tauri::State<AppContextState>) -> Result<Vec<PrinterDt
                     sapo_printer::domain::printer::PrinterType::Local => "Local".to_string(),
                     sapo_printer::domain::printer::PrinterType::Network => "Network".to_string(),
                 },
-                is_default,
+                is_default: None,
             }
         })
         .collect();
@@ -172,41 +160,40 @@ fn list_printers(app_ctx: tauri::State<AppContextState>) -> Result<Vec<PrinterDt
 #[tauri::command]
 fn save_printer_config(
     config: PrinterConfigDto,
-    app_ctx: tauri::State<AppContextState>,
+    _app_ctx: tauri::State<AppContextState>,
 ) -> Result<(), String> {
+    use sapo_printer::infrastructure::config_store;
+
     // 1. Validate config fields
     // Paper size validation
     if config.paper_size.is_empty() {
         return Err("Khổ giấy không được để trống".to_string());
     }
 
-    // Custom dimensions validation (50-500mm range)
-    if config.paper_size == "Custom" {
-        if let Some(width) = config.paper_width {
-            if !(50..=500).contains(&width) {
-                return Err("Chiều rộng giấy phải trong khoảng 50-500mm".to_string());
-            }
-        } else {
-            return Err("Chiều rộng giấy bắt buộc khi chọn khổ Custom".to_string());
-        }
-
-        if let Some(height) = config.paper_height {
-            if !(50..=500).contains(&height) {
-                return Err("Chiều cao giấy phải trong khoảng 50-500mm".to_string());
-            }
-        } else {
-            return Err("Chiều cao giấy bắt buộc khi chọn khổ Custom".to_string());
-        }
-    } else {
-        // Non-Custom paper size should not have dimensions
-        if config.paper_width.is_some() || config.paper_height.is_some() {
-            return Err(
-                "Không được cung cấp kích thước tùy chỉnh khi chọn khổ giấy chuẩn".to_string(),
-            );
+    // Dimensions validation (50-500mm range when provided)
+    if let Some(width) = config.paper_width {
+        if !(50..=500).contains(&width) {
+            return Err("Chiều rộng giấy phải trong khoảng 50-500mm".to_string());
         }
     }
 
-    // Margins validation (0-100mm range, guard against u32 overflow)
+    if let Some(height) = config.paper_height {
+        if !(50..=500).contains(&height) {
+            return Err("Chiều cao giấy phải trong khoảng 50-500mm".to_string());
+        }
+    }
+
+    // For Custom paper size, dimensions are required
+    if config.paper_size == "Custom" {
+        if config.paper_width.is_none() {
+            return Err("Chiều rộng giấy bắt buộc khi chọn khổ Custom".to_string());
+        }
+        if config.paper_height.is_none() {
+            return Err("Chiều cao giấy bắt buộc khi chọn khổ Custom".to_string());
+        }
+    }
+
+    // Margins validation (0-100mm range)
     if config.margin_left > 100 {
         return Err("Lề trái phải trong khoảng 0-100mm".to_string());
     }
@@ -225,36 +212,85 @@ fn save_printer_config(
         return Err("Tên máy in không được để trống".to_string());
     }
 
-    // 2. Load or create Printer from repository
-    use sapo_printer::domain::printer::{PrinterName, PrinterType};
-
-    let printer_name = PrinterName::new(config.printer_name.clone());
-    let printer = match app_ctx
-        .printer_repo
-        .find_by_name(&printer_name)
-        .map_err(|e| format!("Không thể tải cấu hình máy in: {}", e))?
-    {
-        Some(p) => p,
-        None => {
-            // Create new printer if not found
-            sapo_printer::domain::printer::Printer::new(printer_name, PrinterType::Local)
+    // Buffer validation
+    if config.enable_buffer {
+        match config.buffer_size_kb {
+            Some(size) if (1..=1024).contains(&size) => {
+                // Valid buffer size
+            }
+            Some(size) => {
+                return Err(format!(
+                    "Kích thước buffer phải trong khoảng 1-1024 KB (nhận được: {} KB)",
+                    size
+                ));
+            }
+            None => {
+                return Err("Kích thước buffer bắt buộc khi bật buffer".to_string());
+            }
         }
+    } else if config.buffer_size_kb.is_some() {
+        return Err("Không thể đặt kích thước buffer khi buffer đã tắt".to_string());
+    }
+
+    // Color mode validation
+    let valid_color_modes = ["RGB", "ARGB", "BGR", "GRAY", "BINARY"];
+    if !valid_color_modes.contains(&config.color_mode.as_str()) {
+        return Err(format!(
+            "Loại ảnh in không hợp lệ: '{}'. Chỉ chấp nhận: RGB, ARGB, BGR, GRAY, BINARY",
+            config.color_mode
+        ));
+    }
+
+    // 2. Convert DTO to config store model
+    let print_config = config_store::PrintConfig {
+        printer_name: config.printer_name,
+        paper_size: config.paper_size,
+        paper_width: config.paper_width,
+        paper_height: config.paper_height,
+        orientation: config.orientation,
+        margin_left: config.margin_left,
+        margin_right: config.margin_right,
+        margin_top: config.margin_top,
+        margin_bottom: config.margin_bottom,
+        color_mode: config.color_mode,
+        print_as_image: config.print_as_image,
+        enable_buffer: config.enable_buffer,
+        buffer_size_kb: config.buffer_size_kb,
     };
 
-    // 3. Note: Config fields (paper size, margins, etc.) are stored in printer_configs table
-    //    but are NOT part of the Printer aggregate domain model. The repository handles
-    //    these separately. We just save the Printer aggregate.
-
-    // 4. Save printer (repository will handle config fields via UPSERT)
-    app_ctx
-        .printer_repo
-        .save(&printer)
-        .map_err(|e| format!("Không thể lưu cấu hình máy in: {}", e))?;
-
-    // TODO: In future, extend repository to accept config parameters
-    // For now, the basic save() works because repository has default values
+    // 3. Save to JSON file
+    config_store::save_config(&print_config)?;
 
     Ok(())
+}
+
+/// Get printer configuration (global app config)
+#[tauri::command]
+fn get_printer_config(
+    _app_ctx: tauri::State<AppContextState>,
+) -> Result<Option<PrinterConfigDto>, String> {
+    use sapo_printer::infrastructure::config_store;
+
+    let config = config_store::load_config()?;
+
+    match config {
+        Some(cfg) => Ok(Some(PrinterConfigDto {
+            printer_name: cfg.printer_name,
+            paper_size: cfg.paper_size,
+            paper_width: cfg.paper_width,
+            paper_height: cfg.paper_height,
+            orientation: cfg.orientation,
+            margin_left: cfg.margin_left,
+            margin_right: cfg.margin_right,
+            margin_top: cfg.margin_top,
+            margin_bottom: cfg.margin_bottom,
+            color_mode: cfg.color_mode,
+            print_as_image: cfg.print_as_image,
+            enable_buffer: cfg.enable_buffer,
+            buffer_size_kb: cfg.buffer_size_kb,
+        })),
+        None => Ok(None),
+    }
 }
 
 /// Get current printer status
@@ -316,7 +352,6 @@ fn run_native_messaging_mode() -> Result<(), String> {
     }
 
     let job_repo = Arc::new(SqlitePrintJobRepository::new(pool.get_arc()));
-    let printer_repo = Arc::new(SqlitePrinterRepository::new(pool.get_arc()));
 
     #[cfg(target_os = "windows")]
     let secret_manager: Arc<dyn SecretManager> =
@@ -339,6 +374,13 @@ fn run_native_messaging_mode() -> Result<(), String> {
     let event_bus: Arc<dyn EventBus> = Arc::new(sapo_printer::shared::event_bus::InMemoryEventBus::new());
 
     let queue_manager = Arc::new(SqliteQueueManager::new(pool.get_arc()));
+
+    // Register PushToQueueHandler to listen for PrintJobCreated events
+    let push_handler = Arc::new(sapo_printer::application::handlers::push_to_queue_handler::PushToQueueHandler::new(
+        queue_manager.clone(),
+    ));
+    event_bus.subscribe("PrintJobCreated", push_handler);
+
     let metrics_collector = Arc::new(MetricsCollector::new(
         pool.get_arc(),
         queue_manager.clone(),
@@ -371,7 +413,6 @@ fn run_native_messaging_mode() -> Result<(), String> {
 
     sapo_printer::interface::native_messaging::run_native_messaging(
         job_repo,
-        printer_repo,
         printer_manager,
         event_store,
         event_bus,
@@ -476,7 +517,6 @@ fn main() {
             }
 
             // Initialize AppContext dependencies
-            let printer_repo = Arc::new(SqlitePrinterRepository::new(pool.get_arc()));
             let job_repo = Arc::new(SqlitePrintJobRepository::new(pool.get_arc()));
 
             // Initialize secret manager
@@ -509,6 +549,16 @@ fn main() {
                 Arc::new(TauriEventBus::new(app_handle.clone()));
             let queue_manager: Arc<dyn sapo_printer::infrastructure::queue::QueueManager> =
                 Arc::new(SqliteQueueManager::new(pool.get_arc()));
+
+            // Register PushToQueueHandler to listen for PrintJobCreated events
+            let push_handler = Arc::new(sapo_printer::application::handlers::push_to_queue_handler::PushToQueueHandler::new(
+                queue_manager.clone(),
+            ));
+            event_bus.subscribe("PrintJobCreated", push_handler);
+            tracing::info!(
+                target = "sapo_printer::startup",
+                "PushToQueueHandler registered for PrintJobCreated events"
+            );
 
             #[cfg(target_os = "windows")]
             let printer_manager: Arc<dyn PrinterManager> = Arc::new(Win32PrinterManager::new());
@@ -580,7 +630,6 @@ fn main() {
 
             // Register managed state
             app.manage(AppContextState {
-                printer_repo,
                 printer_manager,
                 secret_manager,
                 job_repo,
@@ -693,6 +742,7 @@ fn main() {
         .invoke_handler(tauri::generate_handler![
             list_printers,
             save_printer_config,
+            get_printer_config,
             get_printer_status,
             create_print_job,
             cancel_print_job,
@@ -703,6 +753,7 @@ fn main() {
             register_native_host,
             check_for_updates,
             install_update,
+            restart_app,
         ])
         .on_window_event(|window, event| {
             if let tauri::WindowEvent::CloseRequested { .. } = event {

@@ -1,16 +1,22 @@
+use std::sync::Arc;
 use tauri::{AppHandle, Emitter};
 
-use crate::shared::event_bus::{EventBus, EventBusError};
+use crate::shared::event_bus::{EventBus, EventBusError, EventHandler};
 
 /// EventBus implementation that emits Tauri IPC events to the frontend.
 /// Replaces InMemoryEventBus (no-op) to enable real-time UI updates.
+/// Also supports handler subscription for backend event processing.
 pub struct TauriEventBus {
     app_handle: AppHandle,
+    handlers: std::sync::Mutex<std::collections::HashMap<String, Vec<Arc<dyn EventHandler>>>>,
 }
 
 impl TauriEventBus {
     pub fn new(app_handle: AppHandle) -> Self {
-        Self { app_handle }
+        Self {
+            app_handle,
+            handlers: std::sync::Mutex::new(std::collections::HashMap::new()),
+        }
     }
 }
 
@@ -22,6 +28,17 @@ impl EventBus for TauriEventBus {
             bus = "tauri",
             "EventBus: event published"
         );
+
+        // 1. Invoke all registered backend handlers first
+        let handlers = self.handlers.lock().unwrap();
+        if let Some(handler_list) = handlers.get(event_type) {
+            for handler in handler_list {
+                handler.handle(event_type, payload);
+            }
+        }
+        drop(handlers); // Release lock before emitting to frontend
+
+        // 2. Emit to Tauri frontend (existing logic)
         let tauri_event = match event_type {
             "PrintJobCreated"
             | "PrintJobQueued"
@@ -63,6 +80,20 @@ impl EventBus for TauriEventBus {
             })?;
 
         Ok(())
+    }
+
+    fn subscribe(&self, event_type: &str, handler: Arc<dyn EventHandler>) {
+        let mut handlers = self.handlers.lock().unwrap();
+        handlers
+            .entry(event_type.to_string())
+            .or_insert_with(Vec::new)
+            .push(handler);
+
+        tracing::debug!(
+            target = "sapo_printer::event_bus",
+            event_type = event_type,
+            "TauriEventBus: handler subscribed"
+        );
     }
 }
 
