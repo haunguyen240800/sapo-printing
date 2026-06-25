@@ -21,7 +21,7 @@ use sapo_printer::domain::print_job::aggregate::PrintJob;
 use sapo_printer::domain::print_job::value_objects::{JobId, PrintStatus};
 use sapo_printer::domain::print_job::PrintJobRepository;
 use sapo_printer::infrastructure::database::{
-    run_migrations, SqliteEventStore, SqlitePrintJobRepository,
+    run_migrations, SqlitePrintJobRepository,
 };
 use sapo_printer::infrastructure::downloader::DocumentDownloader;
 use sapo_printer::infrastructure::printer::PrinterEngine;
@@ -29,6 +29,8 @@ use sapo_printer::infrastructure::queue::{QueueWorker, SqliteQueueManager};
 use sapo_printer::infrastructure::renderer::{DocumentRenderer, RenderConfig};
 use sapo_printer::shared::errors::InfrastructureError;
 use sapo_printer::shared::event_bus::{EventBus, EventBusError};
+
+use super::common;
 
 // --- Mock EventBus ---
 
@@ -137,7 +139,7 @@ fn create_test_worker(
 
     let queue_manager = Arc::new(SqliteQueueManager::new(arc_conn.clone()));
     let job_repo = Arc::new(SqlitePrintJobRepository::new(arc_conn.clone()));
-    let event_store = Arc::new(SqliteEventStore::new(arc_conn.clone()));
+    let event_store = common::create_test_event_store(arc_conn.clone());
     let event_bus = Arc::new(MockEventBus);
     let renderer = Arc::new(MockRenderer);
     let printer_engine = Arc::new(MockPrinterEngine);

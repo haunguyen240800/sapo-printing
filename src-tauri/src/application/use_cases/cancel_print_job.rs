@@ -155,9 +155,43 @@ mod tests {
     use crate::domain::print_job::aggregate::PrintJob;
     use crate::domain::print_job::value_objects::PrintStatus;
     use crate::infrastructure::database::run_migrations;
+    use crate::infrastructure::secrets::SecretManager;
+    use crate::shared::errors::InfrastructureError;
     use crate::shared::event_bus::InMemoryEventBus;
     use rusqlite::Connection;
+    use std::collections::HashMap;
     use std::sync::Mutex as StdMutex;
+
+    struct MockSecretManager {
+        store: StdMutex<HashMap<String, String>>,
+    }
+
+    impl MockSecretManager {
+        fn new() -> Self {
+            Self {
+                store: StdMutex::new(HashMap::new()),
+            }
+        }
+    }
+
+    impl SecretManager for MockSecretManager {
+        fn store(&self, key: &str, value: &str) -> Result<(), InfrastructureError> {
+            self.store
+                .lock()
+                .unwrap()
+                .insert(key.to_string(), value.to_string());
+            Ok(())
+        }
+
+        fn retrieve(&self, key: &str) -> Result<Option<String>, InfrastructureError> {
+            Ok(self.store.lock().unwrap().get(key).cloned())
+        }
+
+        fn delete(&self, key: &str) -> Result<(), InfrastructureError> {
+            self.store.lock().unwrap().remove(key);
+            Ok(())
+        }
+    }
 
     struct MockPrintJobRepository {
         jobs: StdMutex<Vec<PrintJob>>,
@@ -243,7 +277,7 @@ mod tests {
         let arc_conn = Arc::new(StdMutex::new(conn));
 
         let job_repo = Arc::new(MockPrintJobRepository::new());
-        let event_store = Arc::new(SqliteEventStore::new(arc_conn));
+        let event_store = Arc::new(SqliteEventStore::new(arc_conn, Arc::new(MockSecretManager::new())));
         let event_bus = Arc::new(InMemoryEventBus::new());
 
         (job_repo, event_store, event_bus)

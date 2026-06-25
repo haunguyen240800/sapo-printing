@@ -2,6 +2,8 @@
 //!
 //! This module structure allows Cargo to discover and run integration tests.
 
+mod common;
+
 mod secrets {
     #[cfg(target_os = "windows")]
     mod windows_integration_test;
@@ -24,3 +26,4 @@ mod renderer_integration_test;
 mod repository_integration_test;
 mod retry_integration_test;
 mod temp_file_integration_test;
+mod audit_trail_integration_test;

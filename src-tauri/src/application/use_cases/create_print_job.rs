@@ -124,8 +124,42 @@ mod tests {
     use crate::domain::printer::errors::PrinterDomainError;
     use crate::domain::printer::value_objects::{PrinterName, PrinterType};
     use crate::shared::event_bus::EventBusError;
+    use crate::infrastructure::secrets::SecretManager;
+    use crate::shared::errors::InfrastructureError;
+    use std::collections::HashMap;
     use std::sync::atomic::{AtomicUsize, Ordering};
     use std::sync::Mutex;
+
+    struct MockSecretManager {
+        store: Mutex<HashMap<String, String>>,
+    }
+
+    impl MockSecretManager {
+        fn new() -> Self {
+            Self {
+                store: Mutex::new(HashMap::new()),
+            }
+        }
+    }
+
+    impl SecretManager for MockSecretManager {
+        fn store(&self, key: &str, value: &str) -> Result<(), InfrastructureError> {
+            self.store
+                .lock()
+                .unwrap()
+                .insert(key.to_string(), value.to_string());
+            Ok(())
+        }
+
+        fn retrieve(&self, key: &str) -> Result<Option<String>, InfrastructureError> {
+            Ok(self.store.lock().unwrap().get(key).cloned())
+        }
+
+        fn delete(&self, key: &str) -> Result<(), InfrastructureError> {
+            self.store.lock().unwrap().remove(key);
+            Ok(())
+        }
+    }
 
     // ── Mock PrintJobRepository ──
     struct MockJobRepo {
@@ -274,7 +308,7 @@ mod tests {
         let mut conn = rusqlite::Connection::open_in_memory().unwrap();
         crate::infrastructure::database::migrations::run_migrations(&mut conn).unwrap();
         let arc_conn = Arc::new(std::sync::Mutex::new(conn));
-        let sqlite_event_store = Arc::new(SqliteEventStore::new(arc_conn));
+        let sqlite_event_store = Arc::new(SqliteEventStore::new(arc_conn, Arc::new(MockSecretManager::new())));
 
         let use_case = CreatePrintJobUseCase {
             job_repo: job_repo.clone(),
@@ -478,7 +512,7 @@ mod tests {
         // Minimal in-memory SQLite for type compliance (with migrations)
         let mut conn = rusqlite::Connection::open_in_memory().unwrap();
         crate::infrastructure::database::migrations::run_migrations(&mut conn).unwrap();
-        let event_store = Arc::new(SqliteEventStore::new(Arc::new(std::sync::Mutex::new(conn))));
+        let event_store = Arc::new(SqliteEventStore::new(Arc::new(std::sync::Mutex::new(conn)), Arc::new(MockSecretManager::new())));
 
         let event_bus: Arc<dyn EventBus> = Arc::new(CountingEventBus {
             count: publish_count.clone(),

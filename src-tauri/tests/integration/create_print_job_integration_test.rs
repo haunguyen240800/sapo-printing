@@ -21,6 +21,8 @@ use sapo_printer::infrastructure::database::{
 };
 use sapo_printer::shared::event_bus::InMemoryEventBus;
 
+use super::common;
+
 fn setup_test_deps() -> (
     Arc<SqlitePrintJobRepository>,
     Arc<SqliteEventStore>,
@@ -33,7 +35,7 @@ fn setup_test_deps() -> (
     let arc_conn = Arc::new(Mutex::new(conn));
 
     let job_repo = Arc::new(SqlitePrintJobRepository::new(arc_conn.clone()));
-    let event_store = Arc::new(SqliteEventStore::new(arc_conn.clone()));
+    let event_store = common::create_test_event_store(arc_conn.clone());
     let event_bus = Arc::new(InMemoryEventBus::new());
     let printer_repo = Arc::new(SqlitePrinterRepository::new(arc_conn.clone()));
 

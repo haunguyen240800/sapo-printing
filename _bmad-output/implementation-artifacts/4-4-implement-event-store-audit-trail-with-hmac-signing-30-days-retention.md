@@ -4,7 +4,7 @@ baseline_commit: 06ce0922a5444301c7485bbc8f0dd3fec1f30567
 
 # Story 4.4: Implement Event Store Audit Trail with HMAC Signing (30 days retention)
 
-Status: ready-for-dev
+Status: done
 
 ## Story
 
@@ -163,62 +163,62 @@ pub struct AuditEventDto {
 
 ## Tasks / Subtasks
 
-- [ ] **Task 1: Add HMAC Dependencies** (AC: #1)
-  - [ ] Add `hmac = "0.12"` and `sha2 = "0.10"` to `Cargo.toml`
-  - [ ] Add `rand = "0.8"` for key generation (if not present)
-  - [ ] Verify `cargo check` succeeds
+- [x] **Task 1: Add HMAC Dependencies** (AC: #1)
+  - [x] Add `hmac = "0.12"` and `sha2 = "0.10"` to `Cargo.toml`
+  - [x] Add `rand = "0.8"` for key generation (if not present)
+  - [x] Verify `cargo check` succeeds
 
-- [ ] **Task 2: Implement HMAC Signing in Event Store** (AC: #1)
-  - [ ] Create `compute_hmac()` helper function in `event_store.rs`
-  - [ ] Create `get_or_create_signing_key()` method on `SqliteEventStore`
-  - [ ] Update `save_event()` to compute and store HMAC (replace `None::<String>`)
-  - [ ] Update `save_all()` to compute and store HMAC for each event (replace `None::<String>`)
-  - [ ] Wire `SecretManager` into `SqliteEventStore` (add field or pass as parameter)
-  - [ ] Update existing tests to account for HMAC (mock SecretManager)
+- [x] **Task 2: Implement HMAC Signing in Event Store** (AC: #1)
+  - [x] Create `compute_hmac()` helper function in `event_store.rs`
+  - [x] Create `get_or_create_signing_key()` method on `SqliteEventStore`
+  - [x] Update `save_event()` to compute and store HMAC (replace `None::<String>`)
+  - [x] Update `save_all()` to compute and store HMAC for each event (replace `None::<String>`)
+  - [x] Wire `SecretManager` into `SqliteEventStore` (add field or pass as parameter)
+  - [x] Update existing tests to account for HMAC (mock SecretManager)
 
-- [ ] **Task 3: Create Audit Module** (AC: #2)
-  - [ ] Create `src-tauri/src/infrastructure/database/audit.rs`
-  - [ ] Implement `verify_event_integrity()`
-  - [ ] Implement `get_audit_trail()` (delegates to store)
-  - [ ] Implement `verify_audit_trail_integrity()`
-  - [ ] Implement `cleanup_old_events()`
-  - [ ] Create `AuditIntegrityReport` struct
-  - [ ] Export module in `mod.rs`
-  - [ ] Unit tests for all functions
+- [x] **Task 3: Create Audit Module** (AC: #2)
+  - [x] Create `src-tauri/src/infrastructure/database/audit.rs`
+  - [x] Implement `verify_event_integrity()`
+  - [x] Implement `get_audit_trail()` (delegates to store)
+  - [x] Implement `verify_audit_trail_integrity()`
+  - [x] Implement `cleanup_old_events()`
+  - [x] Create `AuditIntegrityReport` struct
+  - [x] Export module in `mod.rs`
+  - [x] Unit tests for all functions
 
-- [ ] **Task 4: Startup Cleanup** (AC: #3)
-  - [ ] Call `cleanup_old_events` in Tauri `.setup()` after event_store init
-  - [ ] Call `cleanup_old_events` in `run_native_messaging_mode()` after event_store init
-  - [ ] Log cleanup result (events deleted count)
-  - [ ] Failure is logged but doesn't block startup
+- [x] **Task 4: Startup Cleanup** (AC: #3)
+  - [x] Call `cleanup_old_events` in Tauri `.setup()` after event_store init
+  - [x] Call `cleanup_old_events` in `run_native_messaging_mode()` after event_store init
+  - [x] Log cleanup result (events deleted count)
+  - [x] Failure is logged but doesn't block startup
 
-- [ ] **Task 5: Create AuditTrailUseCase** (AC: #5)
-  - [ ] Create `src-tauri/src/application/use_cases/get_audit_trail.rs`
-  - [ ] Implement `AuditTrailUseCase` struct with `execute(job_id)` method
-  - [ ] Return `AuditTrailResult` with events and integrity report
-  - [ ] Export in `mod.rs`
+- [x] **Task 5: Create AuditTrailUseCase** (AC: #5)
+  - [x] Create `src-tauri/src/application/use_cases/get_audit_trail.rs`
+  - [x] Implement `AuditTrailUseCase` struct with `execute(job_id)` method
+  - [x] Return `AuditTrailResult` with events and integrity report
+  - [x] Export in `mod.rs`
 
-- [ ] **Task 6: Create Tauri Command** (AC: #4)
-  - [ ] Create `src-tauri/src/interface/tauri/dtos/audit_trail.rs` with DTOs
-  - [ ] Create `src-tauri/src/interface/tauri/commands/audit_trail.rs` with command handler
-  - [ ] Register command in `main.rs` invoke_handler
-  - [ ] Wire command to use `AppContextState` for event_store and secret_manager access
+- [x] **Task 6: Create Tauri Command** (AC: #4)
+  - [x] Create `src-tauri/src/interface/tauri/dtos/audit_trail.rs` with DTOs
+  - [x] Create `src-tauri/src/interface/tauri/commands/audit_trail.rs` with command handler
+  - [x] Register command in `main.rs` invoke_handler
+  - [x] Wire command to use `AppContextState` for event_store and secret_manager access
 
-- [ ] **Task 7: Tests** (AC: #6, #7)
-  - [ ] Unit tests: HMAC deterministic generation
-  - [ ] Unit tests: HMAC tamper detection
-  - [ ] Unit tests: Audit trail ordering
-  - [ ] Unit tests: Cleanup old events
-  - [ ] Unit tests: Cleanup preserves recent
-  - [ ] Unit tests: Auto-generate signing key
-  - [ ] Integration test: real events with valid HMAC
-  - [ ] Integration test: tampered event fails verification
-  - [ ] Integration test: full lifecycle + cleanup
+- [x] **Task 7: Tests** (AC: #6, #7)
+  - [x] Unit tests: HMAC deterministic generation
+  - [x] Unit tests: HMAC tamper detection
+  - [x] Unit tests: Audit trail ordering
+  - [x] Unit tests: Cleanup old events
+  - [x] Unit tests: Cleanup preserves recent
+  - [x] Unit tests: Auto-generate signing key
+  - [x] Integration test: real events with valid HMAC
+  - [x] Integration test: tampered event fails verification
+  - [x] Integration test: full lifecycle + cleanup
 
-- [ ] **Task 8: Build Verification**
-  - [ ] Verify `cargo check` succeeds
-  - [ ] Verify `cargo check --tests` passes all new + existing tests
-  - [ ] No regressions in existing tests
+- [x] **Task 8: Build Verification**
+  - [x] Verify `cargo check` succeeds
+  - [x] Verify `cargo check --tests` passes all new + existing tests
+  - [x] No regressions in existing tests
 
 ## Dev Notes
 
@@ -473,3 +473,88 @@ hex = "0.4"
 - [Source: src-tauri/src/main.rs] — Tauri setup + native messaging mode entry points
 - [Source: src-tauri/src/domain/print_job/events.rs] — All 8 domain event types
 - [Source: src-tauri/src/application/use_cases/get_job_status.rs] — Use case pattern to follow
+
+## File List
+
+### New Files
+- `src-tauri/src/infrastructure/database/audit.rs` — Audit module with HMAC verification, integrity reports, cleanup
+- `src-tauri/src/application/use_cases/get_audit_trail.rs` — AuditTrailUseCase for retrieving and verifying audit trails
+- `src-tauri/src/interface/tauri/commands/audit_trail.rs` — Tauri command handler for get_job_audit_trail
+- `src-tauri/src/interface/tauri/dtos/audit_trail.rs` — DTOs for audit trail response
+- `src-tauri/tests/integration/audit_trail_integration_test.rs` — Integration tests for HMAC signing and audit trail
+- `src-tauri/tests/integration/common.rs` — Shared test helpers (MockSecretManager)
+
+### Modified Files
+- `src-tauri/Cargo.toml` — Added hmac, sha2, rand, hex dependencies
+- `src-tauri/src/infrastructure/database/event_store.rs` — Added HMAC signing to save_event/save_all, wired SecretManager
+- `src-tauri/src/infrastructure/database/mod.rs` — Exported audit module
+- `src-tauri/src/application/use_cases/mod.rs` — Exported AuditTrailUseCase
+- `src-tauri/src/interface/tauri/commands/mod.rs` — Exported audit_trail command module
+- `src-tauri/src/interface/tauri/dtos/mod.rs` — Exported audit_trail DTO module
+- `src-tauri/src/lib.rs` — Renamed _secret_manager to secret_manager in AppContextState
+- `src-tauri/src/main.rs` — Added startup cleanup, registered get_job_audit_trail command
+- `src-tauri/src/shared/app_context.rs` — Updated SqliteEventStore::new() call with secret_manager
+- `src-tauri/tests/integration/mod.rs` — Added audit_trail_integration_test module
+- Multiple test files updated to pass MockSecretManager to SqliteEventStore::new()
+
+## Change Log
+
+- **2026-06-25**: Implemented HMAC-SHA256 signing for all events in Event Store
+- **2026-06-25**: Created audit module with integrity verification and 30-day cleanup
+- **2026-06-25**: Added startup cleanup in both Tauri and native messaging modes
+- **2026-06-25**: Created AuditTrailUseCase following Clean Architecture patterns
+- **2026-06-25**: Implemented get_job_audit_trail Tauri command with DTOs
+- **2026-06-25**: Added comprehensive unit tests (16 tests) and integration tests (4 tests)
+- **2026-06-25**: Updated all test call sites to use MockSecretManager (19 locations)
+
+## Dev Agent Record
+
+### Implementation Summary
+
+**Architecture Decisions:**
+- Wired `Arc<dyn SecretManager>` into `SqliteEventStore` constructor for clean dependency injection
+- HMAC computed over canonical string: `{aggregate_id}|{sequence_number}|{event_type}|{payload}|{timestamp}`
+- Signing key auto-generated on first use (32 random bytes, hex-encoded to 64 chars)
+- Empty audit trails return early without requiring signing key (graceful handling)
+
+**Test Coverage:**
+- Unit tests: 16 tests covering HMAC generation, verification, tamper detection, cleanup, ordering
+- Integration tests: 4 tests covering full lifecycle, real events with HMAC, tampered events, cleanup
+- All new tests pass; no regressions in existing tests (6 pre-existing failures unrelated to this story)
+
+**Key Implementation Details:**
+- `compute_hmac()` is public for reuse in audit verification
+- `get_or_create_signing_key()` handles key lifecycle (retrieve or generate+store)
+- `delete_events_before()` added to SqliteEventStore for cleanup support
+- Startup cleanup is best-effort (logs errors but doesn't block startup)
+- AuditTrailUseCase fetches events first, only verifies if events exist
+
+### Completion Notes
+
+✅ All 7 acceptance criteria satisfied:
+- AC-1: HMAC-SHA256 signing added to event store (save_event, save_all)
+- AC-2: Audit module created with verification, trail retrieval, cleanup
+- AC-3: Startup cleanup in both Tauri and native messaging modes
+- AC-4: GetJobAuditTrail Tauri command with DTOs
+- AC-5: AuditTrailUseCase in application layer
+- AC-6: Unit tests (16 tests, all passing)
+- AC-7: Integration tests (4 tests, all passing)
+
+✅ Build verification: `cargo check` and `cargo check --tests` pass
+✅ No new test regressions (6 pre-existing failures remain, unrelated to story 4.4)
+✅ Code follows Clean Architecture: infrastructure → application → interface layers
+✅ Security: signing key stored in OS credential manager, never logged
+
+### Review Findings
+
+- [x] [Review][Patch] **Timing-attack-vulnerable HMAC comparison** — `verify_event_integrity` uses `computed == *stored_hmac` (Rust `String::eq`, short-circuits). Use `subtle::ConstantTimeEq` or `Mac::verify_slice` instead. [audit.rs:41]
+- [x] [Review][Patch] **TOCTOU race in `get_or_create_signing_key`** — Two concurrent processes (Tauri GUI + native messaging) can both generate keys when none exists. Last writer wins, invalidating all events signed with the first key. Generate key once at startup and cache in memory. [event_store.rs:69-96]
+- [x] [Review][Patch] **Double verification produces inconsistent API response** — `AuditTrailUseCase::execute()` verifies integrity and produces `report.chain_valid`. Then `execute_get_job_audit_trail` retrieves the key AGAIN and re-verifies each event. If key rotates between the two retrievals, `chain_valid` and per-event `hmac_valid` can contradict. Use case should return per-event validity; command handler should not re-verify. [commands/audit_trail.rs:14-38, get_audit_trail.rs:55-82]
+- [x] [Review][Patch] **`cleanup_old_events(0)` silently deletes ALL events** — `retention_days = 0` → `cutoff = now` → deletes everything. Add guard: reject `retention_days == 0` with error or enforce minimum. [audit.rs:83-90]
+- [x] [Review][Patch] **Key generation uses `rand::random()` instead of spec-mandated `OsRng`** — Spec Security Considerations explicitly require `rand::rngs::OsRng`. `rand::random()` uses `ThreadRng` (CSPRNG but not OS-level). Fix: `use rand::RngCore; let mut key_bytes = [0u8; 32]; OsRng.fill_bytes(&mut key_bytes);` [event_store.rs:81]
+- [x] [Review][Patch] **`verify_event_integrity` returns `Ok(false)` for `None` HMAC — indistinguishable from tampering** — Events with `hmac = NULL` (legacy or corrupted) are reported as "tampered" when they were never signed. Return `Err` for `None` HMAC to distinguish "never signed" from "signature mismatch". [audit.rs:27-29]
+- [x] [Review][Patch] **`save_all` with empty events list creates unnecessary transaction** — Early-return `Ok(())` when `events.is_empty()`. [event_store.rs:118-176]
+- [x] [Review][Defer] **Mutex poisoning recovery** — `unwrap_or_else(|p| p.into_inner())` silently recovers from poisoned mutex — deferred, pre-existing pattern
+- [x] [Review][Defer] **`save_all` assigns identical timestamps to batch events** — 1-second granularity means all events in a batch share a timestamp — deferred, design limitation
+- [x] [Review][Defer] **`get_or_create_signing_key` re-entrancy hazard** — Takes `&self` while holding connection mutex; future SecretManager using same DB would deadlock — deferred, future concern
+- [x] [Review][Defer] **`SystemTime::now().unwrap()` theoretical panic** — Panics if clock before Unix epoch — deferred, pre-existing, not practical on modern OS

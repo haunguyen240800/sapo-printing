@@ -523,8 +523,41 @@ mod tests {
     use crate::domain::print_job::PrintJobRepository;
     use crate::infrastructure::database::{run_migrations, SqliteEventStore};
     use crate::infrastructure::queue::QueueError;
+    use crate::infrastructure::secrets::SecretManager;
     use crate::shared::errors::InfrastructureError;
     use crate::shared::event_bus::EventBusError;
+    use std::collections::HashMap;
+
+    struct MockSecretManager {
+        store: StdMutex<HashMap<String, String>>,
+    }
+
+    impl MockSecretManager {
+        fn new() -> Self {
+            Self {
+                store: StdMutex::new(HashMap::new()),
+            }
+        }
+    }
+
+    impl SecretManager for MockSecretManager {
+        fn store(&self, key: &str, value: &str) -> Result<(), InfrastructureError> {
+            self.store
+                .lock()
+                .unwrap()
+                .insert(key.to_string(), value.to_string());
+            Ok(())
+        }
+
+        fn retrieve(&self, key: &str) -> Result<Option<String>, InfrastructureError> {
+            Ok(self.store.lock().unwrap().get(key).cloned())
+        }
+
+        fn delete(&self, key: &str) -> Result<(), InfrastructureError> {
+            self.store.lock().unwrap().remove(key);
+            Ok(())
+        }
+    }
 
     // --- Mock QueueManager ---
 
@@ -814,7 +847,7 @@ mod tests {
     fn create_test_event_store() -> Arc<SqliteEventStore> {
         let mut conn = Connection::open_in_memory().unwrap();
         run_migrations(&mut conn).unwrap();
-        Arc::new(SqliteEventStore::new(Arc::new(Mutex::new(conn))))
+        Arc::new(SqliteEventStore::new(Arc::new(Mutex::new(conn)), Arc::new(MockSecretManager::new())))
     }
 
     // --- Tests ---
@@ -1232,7 +1265,7 @@ mod tests {
 
         let job_repo = Arc::new(MockPrintJobRepository::new());
         let queue_manager = Arc::new(MockQueueManager::new());
-        let event_store = Arc::new(SqliteEventStore::new(arc_conn.clone()));
+        let event_store = Arc::new(SqliteEventStore::new(arc_conn.clone(), Arc::new(MockSecretManager::new())));
         let event_bus = Arc::new(MockEventBus::new());
 
         // Create job in QUEUED state (normal state after pop from queue)
@@ -1274,7 +1307,7 @@ mod tests {
 
         let job_repo = Arc::new(MockPrintJobRepository::new());
         let queue_manager = Arc::new(MockQueueManager::new());
-        let event_store = Arc::new(SqliteEventStore::new(arc_conn.clone()));
+        let event_store = Arc::new(SqliteEventStore::new(arc_conn.clone(), Arc::new(MockSecretManager::new())));
         let event_bus = Arc::new(MockEventBus::new());
 
         // Create job in QUEUED state
@@ -1314,7 +1347,7 @@ mod tests {
 
         let job_repo = Arc::new(MockPrintJobRepository::new());
         let queue_manager = Arc::new(MockQueueManager::new());
-        let event_store = Arc::new(SqliteEventStore::new(arc_conn.clone()));
+        let event_store = Arc::new(SqliteEventStore::new(arc_conn.clone(), Arc::new(MockSecretManager::new())));
         let event_bus = Arc::new(MockEventBus::new());
 
         // Create job with retry_count already at 3

@@ -11,8 +11,10 @@ use sapo_printer::domain::print_job::aggregate::PrintJob;
 use sapo_printer::domain::print_job::repository::PrintJobRepository;
 use sapo_printer::domain::print_job::value_objects::PrintStatus;
 use sapo_printer::infrastructure::database::{
-    run_migrations, DbPool, SqliteEventStore, SqlitePrintJobRepository,
+    run_migrations, DbPool, SqlitePrintJobRepository,
 };
+
+use super::common;
 
 /// RAII guard that removes a temp file on drop.
 struct TempDb {
@@ -78,7 +80,7 @@ fn test_full_job_lifecycle() {
 #[test]
 fn test_event_store_batch_and_sequence() {
     let conn = setup_test_db();
-    let store = SqliteEventStore::new(conn);
+    let store = common::create_test_event_store(conn);
 
     // Create a job and accumulate events
     let mut job = PrintJob::new(

@@ -63,6 +63,18 @@ fn get_job_status(
     sapo_printer::interface::tauri::commands::print_job::execute_get_job_status(job_id, ctx.inner())
 }
 
+/// Tauri command: get audit trail for a job.
+#[tauri::command]
+fn get_job_audit_trail(
+    job_id: String,
+    ctx: tauri::State<'_, AppContextState>,
+) -> Result<sapo_printer::interface::tauri::dtos::audit_trail::AuditTrailResponse, String> {
+    sapo_printer::interface::tauri::commands::audit_trail::execute_get_job_audit_trail(
+        job_id,
+        ctx.inner(),
+    )
+}
+
 #[cfg(target_os = "windows")]
 use sapo_printer::infrastructure::printer::windows::Win32PrinterManager;
 #[cfg(target_os = "windows")]
@@ -274,13 +286,51 @@ fn run_native_messaging_mode() -> Result<(), String> {
 
     let job_repo = Arc::new(SqlitePrintJobRepository::new(pool.get_arc()));
     let printer_repo = Arc::new(SqlitePrinterRepository::new(pool.get_arc()));
-    let event_store = Arc::new(SqliteEventStore::new(pool.get_arc()));
+
+    #[cfg(target_os = "windows")]
+    let secret_manager: Arc<dyn SecretManager> =
+        Arc::new(WindowsCredentialManager::new());
+
+    #[cfg(target_os = "macos")]
+    let secret_manager: Arc<dyn SecretManager> = Arc::new(MacOSKeychain::new());
+
+    #[cfg(target_os = "linux")]
+    let secret_manager: Arc<dyn SecretManager> = Arc::new(
+        match LinuxSecretService::new() {
+            Ok(service) => service,
+            Err(e) => {
+                return Err(format!("Secret Service unavailable: {}", e));
+            }
+        },
+    );
+
+    let event_store = Arc::new(SqliteEventStore::new(pool.get_arc(), secret_manager));
     let event_bus: Arc<dyn EventBus> = Arc::new(sapo_printer::shared::event_bus::InMemoryEventBus::new());
 
     #[cfg(target_os = "windows")]
     let printer_manager: Arc<dyn PrinterManager> = Arc::new(Win32PrinterManager::new());
     #[cfg(not(target_os = "windows"))]
     let printer_manager: Arc<dyn PrinterManager> = Arc::new(CupsPrinterManager::new());
+
+    // Startup cleanup: purge events older than 30 days (best-effort)
+    match sapo_printer::infrastructure::database::cleanup_old_events(&event_store, 30) {
+        Ok(deleted) => {
+            if deleted > 0 {
+                tracing::info!(
+                    target = "sapo_printer::startup",
+                    deleted_events = deleted,
+                    "Audit cleanup: deleted old events"
+                );
+            }
+        }
+        Err(e) => {
+            tracing::warn!(
+                target = "sapo_printer::startup",
+                error = %e,
+                "Audit cleanup failed (non-fatal)"
+            );
+        }
+    }
 
     sapo_printer::interface::native_messaging::run_native_messaging(
         job_repo,
@@ -390,17 +440,6 @@ fn main() {
             // Initialize AppContext dependencies
             let printer_repo = Arc::new(SqlitePrinterRepository::new(pool.get_arc()));
             let job_repo = Arc::new(SqlitePrintJobRepository::new(pool.get_arc()));
-            let event_store = Arc::new(SqliteEventStore::new(pool.get_arc()));
-            let event_bus: Arc<dyn EventBus> =
-                Arc::new(TauriEventBus::new(app_handle.clone()));
-            let queue_manager: Arc<dyn sapo_printer::infrastructure::queue::QueueManager> =
-                Arc::new(SqliteQueueManager::new(pool.get_arc()));
-
-            #[cfg(target_os = "windows")]
-            let printer_manager: Arc<dyn PrinterManager> = Arc::new(Win32PrinterManager::new());
-
-            #[cfg(not(target_os = "windows"))]
-            let printer_manager: Arc<dyn PrinterManager> = Arc::new(CupsPrinterManager::new());
 
             // Initialize secret manager
             #[cfg(target_os = "windows")]
@@ -426,6 +465,18 @@ fn main() {
                     }
                 },
             );
+
+            let event_store = Arc::new(SqliteEventStore::new(pool.get_arc(), secret_manager.clone()));
+            let event_bus: Arc<dyn EventBus> =
+                Arc::new(TauriEventBus::new(app_handle.clone()));
+            let queue_manager: Arc<dyn sapo_printer::infrastructure::queue::QueueManager> =
+                Arc::new(SqliteQueueManager::new(pool.get_arc()));
+
+            #[cfg(target_os = "windows")]
+            let printer_manager: Arc<dyn PrinterManager> = Arc::new(Win32PrinterManager::new());
+
+            #[cfg(not(target_os = "windows"))]
+            let printer_manager: Arc<dyn PrinterManager> = Arc::new(CupsPrinterManager::new());
 
             // Initialize QueueWorker dependencies
             let downloader = Arc::new(ReqwestDownloader::new());
@@ -463,11 +514,31 @@ fn main() {
             worker.start().expect("Failed to start queue worker");
             println!("Queue worker started successfully");
 
+            // Startup cleanup: purge events older than 30 days (best-effort)
+            match sapo_printer::infrastructure::database::cleanup_old_events(&event_store, 30) {
+                Ok(deleted) => {
+                    if deleted > 0 {
+                        tracing::info!(
+                            target = "sapo_printer::startup",
+                            deleted_events = deleted,
+                            "Audit cleanup: deleted old events"
+                        );
+                    }
+                }
+                Err(e) => {
+                    tracing::warn!(
+                        target = "sapo_printer::startup",
+                        error = %e,
+                        "Audit cleanup failed (non-fatal)"
+                    );
+                }
+            }
+
             // Register managed state
             app.manage(AppContextState {
                 printer_repo,
                 printer_manager,
-                _secret_manager: secret_manager,
+                secret_manager,
                 job_repo,
                 event_store,
                 event_bus,
@@ -486,6 +557,7 @@ fn main() {
             cancel_print_job,
             list_jobs,
             get_job_status,
+            get_job_audit_trail,
             register_native_host,
         ])
         .on_window_event(|window, event| {

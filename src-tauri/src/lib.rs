@@ -23,7 +23,7 @@ pub mod shared;
 pub struct AppContextState {
     pub printer_repo: Arc<dyn domain::printer::PrinterRepository>,
     pub printer_manager: Arc<dyn infrastructure::printer::PrinterManager>,
-    pub _secret_manager: Arc<dyn infrastructure::secrets::SecretManager>,
+    pub secret_manager: Arc<dyn infrastructure::secrets::SecretManager>,
     pub job_repo: Arc<dyn domain::print_job::PrintJobRepository>,
     pub event_store: Arc<infrastructure::database::SqliteEventStore>,
     pub event_bus: Arc<dyn shared::event_bus::EventBus>,

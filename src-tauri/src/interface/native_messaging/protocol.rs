@@ -502,8 +502,42 @@ mod tests {
     use crate::domain::printer::value_objects::{PrinterName, PrinterType};
     use crate::infrastructure::database::{run_migrations, SqliteEventStore};
     use crate::infrastructure::printer::PrinterManager;
+    use crate::infrastructure::secrets::SecretManager;
+    use crate::shared::errors::InfrastructureError;
     use crate::shared::event_bus::InMemoryEventBus;
+    use std::collections::HashMap;
     use std::sync::Mutex as StdMutex;
+
+    struct MockSecretManager {
+        store: StdMutex<HashMap<String, String>>,
+    }
+
+    impl MockSecretManager {
+        fn new() -> Self {
+            Self {
+                store: StdMutex::new(HashMap::new()),
+            }
+        }
+    }
+
+    impl SecretManager for MockSecretManager {
+        fn store(&self, key: &str, value: &str) -> Result<(), InfrastructureError> {
+            self.store
+                .lock()
+                .unwrap()
+                .insert(key.to_string(), value.to_string());
+            Ok(())
+        }
+
+        fn retrieve(&self, key: &str) -> Result<Option<String>, InfrastructureError> {
+            Ok(self.store.lock().unwrap().get(key).cloned())
+        }
+
+        fn delete(&self, key: &str) -> Result<(), InfrastructureError> {
+            self.store.lock().unwrap().remove(key);
+            Ok(())
+        }
+    }
 
     // ── Wire Protocol Tests ─────────────────────────────────────────────
 
@@ -648,7 +682,7 @@ mod tests {
             job_repo: Arc::new(MockJobRepo::new()),
             printer_repo: Arc::new(MockPrinterRepo),
             printer_manager: Arc::new(MockPrinterManager),
-            event_store: Arc::new(SqliteEventStore::new(arc_conn)),
+            event_store: Arc::new(SqliteEventStore::new(arc_conn, Arc::new(MockSecretManager::new()))),
             event_bus: Arc::new(InMemoryEventBus::new()),
         }
     }
@@ -1182,7 +1216,7 @@ mod tests {
             job_repo: Arc::new(MockJobRepo::new()),
             printer_repo: Arc::new(MockPrinterRepoOffline),
             printer_manager: Arc::new(OfflinePrinterManager),
-            event_store: Arc::new(SqliteEventStore::new(arc_conn)),
+            event_store: Arc::new(SqliteEventStore::new(arc_conn, Arc::new(MockSecretManager::new()))),
             event_bus: Arc::new(InMemoryEventBus::new()),
         }
     }

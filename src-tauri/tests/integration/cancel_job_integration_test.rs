@@ -5,10 +5,12 @@ use sapo_printer::domain::print_job::aggregate::PrintJob;
 use sapo_printer::domain::print_job::repository::PrintJobRepository;
 use sapo_printer::domain::print_job::value_objects::PrintStatus;
 use sapo_printer::infrastructure::database::{
-    run_migrations, SqliteEventStore, SqlitePrintJobRepository,
+    run_migrations, SqlitePrintJobRepository,
 };
 use sapo_printer::shared::event_bus::InMemoryEventBus;
 use std::sync::{Arc, Mutex as StdMutex};
+
+use super::common;
 
 #[test]
 fn test_cancel_queued_job_end_to_end() {
@@ -19,7 +21,7 @@ fn test_cancel_queued_job_end_to_end() {
 
     // Setup infrastructure
     let job_repo = Arc::new(SqlitePrintJobRepository::new(arc_conn.clone()));
-    let event_store = Arc::new(SqliteEventStore::new(arc_conn.clone()));
+    let event_store = common::create_test_event_store(arc_conn.clone());
     let event_bus = Arc::new(InMemoryEventBus::new());
 
     // Create and persist job
@@ -57,7 +59,7 @@ fn test_cancel_downloaded_job_cleans_temp_file() {
     let arc_conn = Arc::new(StdMutex::new(conn));
 
     let job_repo = Arc::new(SqlitePrintJobRepository::new(arc_conn.clone()));
-    let event_store = Arc::new(SqliteEventStore::new(arc_conn.clone()));
+    let event_store = common::create_test_event_store(arc_conn.clone());
     let event_bus = Arc::new(InMemoryEventBus::new());
 
     // Create job and simulate temp file
@@ -99,7 +101,7 @@ fn test_cannot_cancel_completed_job_integration() {
     let arc_conn = Arc::new(StdMutex::new(conn));
 
     let job_repo = Arc::new(SqlitePrintJobRepository::new(arc_conn.clone()));
-    let event_store = Arc::new(SqliteEventStore::new(arc_conn.clone()));
+    let event_store = common::create_test_event_store(arc_conn.clone());
     let event_bus = Arc::new(InMemoryEventBus::new());
 
     // Create completed job

@@ -182,3 +182,10 @@
 - `job.status()` evaluated unconditionally before debug level check — not expensive currently.
 - `chrono::and_hms_opt` may be deprecated in future chrono versions — maintenance concern.
 
+## Deferred from: code review of story 4-4 (2026-06-25)
+
+- **Mutex poisoning recovery** — `unwrap_or_else(|p| p.into_inner())` silently recovers from poisoned Mutex<Connection> in event_store.rs. Pre-existing pattern from earlier stories.
+- **`save_all` identical timestamps** — 1-second granularity of `SystemTime::now().as_secs()` means all events in a batch share the same timestamp, reducing forensic fidelity. Design limitation.
+- **`get_or_create_signing_key` re-entrancy hazard** — Takes `&self` while connection mutex is held. If future SecretManager implementation uses same DB, deadlock. Currently safe (OS credential store).
+- **`SystemTime::now().unwrap()` theoretical panic** — Panics if system clock before Unix epoch. Pre-existing, not practical on modern OS.
+

@@ -15,13 +15,15 @@ use sapo_printer::domain::printer::repository::PrinterRepository;
 use sapo_printer::domain::printer::value_objects::{PrinterName, PrinterStatus, PrinterType};
 use sapo_printer::infrastructure::database::migrations::run_migrations;
 use sapo_printer::infrastructure::database::{
-    SqliteEventStore, SqlitePrintJobRepository, SqlitePrinterRepository,
+    SqlitePrintJobRepository, SqlitePrinterRepository,
 };
 use sapo_printer::infrastructure::printer::PrinterManager;
 use sapo_printer::interface::native_messaging::protocol::{
     read_message, write_message, NativeMessageHandler,
 };
 use sapo_printer::shared::event_bus::InMemoryEventBus;
+
+use super::common;
 
 struct NoopPrinterManager;
 
@@ -58,7 +60,7 @@ fn setup() -> (NativeMessageHandler, Arc<SqlitePrintJobRepository>, Arc<SqlitePr
 
     let job_repo = Arc::new(SqlitePrintJobRepository::new(arc_conn.clone()));
     let printer_repo = Arc::new(SqlitePrinterRepository::new(arc_conn.clone()));
-    let event_store = Arc::new(SqliteEventStore::new(arc_conn.clone()));
+    let event_store = common::create_test_event_store(arc_conn.clone());
     let event_bus = Arc::new(InMemoryEventBus::new());
     let printer_manager: Arc<dyn PrinterManager> = Arc::new(NoopPrinterManager);
 
@@ -263,7 +265,7 @@ fn setup_with_offline_printer() -> (NativeMessageHandler, Arc<SqlitePrinterRepos
 
     let job_repo = Arc::new(SqlitePrintJobRepository::new(arc_conn.clone()));
     let printer_repo = Arc::new(SqlitePrinterRepository::new(arc_conn.clone()));
-    let event_store = Arc::new(SqliteEventStore::new(arc_conn.clone()));
+    let event_store = common::create_test_event_store(arc_conn.clone());
     let event_bus = Arc::new(InMemoryEventBus::new());
     let printer_manager: Arc<dyn PrinterManager> = Arc::new(OfflinePrinterManager);
 

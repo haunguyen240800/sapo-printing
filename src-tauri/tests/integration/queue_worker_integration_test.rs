@@ -14,7 +14,7 @@ use sapo_printer::domain::print_job::aggregate::PrintJob;
 use sapo_printer::domain::print_job::value_objects::{JobId, PrintStatus};
 use sapo_printer::domain::print_job::PrintJobRepository;
 use sapo_printer::infrastructure::database::{
-    run_migrations, SqliteEventStore, SqlitePrintJobRepository,
+    run_migrations, SqlitePrintJobRepository,
 };
 use sapo_printer::infrastructure::downloader::DocumentDownloader;
 use sapo_printer::infrastructure::printer::PrinterEngine;
@@ -22,6 +22,8 @@ use sapo_printer::infrastructure::queue::{QueueManager, QueueWorker, SqliteQueue
 use sapo_printer::infrastructure::renderer::{DocumentRenderer, RenderConfig};
 use sapo_printer::shared::errors::InfrastructureError;
 use sapo_printer::shared::event_bus::InMemoryEventBus;
+
+use super::common;
 
 // --- Mock Infrastructure ---
 
@@ -66,7 +68,7 @@ fn test_worker_processes_real_job_flow() {
 
     let job_repo = Arc::new(SqlitePrintJobRepository::new(arc_conn.clone()));
     let queue_manager = Arc::new(SqliteQueueManager::new(arc_conn.clone()));
-    let event_store = Arc::new(SqliteEventStore::new(arc_conn.clone()));
+    let event_store = common::create_test_event_store(arc_conn.clone());
     let event_bus = Arc::new(InMemoryEventBus::new());
 
     // Mock infrastructure
@@ -130,7 +132,7 @@ fn test_worker_processes_multiple_jobs_sequentially() {
 
     let job_repo = Arc::new(SqlitePrintJobRepository::new(arc_conn.clone()));
     let queue_manager = Arc::new(SqliteQueueManager::new(arc_conn.clone()));
-    let event_store = Arc::new(SqliteEventStore::new(arc_conn.clone()));
+    let event_store = common::create_test_event_store(arc_conn.clone());
     let event_bus = Arc::new(InMemoryEventBus::new());
 
     let downloader = Arc::new(MockDownloader);

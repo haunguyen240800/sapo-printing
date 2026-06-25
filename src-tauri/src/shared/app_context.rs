@@ -57,7 +57,6 @@ impl AppContext {
             Arc::new(SqlitePrintJobRepository::new(pool.get_arc()));
         let printer_repo: Arc<dyn PrinterRepository> =
             Arc::new(SqlitePrinterRepository::new(pool.get_arc()));
-        let event_store: Arc<SqliteEventStore> = Arc::new(SqliteEventStore::new(pool.get_arc()));
 
         // Platform-specific secret manager initialization
         #[cfg(target_os = "windows")]
@@ -68,6 +67,8 @@ impl AppContext {
 
         #[cfg(target_os = "linux")]
         let secret_manager: Arc<dyn SecretManager> = Arc::new(LinuxSecretService::new()?);
+
+        let event_store: Arc<SqliteEventStore> = Arc::new(SqliteEventStore::new(pool.get_arc(), secret_manager.clone()));
 
         // EventBus: in-memory for now (future: outbox pattern with persistent queue)
         let event_bus: Arc<dyn EventBus> =

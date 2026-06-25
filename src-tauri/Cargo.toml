@@ -33,6 +33,12 @@ reqwest = { version = "0.12", features = ["json", "blocking"] }
 url = "2.5"
 home = "0.5"
 
+# HMAC signing for audit trail
+hmac = "0.12"
+sha2 = "0.10"
+rand = "0.8"
+hex = "0.4"
+
 # PDF rendering
 pdfium-render = { version = "0.9", features = ["thread_safe"] }
 
