@@ -1,7 +1,7 @@
 import {BlockStack, Box, Button, Divider, InlineGrid, Text, TextField} from '@sapo/ui-components';
 import styled from '@emotion/styled';
 import {ActionListButton} from '../../components/ActionListButton';
-import {useState, useEffect, useCallback} from 'react';
+import {useState, useEffect, useCallback, useRef} from 'react';
 import {ConfirmModal} from '../../components/ConfirmModal';
 import SystemConfigModal from './components/SystemConfigModal.tsx';
 import AppInfoTab from './components/AppInfoTab.tsx';
@@ -10,11 +10,12 @@ import {PrintProgress} from './components/PrintProgress.tsx';
 import {
   listPrinters,
   createPrintJob,
-  // getMetrics,
+  getMetrics,
   getPrinterConfig,
-  // type MetricsDto,
+  type MetricsDto,
 } from '../../services/printer-service';
 import type {PrinterDto, PrinterConfigDto} from '../../types';
+import {onJobStatusChanged, type JobStatusPayload} from '../../services/event-listener';
 
 export default function PrinterPage() {
   const [activeTab, setActiveTab] = useState<'overview' | 'print-config' | 'support'>('overview');
@@ -25,7 +26,9 @@ export default function PrinterPage() {
   const [testPdfUrl, setTestPdfUrl] = useState('');
   const [isTestPrinting, setIsTestPrinting] = useState(false);
   const [testPrintStatus, setTestPrintStatus] = useState<{success?: string; error?: string} | null>(null);
-  // const [isLoading, setIsLoading] = useState(false);
+  const [metrics, setMetrics] = useState<MetricsDto | null>(null);
+  const [activeJobs, setActiveJobs] = useState<Map<string, JobStatusPayload>>(new Map());
+  const metricsIntervalRef = useRef<number | null>(null);
 
   const loadPrinters = useCallback(async () => {
     try {
@@ -47,66 +50,60 @@ export default function PrinterPage() {
     }
   }, []);
 
+  const loadMetrics = useCallback(async () => {
+    try {
+      const result = await getMetrics();
+      setMetrics(result);
+    } catch (err) {
+      console.error('Failed to load metrics:', err);
+    }
+  }, []);
+
   useEffect(() => {
     loadPrinters();
     loadPrinterConfig();
-  }, [loadPrinters, loadPrinterConfig]);
+    loadMetrics();
+
+    // Start polling metrics every 2 seconds
+    metricsIntervalRef.current = setInterval(() => {
+      loadMetrics();
+    }, 2000);
+
+    // Subscribe to job status events
+    const setupEventListener = async () => {
+      const unlisten = await onJobStatusChanged((payload) => {
+        setActiveJobs((prev) => {
+          const updated = new Map(prev);
+          if (payload.status === 'COMPLETED' || payload.status === 'FAILED' || payload.status === 'CANCELLED') {
+            // Remove completed/failed jobs after they finish
+            setTimeout(() => {
+              setActiveJobs((current) => {
+                const next = new Map(current);
+                next.delete(payload.job_id);
+                return next;
+              });
+            }, 5000); // Keep for 5 seconds to show final status
+          }
+          updated.set(payload.job_id, payload);
+          return updated;
+        });
+      });
+
+      return unlisten;
+    };
+
+    const listenerPromise = setupEventListener();
+
+    return () => {
+      // Cleanup on unmount
+      if (metricsIntervalRef.current) {
+        clearInterval(metricsIntervalRef.current);
+      }
+      listenerPromise.then((unlisten) => unlisten());
+    };
+  }, [loadPrinters, loadPrinterConfig, loadMetrics]);
 
   const selectedPrinter = printers.find((p) => p.is_default) || printers[0];
-
-  // const loadMetrics = useCallback(async () => {
-  //   try {
-  //     const result = await getMetrics();
-  //     setMetrics(result);
-  //   } catch (err) {
-  //     console.error('Failed to load metrics:', err);
-  //     // Set default metrics on error
-  //     setMetrics({
-  //       collected_at: Date.now() / 1000,
-  //       job_metrics: {
-  //         total_jobs: 0,
-  //         pending: 0,
-  //         queued: 0,
-  //         downloaded: 0,
-  //         submitted: 0,
-  //         printing: 0,
-  //         completed: 0,
-  //         failed: 0,
-  //         cancelled: 0,
-  //         success_rate: 0,
-  //       },
-  //       queue_metrics: {
-  //         current_depth: 0,
-  //         avg_wait_time_secs: 0,
-  //       },
-  //       printer_metrics: {
-  //         printers: [],
-  //       },
-  //       performance_metrics: {
-  //         avg_job_duration_secs: 0,
-  //         p50_job_duration_secs: 0,
-  //         p95_job_duration_secs: 0,
-  //         p99_job_duration_secs: 0,
-  //         avg_download_time_secs: 0,
-  //         avg_render_time_secs: 0,
-  //         avg_print_time_secs: 0,
-  //       },
-  //     });
-  //   }
-  // }, []);
-
-  // useEffect(() => {
-  //   // Load data without blocking UI
-  //   setIsLoading(true);
-  //   Promise.all([loadPrinters(), loadMetrics()])
-  //     .catch((err) => {
-  //       console.error('Failed to load initial data:', err);
-  //     })
-  //     .finally(() => {
-  //       setIsLoading(false);
-  //     });
-  //   // eslint-disable-next-line react-hooks/exhaustive-deps
-  // }, []);
 
   const handleTestPrint = async () => {
     if (!testPdfUrl || !selectedPrinter) return;
@@ -116,7 +113,7 @@ export default function PrinterPage() {
       await createPrintJob([testPdfUrl], selectedPrinter.name);
       setTestPrintStatus({success: 'Đã gửi lệnh in test thành công'});
       setTestPdfUrl('');
-      // await loadMetrics();
+      await loadMetrics();
     } catch (err) {
       setTestPrintStatus({error: err as string});
     } finally {
@@ -124,14 +121,56 @@ export default function PrinterPage() {
     }
   };
 
+  // Calculate real-time stats from metrics and active jobs
   const stats = {
-    total: 0,
-    success: 0,
-    failed: 0,
-    printTime: null,
-    downloadProgress: 0,
-    printProgress: 0,
+    total: metrics?.job_metrics.total_jobs || 0,
+    success: metrics?.job_metrics.completed || 0,
+    failed: metrics?.job_metrics.failed || 0,
+    printTime: metrics?.performance_metrics.avg_print_time_secs
+      ? `${metrics.performance_metrics.avg_print_time_secs.toFixed(1)}s`
+      : null,
+    downloadProgress: calculateDownloadProgress(),
+    printProgress: calculatePrintProgress(),
   };
+
+  function calculateDownloadProgress(): number {
+    const jobsArray = Array.from(activeJobs.values());
+    if (jobsArray.length === 0) return 0;
+
+    const downloadingJobs = jobsArray.filter(
+      (j) => j.status === 'QUEUED' || j.status === 'DOWNLOADING'
+    );
+
+    if (downloadingJobs.length === 0) {
+      // If no active downloads, check if we have completed downloads
+      const hasCompleted = jobsArray.some((j) =>
+        j.status === 'DOWNLOADED' || j.status === 'RENDERING' ||
+        j.status === 'SUBMITTED' || j.status === 'PRINTING' || j.status === 'COMPLETED'
+      );
+      return hasCompleted ? 100 : 0;
+    }
+
+    const avgProgress = downloadingJobs.reduce((sum, j) => sum + (j.progress || 0), 0) / downloadingJobs.length;
+    return Math.round(avgProgress);
+  }
+
+  function calculatePrintProgress(): number {
+    const jobsArray = Array.from(activeJobs.values());
+    if (jobsArray.length === 0) return 0;
+
+    const printingJobs = jobsArray.filter(
+      (j) => j.status === 'SUBMITTED' || j.status === 'PRINTING'
+    );
+
+    if (printingJobs.length === 0) {
+      // If no active prints, check if we have completed jobs
+      const hasCompleted = jobsArray.some((j) => j.status === 'COMPLETED');
+      return hasCompleted ? 100 : 0;
+    }
+
+    const avgProgress = printingJobs.reduce((sum, j) => sum + (j.progress || 0), 0) / printingJobs.length;
+    return Math.round(avgProgress);
+  }
 
   const clearCacheConfirmModal = modalName === 'clear-cache' && (
     <ConfirmModal

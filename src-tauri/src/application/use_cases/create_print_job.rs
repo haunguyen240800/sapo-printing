@@ -114,7 +114,7 @@ mod tests {
     use crate::domain::print_job::errors::DomainError;
     use crate::domain::print_job::events::DomainEvent;
     use crate::domain::printer::aggregate::Printer;
-    use crate::shared::event_bus::EventBusError;
+    use crate::shared::event_bus::{EventBusError, EventHandler};
     use crate::infrastructure::secrets::SecretManager;
     use crate::shared::errors::InfrastructureError;
     use std::collections::HashMap;
@@ -236,6 +236,10 @@ mod tests {
         fn publish(&self, _event_type: &str, _payload: &str) -> Result<(), EventBusError> {
             *self.published_count.lock().unwrap() += 1;
             Ok(())
+        }
+
+        fn subscribe(&self, event_type: &str, handler: Arc<dyn EventHandler>) {
+            todo!()
         }
     }
 
