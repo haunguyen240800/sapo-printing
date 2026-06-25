@@ -14,6 +14,9 @@ use std::str::FromStr;
 pub struct CreateJobPayload {
     pub pdf_urls: Vec<String>,
     pub printer_name: String,
+    /// Optional output path for "Print to PDF" printers.
+    /// If provided, file will be saved to this path instead of auto-generated name.
+    pub output_path: Option<String>,
 }
 
 /// Payload received from the UI for cancelling a print job.
@@ -38,6 +41,7 @@ pub fn execute_create_print_job(
     let request = CreateJobRequest {
         pdf_urls: payload.pdf_urls,
         printer_name: payload.printer_name,
+        output_path: payload.output_path,
     };
 
     use_case

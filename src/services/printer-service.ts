@@ -1,6 +1,7 @@
 import {invoke} from '@tauri-apps/api/core';
 import type {PrinterDto, PrinterConfigDto, PrinterStatusDto} from '../types';
 import type {JobDto, JobFilterDto} from '../types/print-job';
+import {showPrintToFileDialog, detectPrinterCategory} from '../utils/print-dialog';
 
 export interface MetricsDto {
   collected_at: number;
@@ -56,8 +57,27 @@ export async function getPrinterStatus(name: string): Promise<PrinterStatusDto> 
 }
 
 export async function createPrintJob(pdfUrls: string[], printerName: string): Promise<string[]> {
+  let outputPath: string | null = null;
+
+  // Use backend printer category detection for consistent logic
+  const printerCategory = await detectPrinterCategory(printerName);
+
+  // If printing to PDF, show native "Save As" dialog
+  if (printerCategory.needs_save_dialog) {
+    outputPath = await showPrintToFileDialog();
+
+    // User cancelled the dialog
+    if (!outputPath) {
+      throw new Error('User cancelled file selection');
+    }
+  }
+
   return invoke<string[]>('create_print_job', {
-    payload: {pdf_urls: pdfUrls, printer_name: printerName},
+    payload: {
+      pdf_urls: pdfUrls,
+      printer_name: printerName,
+      output_path: outputPath,
+    },
   });
 }
 

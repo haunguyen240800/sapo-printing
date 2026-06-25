@@ -22,7 +22,12 @@ impl Default for CupsPrinterEngine {
 
 #[cfg(not(target_os = "windows"))]
 impl PrinterEngine for CupsPrinterEngine {
-    fn print(&self, _printer_name: &str, _data: &[u8]) -> Result<(), InfrastructureError> {
+    fn print(
+        &self,
+        _printer_name: &str,
+        _data: &[u8],
+        _output_path: Option<&str>,
+    ) -> Result<(), InfrastructureError> {
         Ok(())
     }
 }
@@ -34,6 +39,6 @@ mod tests {
     #[test]
     fn test_print_stub_returns_ok() {
         let engine = CupsPrinterEngine::new();
-        assert!(engine.print("any_printer", &[]).is_ok());
+        assert!(engine.print("any_printer", &[], None).is_ok());
     }
 }

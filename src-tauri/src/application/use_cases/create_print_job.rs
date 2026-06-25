@@ -90,7 +90,11 @@ impl CreatePrintJobUseCase {
                 "Creating job for URL"
             );
 
-            let mut job = PrintJob::new(url.clone(), request.printer_name.clone());
+            let mut job = PrintJob::new_with_output_path(
+                url.clone(),
+                request.printer_name.clone(),
+                request.output_path.clone(),
+            );
             let events = job.drain_events();
 
             tracing::info!(

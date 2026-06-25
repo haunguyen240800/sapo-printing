@@ -88,6 +88,10 @@ const MIGRATION_6: &str = "
 ALTER TABLE print_jobs ADD COLUMN error_message TEXT;
 ";
 
+const MIGRATION_7: &str = "
+ALTER TABLE print_jobs ADD COLUMN output_path TEXT;
+";
+
 pub fn run_migrations(conn: &mut Connection) -> Result<(), DatabaseError> {
     let migrations = Migrations::new(vec![
         M::up(MIGRATION_1),
@@ -96,6 +100,7 @@ pub fn run_migrations(conn: &mut Connection) -> Result<(), DatabaseError> {
         M::up(MIGRATION_4),
         M::up(MIGRATION_5),
         M::up(MIGRATION_6),
+        M::up(MIGRATION_7),
     ]);
     migrations
         .to_latest(conn)

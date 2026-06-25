@@ -62,6 +62,7 @@ async fn create_print_job(
             let request = CreateJobRequest {
                 pdf_urls: payload.pdf_urls,
                 printer_name: payload.printer_name,
+                output_path: payload.output_path,
             };
 
             tracing::info!(
@@ -802,6 +803,9 @@ fn main() {
                 tauri_plugin_updater::Builder::new().build(),
             )?;
 
+            // Register dialog plugin for native file dialogs
+            app.handle().plugin(tauri_plugin_dialog::init())?;
+
             // Spawn background update checker (startup + periodic every 24h)
             #[cfg(desktop)]
             {
@@ -897,6 +901,7 @@ fn main() {
             save_printer_config,
             get_printer_config,
             get_printer_status,
+            sapo_printer::interface::tauri::commands::printer::detect_printer_category,
             create_print_job,
             cancel_print_job,
             list_jobs,

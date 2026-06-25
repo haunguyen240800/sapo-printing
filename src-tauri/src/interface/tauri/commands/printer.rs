@@ -1,4 +1,32 @@
+use crate::infrastructure::printer::PrinterCategory;
 use crate::interface::tauri::dtos::printer_dto::{PrinterConfigDto, PrinterDto, PrinterStatusDto};
+
+/// Detect printer category (PDF/Virtual/Physical)
+///
+/// # Arguments
+/// - `printer_name`: Name of the printer to classify
+///
+/// # Returns
+/// - Object with: { category: "pdf" | "virtual" | "physical", needs_rendering: bool, needs_save_dialog: bool }
+#[tauri::command]
+pub fn detect_printer_category(
+    printer_name: String,
+) -> Result<serde_json::Value, String> {
+    let category = PrinterCategory::detect(&printer_name);
+
+    let category_str = match category {
+        PrinterCategory::PdfPrinter => "pdf",
+        PrinterCategory::VirtualPrinter => "virtual",
+        PrinterCategory::PhysicalPrinter => "physical",
+    };
+
+    Ok(serde_json::json!({
+        "category": category_str,
+        "needs_rendering": category.needs_rendering(),
+        "needs_save_dialog": category.needs_save_dialog(),
+        "description": category.description(),
+    }))
+}
 
 /// List all available printers (discovered + saved configs)
 ///

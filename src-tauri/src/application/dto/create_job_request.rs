@@ -7,4 +7,6 @@ pub struct CreateJobRequest {
     pub pdf_urls: Vec<String>,
     /// Tên máy in (phải match printer đang ONLINE)
     pub printer_name: String,
+    /// Optional output path for "Print to PDF" printers
+    pub output_path: Option<String>,
 }

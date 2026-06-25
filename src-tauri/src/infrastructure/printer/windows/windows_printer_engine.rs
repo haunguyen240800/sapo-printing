@@ -32,7 +32,12 @@ impl Default for WindowsPrinterEngine {
 
 #[cfg(target_os = "windows")]
 impl PrinterEngine for WindowsPrinterEngine {
-    fn print(&self, printer_name: &str, data: &[u8]) -> Result<(), InfrastructureError> {
+    fn print(
+        &self,
+        printer_name: &str,
+        data: &[u8],
+        output_path: Option<&str>,
+    ) -> Result<(), InfrastructureError> {
         tracing::info!(
             target = "sapo_printer::printer_engine",
             printer = printer_name,
@@ -44,23 +49,29 @@ impl PrinterEngine for WindowsPrinterEngine {
         // This driver doesn't support raw PDF data via WritePrinter()
         // Instead, save directly to file
         if printer_name.contains("Microsoft Print to PDF") || printer_name.contains("Print to PDF") {
-            let timestamp = std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .unwrap()
-                .as_secs();
-            let output_path = format!(
-                "C:\\Users\\{}\\Documents\\SAPO_Print_{}.pdf",
-                std::env::var("USERNAME").unwrap_or_else(|_| "User".to_string()),
-                timestamp
-            );
+            // Use provided output_path or generate auto path
+            let output_file_path = match output_path {
+                Some(path) => path.to_string(),
+                None => {
+                    let timestamp = std::time::SystemTime::now()
+                        .duration_since(std::time::UNIX_EPOCH)
+                        .unwrap()
+                        .as_secs();
+                    format!(
+                        "C:\\Users\\{}\\Documents\\SAPO_Print_{}.pdf",
+                        std::env::var("USERNAME").unwrap_or_else(|_| "User".to_string()),
+                        timestamp
+                    )
+                }
+            };
 
             tracing::info!(
                 target = "sapo_printer::printer_engine",
-                output_path = output_path,
+                output_path = output_file_path,
                 "Saving PDF directly to file (Microsoft Print to PDF workaround)"
             );
 
-            std::fs::write(&output_path, data).map_err(|e| {
+            std::fs::write(&output_file_path, data).map_err(|e| {
                 InfrastructureError::PrinterError {
                     reason: format!("Failed to write PDF file: {}", e),
                 }
@@ -68,7 +79,7 @@ impl PrinterEngine for WindowsPrinterEngine {
 
             tracing::info!(
                 target = "sapo_printer::printer_engine",
-                output_path = output_path,
+                output_path = output_file_path,
                 bytes_written = data.len(),
                 "PDF saved successfully"
             );

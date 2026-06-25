@@ -334,11 +334,15 @@ impl QueueWorker {
         let render_start = std::time::Instant::now();
         let print_data: Vec<u8>;
 
-        // For "Microsoft Print to PDF" and similar, send raw PDF directly
-        if job.printer_name().contains("Print to PDF") {
+        // Detect printer category to decide rendering strategy
+        let printer_category =
+            crate::infrastructure::printer::PrinterCategory::detect(job.printer_name());
+
+        if !printer_category.needs_rendering() {
             tracing::info!(
                 target = "sapo_printer::queue_worker",
                 job_id = %job.id(),
+                printer_type = ?printer_category,
                 "Skipping render for Print-to-PDF printer (using raw PDF)"
             );
             // Read raw PDF file
@@ -353,6 +357,12 @@ impl QueueWorker {
             );
         } else {
             // For real printers, render to bitmap
+            tracing::info!(
+                target = "sapo_printer::queue_worker",
+                job_id = %job.id(),
+                printer_type = ?printer_category,
+                "Rendering PDF to bitmap for physical printer"
+            );
             let render_config = RenderConfig::default();
             print_data = renderer
                 .render(temp_file.path(), &render_config)
@@ -378,7 +388,11 @@ impl QueueWorker {
 
         let print_start = std::time::Instant::now();
         printer_engine
-            .print(job.printer_name(), &print_data)
+            .print(
+                job.printer_name(),
+                &print_data,
+                job.output_path().map(|s| s.as_str()),
+            )
             .map_err(|e| format!("Print failed: {:?}", e))?;
         let print_duration = print_start.elapsed();
         tracing::info!(

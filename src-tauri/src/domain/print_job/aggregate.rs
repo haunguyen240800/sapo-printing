@@ -24,6 +24,7 @@ pub struct PrintJob {
     created_at: i64,
     completed_at: Option<i64>,
     error_message: Option<String>,
+    output_path: Option<String>,
     #[serde(skip)]
     events: Vec<Box<dyn DomainEvent>>,
 }
@@ -39,6 +40,7 @@ impl Clone for PrintJob {
             created_at: self.created_at,
             completed_at: self.completed_at,
             error_message: self.error_message.clone(),
+            output_path: self.output_path.clone(),
             events: Vec::new(),
         }
     }
@@ -55,6 +57,15 @@ impl PrintJob {
     /// Creates a new PrintJob in PENDING status.
     /// Emits a PrintJobCreated event.
     pub fn new(pdf_url: String, printer_name: String) -> Self {
+        Self::new_with_output_path(pdf_url, printer_name, None)
+    }
+
+    /// Creates a new PrintJob with optional output path for Print-to-PDF printers.
+    pub fn new_with_output_path(
+        pdf_url: String,
+        printer_name: String,
+        output_path: Option<String>,
+    ) -> Self {
         let id = JobId::new();
         let created_at = Self::now();
         let mut job = Self {
@@ -66,6 +77,7 @@ impl PrintJob {
             created_at,
             completed_at: None,
             error_message: None,
+            output_path,
             events: Vec::new(),
         };
         job.push_event(Box::new(PrintJobCreated::new(
@@ -86,6 +98,7 @@ impl PrintJob {
         created_at: i64,
         completed_at: Option<i64>,
         error_message: Option<String>,
+        output_path: Option<String>,
     ) -> Self {
         Self {
             id,
@@ -96,6 +109,7 @@ impl PrintJob {
             created_at,
             completed_at,
             error_message,
+            output_path,
             events: Vec::new(),
         }
     }
@@ -263,6 +277,10 @@ impl PrintJob {
 
     pub fn error_message(&self) -> Option<&String> {
         self.error_message.as_ref()
+    }
+
+    pub fn output_path(&self) -> Option<&String> {
+        self.output_path.as_ref()
     }
 
     pub fn pending_events_count(&self) -> usize {
