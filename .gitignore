@@ -30,3 +30,10 @@ pnpm-debug.log*
 
 # Tauri dev
 #src-tauri/Cargo.lock
+
+# Code signing keys (NEVER commit private keys)
+*.key
+*.pem
+*.pfx
+*.p12
+.tauri/

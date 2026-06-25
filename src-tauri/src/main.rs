@@ -84,6 +84,28 @@ fn get_metrics(
     sapo_printer::interface::tauri::commands::metrics::execute_get_metrics(ctx.inner())
 }
 
+/// Tauri command: check for available updates.
+#[tauri::command]
+async fn check_for_updates(
+    app: tauri::AppHandle,
+) -> Result<sapo_printer::interface::tauri::dtos::update::UpdateCheckResponse, String> {
+    sapo_printer::interface::tauri::commands::update::execute_check_for_updates(&app).await
+}
+
+/// Tauri command: download and install update.
+#[tauri::command]
+async fn install_update(
+    app: tauri::AppHandle,
+    ctx: tauri::State<'_, AppContextState>,
+) -> Result<(), String> {
+    sapo_printer::interface::tauri::commands::update::execute_install_update(
+        &app,
+        &ctx.install_guard,
+        &ctx.last_emitted_update_version,
+    )
+    .await
+}
+
 #[cfg(target_os = "windows")]
 use sapo_printer::infrastructure::printer::windows::Win32PrinterManager;
 #[cfg(target_os = "windows")]
@@ -568,7 +590,103 @@ fn main() {
                 queue_worker: worker,
                 metrics_collector,
                 app_handle,
+                install_guard: sapo_printer::infrastructure::updater::update_checker::InstallGuard::new(),
+                last_emitted_update_version: std::sync::Mutex::new(None),
             });
+
+            // Register updater plugin
+            #[cfg(desktop)]
+            app.handle().plugin(
+                tauri_plugin_updater::Builder::new().build(),
+            )?;
+
+            // Spawn background update checker (startup + periodic every 24h)
+            #[cfg(desktop)]
+            {
+                let update_handle = app.handle().clone();
+                tauri::async_runtime::spawn(async move {
+                    use sapo_printer::interface::tauri::dtos::update::UpdateCheckResponse;
+                    use tauri::Emitter;
+
+                    // Startup check
+                    match sapo_printer::infrastructure::updater::update_checker::check_for_updates(
+                        &update_handle,
+                    )
+                    .await
+                    {
+                        Ok(result) if result.update_available => {
+                            tracing::info!(
+                                target = "sapo_printer::updater",
+                                version = ?result.version,
+                                "Update available on startup"
+                            );
+                            let state = update_handle.state::<sapo_printer::AppContextState>();
+                            let mut last_emitted = state.last_emitted_update_version.lock().unwrap();
+                            if result.version != *last_emitted {
+                                let dto = UpdateCheckResponse {
+                                    update_available: result.update_available,
+                                    version: result.version.clone(),
+                                    release_notes: result.release_notes,
+                                };
+                                let _ = update_handle.emit("update-available", &dto);
+                                *last_emitted = result.version;
+                            }
+                        }
+                        Ok(_) => {
+                            tracing::info!(target = "sapo_printer::updater", "No update available");
+                        }
+                        Err(e) => {
+                            tracing::warn!(
+                                target = "sapo_printer::updater",
+                                error = %e,
+                                "Startup update check failed (non-fatal)"
+                            );
+                        }
+                    }
+
+                    // Periodic check every 24 hours
+                    loop {
+                        tokio::time::sleep(std::time::Duration::from_secs(24 * 60 * 60)).await;
+                        match sapo_printer::infrastructure::updater::update_checker::check_for_updates(
+                            &update_handle,
+                        )
+                        .await
+                        {
+                            Ok(result) if result.update_available => {
+                                tracing::info!(
+                                    target = "sapo_printer::updater",
+                                    version = ?result.version,
+                                    "Update available (periodic check)"
+                                );
+                                let state = update_handle.state::<sapo_printer::AppContextState>();
+                                let mut last_emitted = state.last_emitted_update_version.lock().unwrap();
+                                if result.version != *last_emitted {
+                                    let dto = UpdateCheckResponse {
+                                        update_available: result.update_available,
+                                        version: result.version.clone(),
+                                        release_notes: result.release_notes,
+                                    };
+                                    let _ = update_handle.emit("update-available", &dto);
+                                    *last_emitted = result.version;
+                                }
+                            }
+                            Ok(_) => {
+                                tracing::info!(
+                                    target = "sapo_printer::updater",
+                                    "No update (periodic check)"
+                                );
+                            }
+                            Err(e) => {
+                                tracing::warn!(
+                                    target = "sapo_printer::updater",
+                                    error = %e,
+                                    "Periodic update check failed (non-fatal)"
+                                );
+                            }
+                        }
+                    }
+                });
+            }
 
             Ok(())
         })
@@ -583,6 +701,8 @@ fn main() {
             get_job_audit_trail,
             get_metrics,
             register_native_host,
+            check_for_updates,
+            install_update,
         ])
         .on_window_event(|window, event| {
             if let tauri::WindowEvent::CloseRequested { .. } = event {

@@ -3,3 +3,4 @@ pub mod audit_trail;
 pub mod metrics;
 pub mod print_job;
 pub mod printer;
+pub mod update;

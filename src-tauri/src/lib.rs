@@ -31,4 +31,6 @@ pub struct AppContextState {
     pub queue_worker: Arc<infrastructure::queue::QueueWorker>,
     pub metrics_collector: Arc<infrastructure::metrics::MetricsCollector>,
     pub app_handle: tauri::AppHandle,
+    pub install_guard: infrastructure::updater::update_checker::InstallGuard,
+    pub last_emitted_update_version: std::sync::Mutex<Option<String>>,
 }

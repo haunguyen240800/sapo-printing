@@ -195,3 +195,17 @@
 - **`get_or_create_signing_key` re-entrancy hazard** — Takes `&self` while connection mutex is held. If future SecretManager implementation uses same DB, deadlock. Currently safe (OS credential store).
 - **`SystemTime::now().unwrap()` theoretical panic** — Panics if system clock before Unix epoch. Pre-existing, not practical on modern OS.
 
+## Deferred from: code review of story 4-6 (2026-06-25)
+
+- **No network timeout for update check/download** — tauri-plugin-updater does not set timeout on its internal reqwest client. If the update endpoint is unreachable, the check can hang indefinitely. Known limitation of the plugin; consider wrapping in `tokio::time::timeout()` or configuring via `UpdaterBuilder` if the plugin exposes it.
+- **No download progress event for frontend** — `on_chunk` closure in `download_and_install_update` only logs via tracing. No Tauri event is emitted, so the frontend cannot show a download progress bar. Consider emitting `"update-download-progress"` event in story 4-7 (popup UI).
+- **Background update loop has no cancellation mechanism** — The spawned task in `main.rs` runs an infinite loop with no `CancellationToken` or graceful shutdown. The `JoinHandle` is not stored. Consider adding a `CancellationToken` stored in `AppContextState` for future control.
+- **Periodic check loop dies silently on panic** — No `catch_unwind` or supervisor pattern. If the spawned update task panics, periodic checks stop permanently with no indication. Consider adding panic recovery or a watchdog.
+- **install_update command returns no version info** — `execute_install_update` returns `Result<(), String>`. Frontend cannot display which version is being installed. Consider returning `Result<String, String>` with the version.
+- **UpdateCheckResult and UpdateCheckResponse are structurally identical** — Two structs with identical fields and manual field-by-field mapping. Consider using `From<UpdateCheckResult> for UpdateCheckResponse` or a single shared struct to prevent future drift.
+- **`#[cfg(desktop)]` guard inconsistency** — Plugin registration and spawn block are guarded with `#[cfg(desktop)]`, but command wrappers are not. Cosmetic issue since the project is Windows-only.
+- **Startup event race with frontend listener** — Spawned task runs startup check immediately, may emit `"update-available"` before frontend subscribes. Frontend should call `check_for_updates` on mount as fallback.
+- **Placeholder pubkey will fail at runtime** — `<PUBLIC_KEY_CONTENTS>` is not a valid key. Intentional placeholder for CI/release pipeline.
+- **Redundant network call on manual check** — Manual `check_for_updates` command calls `updater.check()` independently of background task. Low frequency, acceptable.
+- **None version dedup edge case** — If `version: None` but `update_available: true`, dedup behavior is undefined. Defensive concern; tauri-plugin-updater always provides version.
+

@@ -42,6 +42,9 @@ hex = "0.4"
 # PDF rendering
 pdfium-render = { version = "0.9", features = ["thread_safe"] }
 
+# Auto-update
+tauri-plugin-updater = "2"
+
 # Platform-specific secret management
 [target.'cfg(windows)'.dependencies]
 windows = { version = "0.52", features = ["Win32_Foundation", "Win32_Graphics_Gdi", "Win32_Graphics_Printing", "Win32_Security", "Win32_Security_Credentials"] }
