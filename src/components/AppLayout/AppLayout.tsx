@@ -21,17 +21,21 @@ export function AppLayout() {
     let unlistenReady: UnlistenFn | undefined;
 
     async function setup() {
-      unlistenAvailable = await onUpdateAvailable((payload) => {
-        if (!cancelled) {
-          setUpdateInfo(payload);
-          setShowUpdatePopup(true);
-        }
-      });
-      unlistenReady = await onUpdateReadyToApply(() => {
-        if (!cancelled) {
-          setUpdateReady(true);
-        }
-      });
+      try {
+        unlistenAvailable = await onUpdateAvailable((payload) => {
+          if (!cancelled) {
+            setUpdateInfo(payload);
+            setShowUpdatePopup(true);
+          }
+        });
+        unlistenReady = await onUpdateReadyToApply(() => {
+          if (!cancelled) {
+            setUpdateReady(true);
+          }
+        });
+      } catch (err) {
+        console.error('AppLayout: setup update listeners failed:', err);
+      }
     }
     setup();
 

@@ -73,14 +73,32 @@ impl MetricsCollector {
     }
 
     pub fn collect_metrics(&self) -> Result<MetricsSnapshot, MetricsError> {
+        tracing::debug!(
+            target = "sapo_printer::metrics",
+            "MetricsCollector: acquiring database lock"
+        );
+
         let conn = self.conn.lock().map_err(|e| {
             MetricsError::DatabaseError(format!("Failed to lock connection: {}", e))
         })?;
+
+        tracing::debug!(
+            target = "sapo_printer::metrics",
+            "MetricsCollector: lock acquired, collecting metrics"
+        );
 
         let job_metrics = self.collect_job_metrics(&conn)?;
         let queue_metrics = self.collect_queue_metrics(&conn)?;
         let printer_metrics = self.collect_printer_metrics(&conn)?;
         let performance_metrics = self.collect_performance_metrics(&conn)?;
+
+        // Explicitly drop lock ASAP
+        drop(conn);
+
+        tracing::debug!(
+            target = "sapo_printer::metrics",
+            "MetricsCollector: lock released"
+        );
 
         let collected_at = SystemTime::now()
             .duration_since(UNIX_EPOCH)

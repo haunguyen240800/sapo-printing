@@ -122,7 +122,7 @@ const PrintConfigForm = ({onSaved, onCancel}: PrintConfigFormProps) => {
     // Load existing config
     getPrinterConfig()
       .then((config) => {
-        if (config) {
+        if (config && config.printer_name) {
           reset({
             printerName: config.printer_name,
             paperSize: config.paper_size,

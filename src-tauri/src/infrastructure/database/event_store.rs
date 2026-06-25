@@ -73,36 +73,86 @@ impl SqliteEventStore {
     /// Retrieve the HMAC signing key from SecretManager, or generate and store a new one.
     /// The key is cached in memory after first retrieval to prevent TOCTOU races.
     pub fn get_or_create_signing_key(&self) -> Result<String, DomainError> {
+        tracing::info!(
+            target = "sapo_printer::repository::event_store",
+            "get_or_create_signing_key() - checking cache"
+        );
+
         {
             let cache = self.cached_signing_key.lock().unwrap();
             if let Some(ref key) = *cache {
+                tracing::info!(
+                    target = "sapo_printer::repository::event_store",
+                    "get_or_create_signing_key() - found in cache"
+                );
                 return Ok(key.clone());
             }
         }
 
+        tracing::info!(
+            target = "sapo_printer::repository::event_store",
+            "get_or_create_signing_key() - calling secret_manager.retrieve()"
+        );
+
         match self.secret_manager.retrieve("hmac_signing_key") {
             Ok(Some(key)) => {
+                tracing::info!(
+                    target = "sapo_printer::repository::event_store",
+                    "get_or_create_signing_key() - retrieved from secret manager"
+                );
                 let mut cache = self.cached_signing_key.lock().unwrap();
                 *cache = Some(key.clone());
                 return Ok(key);
             }
-            Ok(None) => {}
+            Ok(None) => {
+                tracing::info!(
+                    target = "sapo_printer::repository::event_store",
+                    "get_or_create_signing_key() - key not found, will generate new one"
+                );
+            }
             Err(e) => {
+                tracing::error!(
+                    target = "sapo_printer::repository::event_store",
+                    error = %e,
+                    "get_or_create_signing_key() - failed to retrieve from secret manager"
+                );
                 return Err(DomainError::RepositoryError {
                     reason: format!("Failed to retrieve signing key: {}", e),
                 });
             }
         }
 
+        tracing::info!(
+            target = "sapo_printer::repository::event_store",
+            "get_or_create_signing_key() - generating new key"
+        );
+
         let mut key_bytes = [0u8; 32];
         OsRng.fill_bytes(&mut key_bytes);
         let key_hex = hex::encode(key_bytes);
 
+        tracing::info!(
+            target = "sapo_printer::repository::event_store",
+            "get_or_create_signing_key() - storing new key"
+        );
+
         self.secret_manager
             .store("hmac_signing_key", &key_hex)
-            .map_err(|e| DomainError::RepositoryError {
-                reason: format!("Failed to store signing key: {}", e),
+            .map_err(|e| {
+                tracing::error!(
+                    target = "sapo_printer::repository::event_store",
+                    error = %e,
+                    "get_or_create_signing_key() - failed to store new key"
+                );
+                DomainError::RepositoryError {
+                    reason: format!("Failed to store signing key: {}", e),
+                }
             })?;
+
+        tracing::info!(
+            target = "sapo_printer::repository::event_store",
+            "get_or_create_signing_key() - caching new key"
+        );
 
         {
             let mut cache = self.cached_signing_key.lock().unwrap();
@@ -164,9 +214,28 @@ impl SqliteEventStore {
         aggregate_id: &str,
         events: &[Box<dyn DomainEvent>],
     ) -> Result<(), DomainError> {
+        tracing::info!(
+            target = "sapo_printer::repository::event_store",
+            operation = "save_all",
+            aggregate_id = aggregate_id,
+            event_count = events.len(),
+            "save_all() STARTING"
+        );
+
         if events.is_empty() {
             return Ok(());
         }
+
+        // IMPORTANT: Get signing key BEFORE locking connection to avoid deadlock
+        tracing::info!(
+            target = "sapo_printer::repository::event_store",
+            "save_all() - calling get_or_create_signing_key()"
+        );
+        let signing_key = self.get_or_create_signing_key()?;
+        tracing::info!(
+            target = "sapo_printer::repository::event_store",
+            "save_all() - signing key retrieved successfully"
+        );
 
         let mut conn = self.conn.lock().unwrap_or_else(|p| p.into_inner());
 
@@ -179,7 +248,6 @@ impl SqliteEventStore {
         );
 
         let base_seq = self.next_sequence_number_inner(&conn, aggregate_id)?;
-        let signing_key = self.get_or_create_signing_key()?;
 
         let tx = conn
             .transaction()

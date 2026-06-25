@@ -47,6 +47,12 @@ impl WindowsCredentialManager {
 #[cfg(target_os = "windows")]
 impl SecretManager for WindowsCredentialManager {
     fn store(&self, key: &str, value: &str) -> Result<(), InfrastructureError> {
+        tracing::info!(
+            target = "sapo_printer::secrets::windows",
+            key = key,
+            "WindowsCredentialManager::store() - STARTING"
+        );
+
         // Validate key format
         super::validate_key(key)?;
 
@@ -88,25 +94,55 @@ impl SecretManager for WindowsCredentialManager {
         };
 
         unsafe {
+            tracing::info!(
+                target = "sapo_printer::secrets::windows",
+                key = key,
+                "WindowsCredentialManager::store() - calling CredWriteW()"
+            );
+
             CredWriteW(&credential, 0).map_err(|e| {
+                tracing::error!(
+                    target = "sapo_printer::secrets::windows",
+                    key = key,
+                    error = %e.message(),
+                    "WindowsCredentialManager::store() - CredWriteW() FAILED"
+                );
                 InfrastructureError::SecretStoreError(format!(
                     "Failed to write credential '{}': {}",
                     key,
                     e.message()
                 ))
             })?;
+
+            tracing::info!(
+                target = "sapo_printer::secrets::windows",
+                key = key,
+                "WindowsCredentialManager::store() - CredWriteW() SUCCESS"
+            );
         }
 
         Ok(())
     }
 
     fn retrieve(&self, key: &str) -> Result<Option<String>, InfrastructureError> {
+        tracing::info!(
+            target = "sapo_printer::secrets::windows",
+            key = key,
+            "WindowsCredentialManager::retrieve() - STARTING"
+        );
+
         let target_name = super::format_key(key);
         let target_name_wide: Vec<u16> = target_name.encode_utf16().chain(Some(0)).collect();
 
         let mut p_credential: *mut CREDENTIALW = std::ptr::null_mut();
 
         unsafe {
+            tracing::info!(
+                target = "sapo_printer::secrets::windows",
+                key = key,
+                "WindowsCredentialManager::retrieve() - calling CredReadW()"
+            );
+
             match CredReadW(
                 PCWSTR(target_name_wide.as_ptr()),
                 CRED_TYPE_GENERIC,
@@ -114,6 +150,12 @@ impl SecretManager for WindowsCredentialManager {
                 &mut p_credential as *mut _,
             ) {
                 Ok(_) => {
+                    tracing::info!(
+                        target = "sapo_printer::secrets::windows",
+                        key = key,
+                        "WindowsCredentialManager::retrieve() - CredReadW() SUCCESS"
+                    );
+
                     let credential = &*p_credential;
 
                     // Check for null CredentialBlob pointer
@@ -138,12 +180,29 @@ impl SecretManager for WindowsCredentialManager {
 
                     CredFree(p_credential as *const _);
 
+                    tracing::info!(
+                        target = "sapo_printer::secrets::windows",
+                        key = key,
+                        "WindowsCredentialManager::retrieve() - returning Some(value)"
+                    );
+
                     Ok(Some(value))
                 }
                 Err(e) => {
                     if e.code() == ERROR_NOT_FOUND.to_hresult() {
+                        tracing::info!(
+                            target = "sapo_printer::secrets::windows",
+                            key = key,
+                            "WindowsCredentialManager::retrieve() - key not found, returning None"
+                        );
                         Ok(None)
                     } else {
+                        tracing::error!(
+                            target = "sapo_printer::secrets::windows",
+                            key = key,
+                            error = %e.message(),
+                            "WindowsCredentialManager::retrieve() - CredReadW() FAILED"
+                        );
                         Err(InfrastructureError::SecretRetrieveError(format!(
                             "Failed to read credential '{}': {}",
                             key,

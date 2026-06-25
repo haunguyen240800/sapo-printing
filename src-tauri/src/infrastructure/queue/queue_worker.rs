@@ -189,7 +189,17 @@ impl QueueWorker {
             "QueueWorker: processing loop started"
         );
 
+        let mut poll_count = 0;
         while running.load(Ordering::SeqCst) {
+            poll_count += 1;
+            if poll_count % 10 == 0 {
+                tracing::debug!(
+                    target = "sapo_printer::queue_worker",
+                    poll_count = poll_count,
+                    "QueueWorker: still running, polling queue"
+                );
+            }
+
             match queue_manager.pop() {
                 Ok(Some(job)) => {
                     let job_id = job.id().clone(); // Save ID before consuming job
@@ -320,20 +330,42 @@ impl QueueWorker {
             .map_err(|e| format!("Failed to mark downloaded: {:?}", e))?;
         Self::persist_and_publish(&mut job, job_repo, event_store, event_bus)?;
 
-        // Step 3: Render document
+        // Step 3: Render document (skip for PDF-to-PDF printers)
         let render_start = std::time::Instant::now();
-        let render_config = RenderConfig::default();
-        let rendered_data = renderer
-            .render(temp_file.path(), &render_config)
-            .map_err(|e| format!("Render failed: {:?}", e))?;
-        let render_duration = render_start.elapsed();
-        tracing::info!(
-            target = "sapo_printer::metrics",
-            job_id = %job.id(),
-            step = "render",
-            duration_ms = render_duration.as_millis() as u64,
-            "Pipeline step completed"
-        );
+        let print_data: Vec<u8>;
+
+        // For "Microsoft Print to PDF" and similar, send raw PDF directly
+        if job.printer_name().contains("Print to PDF") {
+            tracing::info!(
+                target = "sapo_printer::queue_worker",
+                job_id = %job.id(),
+                "Skipping render for Print-to-PDF printer (using raw PDF)"
+            );
+            // Read raw PDF file
+            print_data = std::fs::read(temp_file.path())
+                .map_err(|e| format!("Failed to read PDF file: {:?}", e))?;
+            tracing::info!(
+                target = "sapo_printer::metrics",
+                job_id = %job.id(),
+                step = "render",
+                duration_ms = 0,
+                "Pipeline step completed (skipped)"
+            );
+        } else {
+            // For real printers, render to bitmap
+            let render_config = RenderConfig::default();
+            print_data = renderer
+                .render(temp_file.path(), &render_config)
+                .map_err(|e| format!("Render failed: {:?}", e))?;
+            let render_duration = render_start.elapsed();
+            tracing::info!(
+                target = "sapo_printer::metrics",
+                job_id = %job.id(),
+                step = "render",
+                duration_ms = render_duration.as_millis() as u64,
+                "Pipeline step completed"
+            );
+        }
 
         job.mark_submitted()
             .map_err(|e| format!("Failed to mark submitted: {:?}", e))?;
@@ -346,7 +378,7 @@ impl QueueWorker {
 
         let print_start = std::time::Instant::now();
         printer_engine
-            .print(job.printer_name(), &rendered_data)
+            .print(job.printer_name(), &print_data)
             .map_err(|e| format!("Print failed: {:?}", e))?;
         let print_duration = print_start.elapsed();
         tracing::info!(

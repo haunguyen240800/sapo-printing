@@ -22,18 +22,34 @@ impl TauriEventBus {
 
 impl EventBus for TauriEventBus {
     fn publish(&self, event_type: &str, payload: &str) -> Result<(), EventBusError> {
-        tracing::debug!(
+        tracing::info!(
             target = "sapo_printer::event_bus",
             event_type = event_type,
+            payload = payload,
             bus = "tauri",
-            "EventBus: event published"
+            "EventBus: publishing event"
         );
 
-        // 1. Invoke all registered backend handlers first
+        // 1. Invoke all registered backend handlers in background thread (non-blocking)
         let handlers = self.handlers.lock().unwrap();
+        let handler_count = handlers.get(event_type).map(|h| h.len()).unwrap_or(0);
+        tracing::info!(
+            target = "sapo_printer::event_bus",
+            event_type = event_type,
+            handler_count = handler_count,
+            "EventBus: found handlers for event"
+        );
+
         if let Some(handler_list) = handlers.get(event_type) {
             for handler in handler_list {
-                handler.handle(event_type, payload);
+                let handler_clone = Arc::clone(handler);
+                let event_type_owned = event_type.to_string();
+                let payload_owned = payload.to_string();
+
+                // Spawn handler execution in background thread to avoid blocking UI
+                std::thread::spawn(move || {
+                    handler_clone.handle(&event_type_owned, &payload_owned);
+                });
             }
         }
         drop(handlers); // Release lock before emitting to frontend

@@ -20,6 +20,12 @@ impl QueueManager for SqliteQueueManager {
         let conn = self.conn.lock().unwrap_or_else(|p| p.into_inner());
         let id_str = job_id.to_string();
 
+        tracing::info!(
+            target = "sapo_printer::queue_manager",
+            job_id = %job_id,
+            "SqliteQueueManager: push() called"
+        );
+
         // Note: SQLite's default isolation level (SERIALIZABLE) prevents race conditions
         // between push() setting scheduled_at and pop() reading it. The Mutex lock
         // additionally ensures only one operation at a time per connection.
@@ -50,17 +56,29 @@ impl QueueManager for SqliteQueueManager {
             .duration_since(UNIX_EPOCH)
             .unwrap()
             .as_secs() as i64;
-        conn.execute(
+        let rows_affected = conn.execute(
             "UPDATE print_jobs SET status = 'Queued', scheduled_at = ?1, updated_at = ?1 WHERE id = ?2",
             rusqlite::params![now, id_str],
         )
         .map_err(|e| QueueError::RepositoryError(e.to_string()))?;
+
+        tracing::info!(
+            target = "sapo_printer::queue_manager",
+            job_id = %job_id,
+            rows_affected = rows_affected,
+            "SqliteQueueManager: job status updated to Queued"
+        );
 
         Ok(())
     }
 
     fn pop(&self) -> Result<Option<PrintJob>, QueueError> {
         let mut conn = self.conn.lock().unwrap_or_else(|p| p.into_inner());
+
+        tracing::debug!(
+            target = "sapo_printer::queue_manager",
+            "SqliteQueueManager: pop() called"
+        );
 
         // Get current timestamp
         let now = SystemTime::now()
@@ -124,11 +142,23 @@ impl QueueManager for SqliteQueueManager {
                 .duration_since(UNIX_EPOCH)
                 .unwrap()
                 .as_secs() as i64;
+
+            tracing::info!(
+                target = "sapo_printer::queue_manager",
+                job_id = %job.id(),
+                "SqliteQueueManager: popped job, updating status to Pending"
+            );
+
             tx.execute(
                 "UPDATE print_jobs SET status = 'Pending', updated_at = ?1 WHERE id = ?2",
                 rusqlite::params![now, job.id().to_string()],
             )
             .map_err(|e| QueueError::RepositoryError(e.to_string()))?;
+        } else {
+            tracing::trace!(
+                target = "sapo_printer::queue_manager",
+                "SqliteQueueManager: no jobs available in queue"
+            );
         }
 
         tx.commit()

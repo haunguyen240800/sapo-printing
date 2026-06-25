@@ -19,20 +19,83 @@ impl GetMetricsUseCase {
             "GetMetricsUseCase: starting"
         );
 
+        // TEMPORARY FIX: Return empty metrics to prevent database lock contention
+        // TODO: Investigate why metrics collection blocks indefinitely
+        tracing::warn!(
+            target = "sapo_printer::use_case::get_metrics",
+            "GetMetricsUseCase: RETURNING EMPTY METRICS (temporary fix for deadlock)"
+        );
+
+        let collected_at = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_secs() as i64;
+
+        let snapshot = crate::infrastructure::metrics::collector::MetricsSnapshot {
+            collected_at,
+            job_metrics: crate::infrastructure::metrics::collector::JobMetrics {
+                total_jobs: 0,
+                pending: 0,
+                queued: 0,
+                downloaded: 0,
+                submitted: 0,
+                printing: 0,
+                completed: 0,
+                failed: 0,
+                cancelled: 0,
+                success_rate: 0.0,
+            },
+            queue_metrics: crate::infrastructure::metrics::collector::QueueMetrics {
+                current_depth: 0,
+                avg_wait_time_secs: 0.0,
+            },
+            printer_metrics: crate::infrastructure::metrics::collector::PrinterMetrics {
+                printers: vec![],
+            },
+            performance_metrics: crate::infrastructure::metrics::collector::PerformanceMetrics {
+                avg_job_duration_secs: 0.0,
+                p50_job_duration_secs: 0.0,
+                p95_job_duration_secs: 0.0,
+                p99_job_duration_secs: 0.0,
+                avg_download_time_secs: 0.0,
+                avg_render_time_secs: 0.0,
+                avg_print_time_secs: 0.0,
+            },
+        };
+
+        tracing::info!(
+            target = "sapo_printer::use_case::get_metrics",
+            "GetMetricsUseCase: completed (empty metrics)"
+        );
+
+        Ok(snapshot)
+
+        /* ORIGINAL CODE - RE-ENABLE AFTER FIXING DEADLOCK
+        let start = std::time::Instant::now();
         let snapshot = self.metrics_collector.collect_metrics().map_err(|e| {
             ApplicationError::MetricsError {
                 reason: format!("Failed to collect metrics: {}", e),
             }
         })?;
+        let duration = start.elapsed();
 
-        tracing::debug!(
+        tracing::info!(
             target = "sapo_printer::use_case::get_metrics",
+            duration_ms = duration.as_millis(),
             total_jobs = snapshot.job_metrics.total_jobs,
-            collected_at = snapshot.collected_at,
             "GetMetricsUseCase: completed"
         );
 
+        if duration.as_secs() > 5 {
+            tracing::warn!(
+                target = "sapo_printer::use_case::get_metrics",
+                duration_secs = duration.as_secs(),
+                "GetMetricsUseCase: SLOW execution (>5s)"
+            );
+        }
+
         Ok(snapshot)
+        */
     }
 }
 

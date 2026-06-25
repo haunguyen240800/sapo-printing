@@ -13,6 +13,10 @@ export const router = createBrowserRouter([
         element: <PrinterPage />,
       },
       {
+        path: "printer",
+        element: <PrinterPage />,
+      },
+      {
         path: "settings",
         element: <Settings />,
       },

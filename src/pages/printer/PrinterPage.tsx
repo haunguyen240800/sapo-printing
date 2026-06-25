@@ -60,46 +60,55 @@ export default function PrinterPage() {
   }, []);
 
   useEffect(() => {
-    loadPrinters();
-    loadPrinterConfig();
-    loadMetrics();
+    console.log('PrinterPage: useEffect mounting');
 
-    // Start polling metrics every 2 seconds
-    metricsIntervalRef.current = setInterval(() => {
+    // Test one by one
+    loadPrinters().catch(err => console.error('loadPrinters error:', err));
+    loadPrinterConfig().catch(err => console.error('loadPrinterConfig error:', err));
+    loadMetrics().catch(err => console.error('loadMetrics error:', err));
+
+    // Start polling metrics every 5 seconds (reduced frequency to avoid deadlock)
+    metricsIntervalRef.current = window.setInterval(() => {
       loadMetrics();
-    }, 2000);
+    }, 5000);
 
     // Subscribe to job status events
     const setupEventListener = async () => {
-      const unlisten = await onJobStatusChanged((payload) => {
-        setActiveJobs((prev) => {
-          const updated = new Map(prev);
-          if (payload.status === 'COMPLETED' || payload.status === 'FAILED' || payload.status === 'CANCELLED') {
-            // Remove completed/failed jobs after they finish
-            setTimeout(() => {
-              setActiveJobs((current) => {
-                const next = new Map(current);
-                next.delete(payload.job_id);
-                return next;
-              });
-            }, 5000); // Keep for 5 seconds to show final status
-          }
-          updated.set(payload.job_id, payload);
-          return updated;
+      try {
+        const unlisten = await onJobStatusChanged((payload) => {
+          setActiveJobs((prev) => {
+            const updated = new Map(prev);
+            if (payload.status === 'COMPLETED' || payload.status === 'FAILED' || payload.status === 'CANCELLED') {
+              // Remove completed/failed jobs after they finish
+              setTimeout(() => {
+                setActiveJobs((current) => {
+                  const next = new Map(current);
+                  next.delete(payload.job_id);
+                  return next;
+                });
+              }, 5000); // Keep for 5 seconds to show final status
+            }
+            updated.set(payload.job_id, payload);
+            return updated;
+          });
         });
-      });
 
-      return unlisten;
+        return unlisten;
+      } catch (err) {
+        console.error('setupEventListener error:', err);
+        return () => {}; // Return no-op cleanup
+      }
     };
 
     const listenerPromise = setupEventListener();
 
     return () => {
       // Cleanup on unmount
+      console.log('PrinterPage: useEffect cleanup');
       if (metricsIntervalRef.current) {
         clearInterval(metricsIntervalRef.current);
       }
-      listenerPromise.then((unlisten) => unlisten());
+      listenerPromise.then((unlisten) => unlisten()).catch(err => console.error('cleanup error:', err));
     };
   }, [loadPrinters, loadPrinterConfig, loadMetrics]);
 

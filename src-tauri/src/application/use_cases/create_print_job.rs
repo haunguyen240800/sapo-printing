@@ -49,8 +49,30 @@ impl CreatePrintJobUseCase {
             });
         }
 
+        tracing::info!(
+            target = "sapo_printer::use_case::create_print_job",
+            printer = request.printer_name,
+            "Checking printer status"
+        );
+
         // 2. Verify printer ONLINE via PrinterManager
-        let status = self.printer_manager.get_status(&request.printer_name);
+        // NOTE: Windows API calls (OpenPrinterW/GetPrinterW) can hang for network printers
+        // TODO: Implement async printer status check with timeout
+        // For now, skip check if printer name is valid (assume online)
+        let status = if request.printer_name.is_empty() {
+            PrinterStatus::Offline
+        } else {
+            // TODO: Add timeout wrapper around get_status
+            PrinterStatus::Online // Assume online for now to avoid hang
+        };
+
+        tracing::info!(
+            target = "sapo_printer::use_case::create_print_job",
+            printer = request.printer_name,
+            status = ?status,
+            "Printer status retrieved (assumed online)"
+        );
+
         if status != PrinterStatus::Online {
             return Err(ApplicationError::PrinterNotAvailable {
                 name: request.printer_name.clone(),
@@ -62,18 +84,58 @@ impl CreatePrintJobUseCase {
         let mut all_events: Vec<(String, String)> = Vec::new(); // (event_type, serialized_payload)
 
         for url in &request.pdf_urls {
+            tracing::info!(
+                target = "sapo_printer::use_case::create_print_job",
+                url = url,
+                "Creating job for URL"
+            );
+
             let mut job = PrintJob::new(url.clone(), request.printer_name.clone());
             let events = job.drain_events();
 
+            tracing::info!(
+                target = "sapo_printer::use_case::create_print_job",
+                job_id = %job.id(),
+                "Saving job to repository"
+            );
+
             // 4. Save job FIRST
-            self.job_repo
-                .save(&job)
-                .map_err(|e| ApplicationError::RepositoryError(e.to_string()))?;
+            let save_result = self.job_repo.save(&job);
+
+            tracing::info!(
+                target = "sapo_printer::use_case::create_print_job",
+                job_id = %job.id(),
+                success = save_result.is_ok(),
+                "Repository save completed"
+            );
+
+            save_result.map_err(|e| {
+                tracing::error!(
+                    target = "sapo_printer::use_case::create_print_job",
+                    error = %e,
+                    "Failed to save job"
+                );
+                ApplicationError::RepositoryError(e.to_string())
+            })?;
+
+            tracing::info!(
+                target = "sapo_printer::use_case::create_print_job",
+                job_id = %job.id(),
+                event_count = events.len(),
+                "Job saved successfully, now saving events to event store"
+            );
 
             // 5. Save events to event store (best-effort persistence)
             self.event_store
                 .save_all(job.id().to_string().as_str(), &events)
-                .map_err(|e| ApplicationError::RepositoryError(e.to_string()))?;
+                .map_err(|e| {
+                    tracing::error!(
+                        target = "sapo_printer::use_case::create_print_job",
+                        error = %e,
+                        "Failed to save events"
+                    );
+                    ApplicationError::RepositoryError(e.to_string())
+                })?;
 
             // Collect events for publishing AFTER all saves
             for event in &events {
@@ -82,6 +144,12 @@ impl CreatePrintJobUseCase {
 
             all_job_ids.push(job.id().clone());
         }
+
+        tracing::info!(
+            target = "sapo_printer::use_case::create_print_job",
+            event_count = all_events.len(),
+            "Publishing events"
+        );
 
         // 6. Publish AFTER all saves succeed
         // PushToQueueHandler (subscribed to PrintJobCreated) will automatically push to queue

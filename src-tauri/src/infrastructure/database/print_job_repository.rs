@@ -24,7 +24,34 @@ impl SqlitePrintJobRepository {
 
 impl PrintJobRepository for SqlitePrintJobRepository {
     fn save(&self, job: &PrintJob) -> Result<(), DomainError> {
+        tracing::info!(
+            target = "sapo_printer::repository::print_job",
+            operation = "save",
+            job_id = %job.id(),
+            "SqlitePrintJobRepository::save() - STARTING"
+        );
+
+        let lock_start = std::time::Instant::now();
         let conn = self.conn.lock().unwrap_or_else(|p| p.into_inner());
+        let lock_duration = lock_start.elapsed();
+
+        tracing::info!(
+            target = "sapo_printer::repository::print_job",
+            operation = "save",
+            job_id = %job.id(),
+            lock_wait_ms = lock_duration.as_millis(),
+            "SqlitePrintJobRepository::save() - got database lock"
+        );
+
+        if lock_duration.as_secs() > 5 {
+            tracing::warn!(
+                target = "sapo_printer::repository::print_job",
+                operation = "save",
+                job_id = %job.id(),
+                lock_wait_secs = lock_duration.as_secs(),
+                "SqlitePrintJobRepository::save() - SLOW LOCK (waited >5s)"
+            );
+        }
 
         let now = SystemTime::now()
             .duration_since(UNIX_EPOCH)
@@ -39,6 +66,13 @@ impl PrintJobRepository for SqlitePrintJobRepository {
             job_id = %job.id(),
             status = ?job.status(),
             "INSERT INTO print_jobs"
+        );
+
+        tracing::info!(
+            target = "sapo_printer::repository::print_job",
+            operation = "save",
+            job_id = %job.id(),
+            "SqlitePrintJobRepository::save() - executing INSERT"
         );
 
         let rows = conn
@@ -91,6 +125,14 @@ impl PrintJobRepository for SqlitePrintJobRepository {
                 reason: "Failed to save print job: no rows inserted".into(),
             });
         }
+
+        tracing::info!(
+            target = "sapo_printer::repository::print_job",
+            operation = "save",
+            job_id = %job.id(),
+            rows = rows,
+            "SqlitePrintJobRepository::save() - INSERT SUCCESS"
+        );
 
         Ok(())
     }

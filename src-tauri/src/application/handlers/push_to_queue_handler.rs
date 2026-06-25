@@ -20,7 +20,19 @@ impl PushToQueueHandler {
 
 impl EventHandler for PushToQueueHandler {
     fn handle(&self, event_type: &str, payload: &str) {
+        tracing::info!(
+            target = "sapo_printer::handlers::push_to_queue",
+            event_type = event_type,
+            payload = payload,
+            "PushToQueueHandler: received event"
+        );
+
         if event_type != "PrintJobCreated" {
+            tracing::debug!(
+                target = "sapo_printer::handlers::push_to_queue",
+                event_type = event_type,
+                "PushToQueueHandler: ignoring non-PrintJobCreated event"
+            );
             return; // Ignore other events
         }
 

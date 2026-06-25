@@ -16,6 +16,9 @@ use sapo_printer::infrastructure::secrets::SecretManager;
 use sapo_printer::interface::tauri::dtos::printer_dto::{
     PrinterConfigDto, PrinterDto, PrinterStatusDto,
 };
+use sapo_printer::application::dto::create_job_request::CreateJobRequest;
+use sapo_printer::application::use_cases::create_print_job::CreatePrintJobUseCase;
+use sapo_printer::application::use_cases::errors::ApplicationError;
 use sapo_printer::shared::event_bus::EventBus;
 use sapo_printer::shared::logger::init_logging;
 use sapo_printer::AppContextState;
@@ -24,14 +27,97 @@ use tauri::Manager;
 
 /// Tauri command: create print job(s) via CreatePrintJobUseCase.
 #[tauri::command]
-fn create_print_job(
+async fn create_print_job(
     payload: sapo_printer::interface::tauri::commands::print_job::CreateJobPayload,
     ctx: tauri::State<'_, AppContextState>,
 ) -> Result<Vec<String>, String> {
-    sapo_printer::interface::tauri::commands::print_job::execute_create_print_job(
-        payload,
-        ctx.inner(),
-    )
+    tracing::info!(
+        target = "sapo_printer::tauri_command",
+        command = "create_print_job",
+        "Command received, spawning blocking task"
+    );
+
+    // Clone dependencies to move into blocking task
+    let job_repo = ctx.job_repo.clone();
+    let event_store = ctx.event_store.clone();
+    let event_bus = ctx.event_bus.clone();
+    let printer_manager = ctx.printer_manager.clone();
+
+    // Run in blocking task to avoid blocking async runtime
+    let result = tokio::task::spawn_blocking(move || {
+        // Catch panics to prevent silent crashes
+        std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            tracing::info!(
+                target = "sapo_printer::tauri_command",
+                "Inside blocking task, creating use case"
+            );
+
+            let use_case = CreatePrintJobUseCase {
+                job_repo,
+                event_store,
+                event_bus,
+                printer_manager,
+            };
+
+            let request = CreateJobRequest {
+                pdf_urls: payload.pdf_urls,
+                printer_name: payload.printer_name,
+            };
+
+            tracing::info!(
+                target = "sapo_printer::tauri_command",
+                "Executing use case"
+            );
+
+            let result = use_case
+                .execute(request)
+                .map(|ids| ids.iter().map(|id| id.to_string()).collect())
+                .map_err(|e| match &e {
+                    ApplicationError::EmptyJobList => "Danh sách URLs không được rỗng".to_string(),
+                    ApplicationError::TooManyJobs { count } => format!(
+                        "Số lượng URLs vượt quá giới hạn 5000 (nhận được: {})",
+                        count
+                    ),
+                    ApplicationError::PrinterNotAvailable { name } => {
+                        format!("Máy in '{}' không khả dụng hoặc đang offline", name)
+                    }
+                    _ => format!("{}", e),
+                });
+
+            tracing::info!(
+                target = "sapo_printer::tauri_command",
+                success = result.is_ok(),
+                error = ?result.as_ref().err(),
+                "Use case execution completed"
+            );
+
+            result
+        }))
+        .map_err(|panic| {
+            let panic_msg = if let Some(s) = panic.downcast_ref::<&str>() {
+                format!("Panic: {}", s)
+            } else if let Some(s) = panic.downcast_ref::<String>() {
+                format!("Panic: {}", s)
+            } else {
+                "Panic: Unknown panic occurred".to_string()
+            };
+            tracing::error!(
+                target = "sapo_printer::tauri_command",
+                error = %panic_msg,
+                "Caught panic in use case execution"
+            );
+            panic_msg
+        })?
+    })
+    .await
+    .map_err(|e| format!("Task join error: {}", e))?;
+
+    tracing::info!(
+        target = "sapo_printer::tauri_command",
+        "Command completed successfully"
+    );
+
+    result
 }
 
 /// Tauri command: cancel a print job via CancelPrintJobUseCase.
@@ -78,10 +164,63 @@ fn get_job_audit_trail(
 
 /// Tauri command: get operational metrics.
 #[tauri::command]
-fn get_metrics(
+async fn get_metrics(
     ctx: tauri::State<'_, AppContextState>,
 ) -> Result<sapo_printer::interface::tauri::dtos::metrics::MetricsDto, String> {
-    sapo_printer::interface::tauri::commands::metrics::execute_get_metrics(ctx.inner())
+    // Clone only what we need to avoid blocking
+    let collector = ctx.metrics_collector.clone();
+
+    // Run in blocking task to avoid blocking async runtime
+    tokio::task::spawn_blocking(move || {
+        use sapo_printer::application::use_cases::GetMetricsUseCase;
+        let use_case = GetMetricsUseCase::new(collector);
+        let snapshot = use_case.execute().map_err(|e| format!("{}", e))?;
+
+        use sapo_printer::interface::tauri::dtos::metrics::*;
+        Ok(MetricsDto {
+            collected_at: snapshot.collected_at,
+            job_metrics: JobMetricsDto {
+                total_jobs: snapshot.job_metrics.total_jobs,
+                pending: snapshot.job_metrics.pending,
+                queued: snapshot.job_metrics.queued,
+                downloaded: snapshot.job_metrics.downloaded,
+                submitted: snapshot.job_metrics.submitted,
+                printing: snapshot.job_metrics.printing,
+                completed: snapshot.job_metrics.completed,
+                failed: snapshot.job_metrics.failed,
+                cancelled: snapshot.job_metrics.cancelled,
+                success_rate: snapshot.job_metrics.success_rate,
+            },
+            queue_metrics: QueueMetricsDto {
+                current_depth: snapshot.queue_metrics.current_depth,
+                avg_wait_time_secs: snapshot.queue_metrics.avg_wait_time_secs,
+            },
+            printer_metrics: PrinterMetricsDto {
+                printers: snapshot
+                    .printer_metrics
+                    .printers
+                    .iter()
+                    .map(|p| PrinterUsageDto {
+                        printer_name: p.printer_name.clone(),
+                        total_jobs: p.total_jobs,
+                        completed_jobs: p.completed_jobs,
+                        utilization_percent: p.utilization_percent,
+                    })
+                    .collect(),
+            },
+            performance_metrics: PerformanceMetricsDto {
+                avg_job_duration_secs: snapshot.performance_metrics.avg_job_duration_secs,
+                p50_job_duration_secs: snapshot.performance_metrics.p50_job_duration_secs,
+                p95_job_duration_secs: snapshot.performance_metrics.p95_job_duration_secs,
+                p99_job_duration_secs: snapshot.performance_metrics.p99_job_duration_secs,
+                avg_download_time_secs: snapshot.performance_metrics.avg_download_time_secs,
+                avg_render_time_secs: snapshot.performance_metrics.avg_render_time_secs,
+                avg_print_time_secs: snapshot.performance_metrics.avg_print_time_secs,
+            },
+        })
+    })
+    .await
+    .map_err(|e| format!("Task join error: {}", e))?
 }
 
 /// Tauri command: check for available updates.
@@ -268,13 +407,13 @@ fn save_printer_config(
 #[tauri::command]
 fn get_printer_config(
     _app_ctx: tauri::State<AppContextState>,
-) -> Result<Option<PrinterConfigDto>, String> {
+) -> Result<PrinterConfigDto, String> {
     use sapo_printer::infrastructure::config_store;
 
     let config = config_store::load_config()?;
 
     match config {
-        Some(cfg) => Ok(Some(PrinterConfigDto {
+        Some(cfg) => Ok(PrinterConfigDto {
             printer_name: cfg.printer_name,
             paper_size: cfg.paper_size,
             paper_width: cfg.paper_width,
@@ -288,8 +427,22 @@ fn get_printer_config(
             print_as_image: cfg.print_as_image,
             enable_buffer: cfg.enable_buffer,
             buffer_size_kb: cfg.buffer_size_kb,
-        })),
-        None => Ok(None),
+        }),
+        None => Ok(PrinterConfigDto {
+            printer_name: String::new(),
+            paper_size: String::new(),
+            paper_width: None,
+            paper_height: None,
+            orientation: String::new(),
+            margin_left: 0,
+            margin_right: 0,
+            margin_top: 0,
+            margin_bottom: 0,
+            color_mode: String::new(),
+            print_as_image: false,
+            enable_buffer: false,
+            buffer_size_kb: None,
+        }),
     }
 }
 

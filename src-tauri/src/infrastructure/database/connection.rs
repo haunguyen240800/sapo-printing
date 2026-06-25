@@ -31,6 +31,14 @@ impl DbPool {
         let conn = Connection::open(db_path).map_err(|e| DatabaseError::ConnectionFailed {
             reason: e.to_string(),
         })?;
+
+        // Set busy timeout to 30 seconds to handle contention from metrics queries
+        // Previous value of 5s was too short for long-running metric collection
+        conn.busy_timeout(std::time::Duration::from_secs(30))
+            .map_err(|e| DatabaseError::ConnectionFailed {
+                reason: e.to_string(),
+            })?;
+
         conn.execute_batch("PRAGMA journal_mode=WAL; PRAGMA synchronous=NORMAL;")
             .map_err(|e| DatabaseError::ConnectionFailed {
                 reason: e.to_string(),
