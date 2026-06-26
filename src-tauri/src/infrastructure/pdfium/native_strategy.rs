@@ -1,5 +1,5 @@
 use pdfium_render::prelude::*;
-use crate::domain::layout::Transform;
+use crate::application::services::layout_engine::LayoutEngine;
 use crate::domain::settings::PrintSettings;
 use crate::infrastructure::graphics::backend::{GraphicsBackend, NativeGraphicsContext};
 use super::renderer::RenderStrategy;
@@ -16,7 +16,6 @@ impl RenderStrategy for NativePdfRenderStrategy {
     fn render(
         &self,
         pdf_path: &str,
-        _transform: &Transform,
         settings: &PrintSettings,
         backend: &mut dyn GraphicsBackend,
     ) {
@@ -37,13 +36,15 @@ impl RenderStrategy for NativePdfRenderStrategy {
             let width_points = page.width().value;
             let height_points = page.height().value;
             
-            let render_w = (width_points * settings.dpi as f32 / 72.0) as i32;
-            let render_h = (height_points * settings.dpi as f32 / 72.0) as i32;
+                        let transform = LayoutEngine::calculate(settings, width_points, height_points);
+            let dpi_f = settings.dpi as f32;
+            let render_w = (width_points * transform.scale_x * dpi_f / 72.0) as i32;
+            let render_h = (height_points * transform.scale_y * dpi_f / 72.0) as i32;
 
             match native_ctx {
                 NativeGraphicsContext::Windows(hdc) => {
                     // Extract page handle
-                    let page_handle = page.bindings(); // Simplified pseudo-access
+                    let _page_handle = page.bindings(); // Simplified pseudo-access
                     
                     // Actually, pdfium-render doesn't expose FPDF_RenderPage directly with HDC safely in standard bindings,
                     // but we can use the FFI if we link it.

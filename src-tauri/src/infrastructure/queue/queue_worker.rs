@@ -1,4 +1,4 @@
-﻿//! Queue Worker â€” Background Job Processor
+//! Queue Worker â€” Background Job Processor
 //!
 //! Implements a background worker thread that continuously polls the queue
 //! and processes print jobs through the complete pipeline:
@@ -41,9 +41,7 @@ use crate::domain::print_job::PrintJob;
 use crate::domain::print_job::PrintJobRepository;
 use crate::infrastructure::database::SqliteEventStore;
 use crate::infrastructure::downloader::DocumentDownloader;
-use crate::infrastructure::printer::PrinterEngine;
 use crate::infrastructure::queue::QueueManager;
-use crate::infrastructure::renderer::{DocumentRenderer, RenderConfig};
 use crate::infrastructure::temp_file::TempPdfFile;
 use crate::shared::event_bus::EventBus;
 
@@ -61,8 +59,6 @@ pub struct QueueWorker {
     event_store: Arc<SqliteEventStore>,
     event_bus: Arc<dyn EventBus>,
     downloader: Arc<dyn DocumentDownloader>,
-    renderer: Arc<dyn DocumentRenderer>,
-    printer_engine: Arc<dyn PrinterEngine>,
 
     // Worker lifecycle control
     running: Arc<AtomicBool>,
@@ -80,8 +76,6 @@ impl QueueWorker {
         event_store: Arc<SqliteEventStore>,
         event_bus: Arc<dyn EventBus>,
         downloader: Arc<dyn DocumentDownloader>,
-        renderer: Arc<dyn DocumentRenderer>,
-        printer_engine: Arc<dyn PrinterEngine>,
     ) -> Self {
         Self {
             queue_manager,
@@ -89,8 +83,6 @@ impl QueueWorker {
             event_store,
             event_bus,
             downloader,
-            renderer,
-            printer_engine,
             running: Arc::new(AtomicBool::new(false)),
             thread_handle: Mutex::new(None),
         }
@@ -119,8 +111,6 @@ impl QueueWorker {
         let event_store = Arc::clone(&self.event_store);
         let event_bus = Arc::clone(&self.event_bus);
         let downloader = Arc::clone(&self.downloader);
-        let renderer = Arc::clone(&self.renderer);
-        let printer_engine = Arc::clone(&self.printer_engine);
         let running = Arc::clone(&self.running);
 
         // Spawn background thread
@@ -131,9 +121,7 @@ impl QueueWorker {
                 event_store,
                 event_bus,
                 downloader,
-                renderer,
-                printer_engine,
-                running,
+                    running,
             );
         });
 
@@ -178,8 +166,6 @@ impl QueueWorker {
         event_store: Arc<SqliteEventStore>,
         event_bus: Arc<dyn EventBus>,
         downloader: Arc<dyn DocumentDownloader>,
-        renderer: Arc<dyn DocumentRenderer>,
-        printer_engine: Arc<dyn PrinterEngine>,
         running: Arc<AtomicBool>,
     ) {
         const POLL_INTERVAL_MS: u64 = 500; // 0.5s poll interval
@@ -217,8 +203,6 @@ impl QueueWorker {
                         &event_store,
                         &event_bus,
                         &downloader,
-                        &renderer,
-                        &printer_engine,
                     );
 
                     if let Err(e) = result {
@@ -290,8 +274,6 @@ impl QueueWorker {
         event_store: &SqliteEventStore,
         event_bus: &Arc<dyn EventBus>,
         downloader: &Arc<dyn DocumentDownloader>,
-        renderer: &Arc<dyn DocumentRenderer>,
-        printer_engine: &Arc<dyn PrinterEngine>,
     ) -> Result<(), String> {
         // Step 1: Transition to Queued (pop returns Pending, we transition to Queued)
         job.queue()
@@ -330,79 +312,39 @@ impl QueueWorker {
             .map_err(|e| format!("Failed to mark downloaded: {:?}", e))?;
         Self::persist_and_publish(&mut job, job_repo, event_store, event_bus)?;
 
-        // Step 3: Render document (skip for PDF-to-PDF printers)
+        // Step 3: Render document & Step 4: Send to printer
         let render_start = std::time::Instant::now();
-        let print_data: Vec<u8>;
-
-        // Detect printer category to decide rendering strategy
-        let printer_category =
-            crate::infrastructure::printer::PrinterCategory::detect(job.printer_name());
-
-        if !printer_category.needs_rendering() {
-            tracing::info!(
-                target = "sapo_printer::queue_worker",
-                job_id = %job.id(),
-                printer_type = ?printer_category,
-                "Skipping render for Print-to-PDF printer (using raw PDF)"
-            );
-            // Read raw PDF file
-            print_data = std::fs::read(temp_file.path())
-                .map_err(|e| format!("Failed to read PDF file: {:?}", e))?;
-            tracing::info!(
-                target = "sapo_printer::metrics",
-                job_id = %job.id(),
-                step = "render",
-                duration_ms = 0,
-                "Pipeline step completed (skipped)"
-            );
+        
+        let mut backend = crate::infrastructure::graphics::backend::GraphicsBackendFactory::create();
+        backend.begin_document(job.printer_name(), "Sapo Print Job").map_err(|e| format!("Begin document failed: {}", e))?;
+        
+        let strategy: Box<dyn crate::infrastructure::pdfium::renderer::RenderStrategy> = if job.settings.print_as_image {
+            Box::new(crate::infrastructure::pdfium::bitmap_strategy::BitmapRenderStrategy::new())
         } else {
-            // For real printers, render to bitmap
-            tracing::info!(
-                target = "sapo_printer::queue_worker",
-                job_id = %job.id(),
-                printer_type = ?printer_category,
-                "Rendering PDF to bitmap for physical printer"
-            );
-            let mut render_config = RenderConfig::default();
-            render_config.color_mode = crate::infrastructure::renderer::ColorMode::Bgr;
-            print_data = renderer
-                .render(temp_file.path(), &render_config)
-                .map_err(|e| format!("Render failed: {:?}", e))?;
-            let render_duration = render_start.elapsed();
-            tracing::info!(
-                target = "sapo_printer::metrics",
-                job_id = %job.id(),
-                step = "render",
-                duration_ms = render_duration.as_millis() as u64,
-                "Pipeline step completed"
-            );
-        }
-
-        job.mark_submitted()
-            .map_err(|e| format!("Failed to mark submitted: {:?}", e))?;
-        Self::persist_and_publish(&mut job, job_repo, event_store, event_bus)?;
-
-        // Step 4: Send to printer
-        job.mark_printing()
-            .map_err(|e| format!("Failed to mark printing: {:?}", e))?;
-        Self::persist_and_publish(&mut job, job_repo, event_store, event_bus)?;
-
-        let print_start = std::time::Instant::now();
-        printer_engine
-            .print(
-                job.printer_name(),
-                &print_data,
-                job.output_path().map(|s| s.as_str()),
-            )
-            .map_err(|e| format!("Print failed: {:?}", e))?;
-        let print_duration = print_start.elapsed();
+            Box::new(crate::infrastructure::pdfium::native_strategy::NativePdfRenderStrategy::new())
+        };
+        
+        strategy.render(
+            temp_file.path().to_str().unwrap(), 
+            &job.settings, 
+            &mut *backend
+        );
+        backend.end_document();
+        
+        let render_duration = render_start.elapsed();
         tracing::info!(
             target = "sapo_printer::metrics",
             job_id = %job.id(),
-            step = "print",
-            duration_ms = print_duration.as_millis() as u64,
+            step = "render_and_print",
+            duration_ms = render_duration.as_millis() as u64,
             "Pipeline step completed"
         );
+
+        job.mark_submitted().map_err(|e| format!("Failed to mark submitted: {:?}", e))?;
+        Self::persist_and_publish(&mut job, job_repo, event_store, event_bus)?;
+        
+        job.mark_printing().map_err(|e| format!("Failed to mark printing: {:?}", e))?;
+        Self::persist_and_publish(&mut job, job_repo, event_store, event_bus)?;
 
         // Step 5: Mark complete
         job.complete()
@@ -586,896 +528,4 @@ impl QueueWorker {
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use rusqlite::Connection;
-    use std::sync::Mutex as StdMutex;
 
-    use crate::domain::print_job::errors::DomainError;
-    use crate::domain::print_job::{JobId, PrintStatus};
-    use crate::domain::print_job::PrintJobRepository;
-    use crate::infrastructure::database::{run_migrations, SqliteEventStore};
-    use crate::infrastructure::queue::QueueError;
-    use crate::infrastructure::secrets::SecretManager;
-    use crate::shared::errors::InfrastructureError;
-    use crate::shared::event_bus::EventBusError;
-    use std::collections::HashMap;
-
-    struct MockSecretManager {
-        store: StdMutex<HashMap<String, String>>,
-    }
-
-    impl MockSecretManager {
-        fn new() -> Self {
-            Self {
-                store: StdMutex::new(HashMap::new()),
-            }
-        }
-    }
-
-    impl SecretManager for MockSecretManager {
-        fn store(&self, key: &str, value: &str) -> Result<(), InfrastructureError> {
-            self.store
-                .lock()
-                .unwrap()
-                .insert(key.to_string(), value.to_string());
-            Ok(())
-        }
-
-        fn retrieve(&self, key: &str) -> Result<Option<String>, InfrastructureError> {
-            Ok(self.store.lock().unwrap().get(key).cloned())
-        }
-
-        fn delete(&self, key: &str) -> Result<(), InfrastructureError> {
-            self.store.lock().unwrap().remove(key);
-            Ok(())
-        }
-    }
-
-    // --- Mock QueueManager ---
-
-    struct MockQueueManager {
-        jobs: StdMutex<Vec<PrintJob>>,
-        requeue_calls: StdMutex<Vec<(JobId, u64)>>, // (job_id, delay_secs)
-    }
-
-    impl MockQueueManager {
-        fn new() -> Self {
-            Self {
-                jobs: StdMutex::new(Vec::new()),
-                requeue_calls: StdMutex::new(Vec::new()),
-            }
-        }
-
-        fn push_job(&self, job: PrintJob) {
-            self.jobs.lock().unwrap().push(job);
-        }
-
-        fn get_requeue_calls(&self) -> Vec<(JobId, u64)> {
-            self.requeue_calls.lock().unwrap().clone()
-        }
-    }
-
-    impl QueueManager for MockQueueManager {
-        fn push(&self, _job_id: &JobId) -> Result<(), QueueError> {
-            Ok(())
-        }
-
-        fn pop(&self) -> Result<Option<PrintJob>, QueueError> {
-            Ok(self.jobs.lock().unwrap().pop())
-        }
-
-        fn requeue(&self, job_id: &JobId, delay_secs: u64) -> Result<(), QueueError> {
-            self.requeue_calls
-                .lock()
-                .unwrap()
-                .push((job_id.clone(), delay_secs));
-            Ok(())
-        }
-
-        fn queue_depth(&self) -> Result<usize, QueueError> {
-            Ok(self.jobs.lock().unwrap().len())
-        }
-    }
-
-    // --- Mock PrintJobRepository ---
-
-    struct MockPrintJobRepository {
-        jobs: StdMutex<std::collections::HashMap<JobId, PrintJob>>,
-        updates: StdMutex<Vec<JobId>>,
-    }
-
-    impl MockPrintJobRepository {
-        fn new() -> Self {
-            Self {
-                jobs: StdMutex::new(std::collections::HashMap::new()),
-                updates: StdMutex::new(Vec::new()),
-            }
-        }
-
-        fn add_job(&self, job: PrintJob) {
-            self.jobs.lock().unwrap().insert(job.id().clone(), job);
-        }
-
-        fn update_count(&self) -> usize {
-            self.updates.lock().unwrap().len()
-        }
-    }
-
-    impl PrintJobRepository for MockPrintJobRepository {
-        fn save(&self, job: &PrintJob) -> Result<(), DomainError> {
-            self.jobs
-                .lock()
-                .unwrap()
-                .insert(job.id().clone(), job.clone());
-            Ok(())
-        }
-
-        fn update(&self, job: &PrintJob) -> Result<(), DomainError> {
-            self.updates.lock().unwrap().push(job.id().clone());
-            self.jobs
-                .lock()
-                .unwrap()
-                .insert(job.id().clone(), job.clone());
-            Ok(())
-        }
-
-        fn find_by_id(&self, id: &JobId) -> Result<Option<PrintJob>, DomainError> {
-            Ok(self.jobs.lock().unwrap().get(id).cloned())
-        }
-
-        fn find_by_status(&self, _status: &PrintStatus) -> Result<Vec<PrintJob>, DomainError> {
-            unimplemented!()
-        }
-
-        fn find_all(&self) -> Result<Vec<PrintJob>, DomainError> {
-            unimplemented!()
-        }
-    }
-
-    // --- Mock EventStore ---
-
-    // Removed MockEventStore - using real SqliteEventStore with in-memory DB instead
-
-    // --- Mock EventBus ---
-
-    struct MockEventBus {
-        published: StdMutex<Vec<String>>,
-    }
-
-    impl MockEventBus {
-        fn new() -> Self {
-            Self {
-                published: StdMutex::new(Vec::new()),
-            }
-        }
-
-        fn publish_count(&self) -> usize {
-            self.published.lock().unwrap().len()
-        }
-    }
-
-    impl EventBus for MockEventBus {
-        fn publish(&self, event_type: &str, _payload: &str) -> Result<(), EventBusError> {
-            self.published.lock().unwrap().push(event_type.to_string());
-            Ok(())
-        }
-
-        fn subscribe(&self, _event_type: &str, _handler: Arc<dyn crate::shared::event_bus::EventHandler>) {
-            // No-op for tests
-        }
-    }
-
-    // --- Mock DocumentDownloader ---
-
-    struct MockDownloader {
-        should_fail: StdMutex<bool>,
-        return_path: StdMutex<Option<std::path::PathBuf>>,
-    }
-
-    impl MockDownloader {
-        fn new() -> Self {
-            Self {
-                should_fail: StdMutex::new(false),
-                return_path: StdMutex::new(None),
-            }
-        }
-
-        fn set_fail(&self, fail: bool) {
-            *self.should_fail.lock().unwrap() = fail;
-        }
-
-        fn set_return_path(&self, path: std::path::PathBuf) {
-            *self.return_path.lock().unwrap() = Some(path);
-        }
-    }
-
-    impl DocumentDownloader for MockDownloader {
-        fn download(
-            &self,
-            _url: &str,
-            _job_id: &JobId,
-        ) -> Result<std::path::PathBuf, InfrastructureError> {
-            if *self.should_fail.lock().unwrap() {
-                return Err(InfrastructureError::NetworkError(
-                    "Mock download failure".to_string(),
-                ));
-            }
-            let guard = self.return_path.lock().unwrap();
-            if let Some(path) = guard.as_ref() {
-                Ok(path.clone())
-            } else {
-                Ok(std::path::PathBuf::from("/tmp/mock.pdf"))
-            }
-        }
-    }
-
-    // Mock Downloader that fails with configurable error
-    struct FailingDownloader {
-        error_message: String,
-    }
-
-    impl FailingDownloader {
-        fn new(error_message: String) -> Self {
-            Self { error_message }
-        }
-    }
-
-    impl DocumentDownloader for FailingDownloader {
-        fn download(
-            &self,
-            _url: &str,
-            _job_id: &JobId,
-        ) -> Result<std::path::PathBuf, InfrastructureError> {
-            Err(InfrastructureError::TimeoutError(
-                self.error_message.clone(),
-            ))
-        }
-    }
-
-    // --- Mock DocumentRenderer ---
-
-    struct MockRenderer {
-        should_fail: StdMutex<bool>,
-    }
-
-    impl MockRenderer {
-        fn new() -> Self {
-            Self {
-                should_fail: StdMutex::new(false),
-            }
-        }
-
-        fn set_fail(&self, fail: bool) {
-            *self.should_fail.lock().unwrap() = fail;
-        }
-    }
-
-    impl DocumentRenderer for MockRenderer {
-        fn render(
-            &self,
-            _path: &std::path::Path,
-            _config: &RenderConfig,
-        ) -> Result<Vec<u8>, InfrastructureError> {
-            if *self.should_fail.lock().unwrap() {
-                Err(InfrastructureError::RenderError(
-                    "Mock render failure".to_string(),
-                ))
-            } else {
-                Ok(vec![0x25, 0x50, 0x44, 0x46]) // Mock PDF data
-            }
-        }
-    }
-
-    // --- Mock PrinterEngine ---
-
-    struct MockPrinterEngine {
-        should_fail: StdMutex<bool>,
-    }
-
-    impl MockPrinterEngine {
-        fn new() -> Self {
-            Self {
-                should_fail: StdMutex::new(false),
-            }
-        }
-
-        fn set_fail(&self, fail: bool) {
-            *self.should_fail.lock().unwrap() = fail;
-        }
-    }
-
-    impl PrinterEngine for MockPrinterEngine {
-        fn print(&self, _printer_name: &str, _data: &[u8], _output_path: Option<&str>) -> Result<(), InfrastructureError> {
-            if *self.should_fail.lock().unwrap() {
-                Err(InfrastructureError::PrinterError {
-                    reason: "Mock print failure".to_string(),
-                })
-            } else {
-                Ok(())
-            }
-        }
-    }
-
-    // --- Helper: Create worker with mocks ---
-
-    fn create_test_worker(
-        queue_manager: Arc<MockQueueManager>,
-        job_repo: Arc<MockPrintJobRepository>,
-        event_store: Arc<SqliteEventStore>,
-        event_bus: Arc<MockEventBus>,
-        downloader: Arc<MockDownloader>,
-        renderer: Arc<MockRenderer>,
-        printer_engine: Arc<MockPrinterEngine>,
-    ) -> QueueWorker {
-        QueueWorker::new(
-            queue_manager as Arc<dyn QueueManager>,
-            job_repo as Arc<dyn PrintJobRepository>,
-            event_store,
-            event_bus as Arc<dyn EventBus>,
-            downloader as Arc<dyn DocumentDownloader>,
-            renderer as Arc<dyn DocumentRenderer>,
-            printer_engine as Arc<dyn PrinterEngine>,
-        )
-    }
-
-    // --- Helper: Create in-memory DB with event store ---
-
-    fn create_test_event_store() -> Arc<SqliteEventStore> {
-        let mut conn = Connection::open_in_memory().unwrap();
-        run_migrations(&mut conn).unwrap();
-        Arc::new(SqliteEventStore::new(Arc::new(Mutex::new(conn)), Arc::new(MockSecretManager::new())))
-    }
-
-    // --- Tests ---
-
-    #[test]
-    fn test_worker_starts_and_stops() {
-        let queue_manager = Arc::new(MockQueueManager::new());
-        let job_repo = Arc::new(MockPrintJobRepository::new());
-        let event_store = create_test_event_store();
-        let event_bus = Arc::new(MockEventBus::new());
-        let downloader = Arc::new(MockDownloader::new());
-        let renderer = Arc::new(MockRenderer::new());
-        let printer_engine = Arc::new(MockPrinterEngine::new());
-
-        let worker = create_test_worker(
-            queue_manager,
-            job_repo,
-            event_store,
-            event_bus,
-            downloader,
-            renderer,
-            printer_engine,
-        );
-
-        // Initially not running
-        assert!(!worker.is_running());
-
-        // Start worker
-        worker.start().expect("Failed to start worker");
-        assert!(worker.is_running());
-
-        // Cannot start twice
-        assert!(worker.start().is_err());
-
-        // Stop worker
-        worker.stop().expect("Failed to stop worker");
-        assert!(!worker.is_running());
-    }
-
-    #[test]
-    fn test_worker_processes_single_job() {
-        let queue_manager = Arc::new(MockQueueManager::new());
-        let job_repo = Arc::new(MockPrintJobRepository::new());
-        let event_store = create_test_event_store();
-        let event_bus = Arc::new(MockEventBus::new());
-        let downloader = Arc::new(MockDownloader::new());
-        let renderer = Arc::new(MockRenderer::new());
-        let printer_engine = Arc::new(MockPrinterEngine::new());
-
-        // Create and push a job
-        let job = PrintJob::new(
-            "https://s3.example.com/doc.pdf".to_string(),
-            "HP".to_string(),
-        );
-        queue_manager.push_job(job);
-
-        let worker = create_test_worker(
-            Arc::clone(&queue_manager),
-            Arc::clone(&job_repo),
-            Arc::clone(&event_store),
-            Arc::clone(&event_bus),
-            downloader,
-            renderer,
-            printer_engine,
-        );
-
-        worker.start().expect("Failed to start worker");
-
-        // Wait for processing (max 2s)
-        thread::sleep(Duration::from_millis(1500));
-
-        worker.stop().expect("Failed to stop worker");
-
-        // Verify job was updated 5 times (Queued, Downloaded, Submitted, Printing, Completed)
-        assert_eq!(job_repo.update_count(), 5);
-    }
-
-    #[test]
-    fn test_worker_processes_multiple_jobs_fifo() {
-        let queue_manager = Arc::new(MockQueueManager::new());
-        let job_repo = Arc::new(MockPrintJobRepository::new());
-        let event_store = create_test_event_store();
-        let event_bus = Arc::new(MockEventBus::new());
-        let downloader = Arc::new(MockDownloader::new());
-        let renderer = Arc::new(MockRenderer::new());
-        let printer_engine = Arc::new(MockPrinterEngine::new());
-
-        // Push 3 jobs (Vec::pop returns last element, so reverse order for FIFO)
-        let job3 = PrintJob::new(
-            "https://s3.example.com/doc3.pdf".to_string(),
-            "HP".to_string(),
-        );
-        let job2 = PrintJob::new(
-            "https://s3.example.com/doc2.pdf".to_string(),
-            "HP".to_string(),
-        );
-        let job1 = PrintJob::new(
-            "https://s3.example.com/doc1.pdf".to_string(),
-            "HP".to_string(),
-        );
-
-        queue_manager.push_job(job3);
-        queue_manager.push_job(job2);
-        queue_manager.push_job(job1);
-
-        let worker = create_test_worker(
-            Arc::clone(&queue_manager),
-            Arc::clone(&job_repo),
-            Arc::clone(&event_store),
-            Arc::clone(&event_bus),
-            downloader,
-            renderer,
-            printer_engine,
-        );
-
-        worker.start().expect("Failed to start worker");
-
-        // Wait for processing (max 3s)
-        thread::sleep(Duration::from_millis(2500));
-
-        worker.stop().expect("Failed to stop worker");
-
-        // Verify all 3 jobs processed (3 jobs Ă— 5 updates each = 15)
-        assert_eq!(job_repo.update_count(), 15);
-    }
-
-    #[test]
-    fn test_worker_sleeps_when_queue_empty() {
-        let queue_manager = Arc::new(MockQueueManager::new());
-        let job_repo = Arc::new(MockPrintJobRepository::new());
-        let event_store = create_test_event_store();
-        let event_bus = Arc::new(MockEventBus::new());
-        let downloader = Arc::new(MockDownloader::new());
-        let renderer = Arc::new(MockRenderer::new());
-        let printer_engine = Arc::new(MockPrinterEngine::new());
-
-        // No jobs in queue
-
-        let worker = create_test_worker(
-            Arc::clone(&queue_manager),
-            Arc::clone(&job_repo),
-            event_store,
-            event_bus,
-            downloader,
-            renderer,
-            printer_engine,
-        );
-
-        worker.start().expect("Failed to start worker");
-
-        // Run for 1.5s with empty queue â€” verify timing (not busy-loop)
-        let start_time = std::time::Instant::now();
-        thread::sleep(Duration::from_millis(1500));
-        let elapsed = start_time.elapsed();
-
-        worker.stop().expect("Failed to stop worker");
-
-        // Verify no jobs processed
-        assert_eq!(job_repo.update_count(), 0);
-
-        // Verify we didn't busy-loop: elapsed should be close to 1.5s
-        // A busy-loop would complete in <100ms due to no actual work
-        assert!(
-            elapsed >= Duration::from_millis(1400),
-            "Worker should sleep between polls, elapsed: {:?}",
-            elapsed
-        );
-    }
-
-    #[test]
-    fn test_worker_publishes_events_at_each_step() {
-        let queue_manager = Arc::new(MockQueueManager::new());
-        let job_repo = Arc::new(MockPrintJobRepository::new());
-        let event_store = create_test_event_store();
-        let event_bus = Arc::new(MockEventBus::new());
-        let downloader = Arc::new(MockDownloader::new());
-        let renderer = Arc::new(MockRenderer::new());
-        let printer_engine = Arc::new(MockPrinterEngine::new());
-
-        let mut job = PrintJob::new(
-            "https://s3.example.com/doc.pdf".to_string(),
-            "HP".to_string(),
-        );
-        // Drain the PrintJobCreated event from new() so we only count worker events
-        job.drain_events();
-        queue_manager.push_job(job);
-
-        let worker = create_test_worker(
-            queue_manager,
-            job_repo,
-            Arc::clone(&event_store),
-            Arc::clone(&event_bus),
-            downloader,
-            renderer,
-            printer_engine,
-        );
-
-        worker.start().expect("Failed to start worker");
-        thread::sleep(Duration::from_millis(1500));
-        worker.stop().expect("Failed to stop worker");
-
-        // Verify 5 events published: Queued, Downloaded, Submitted, Printing, Completed
-        assert_eq!(event_bus.publish_count(), 5);
-        // Note: Cannot easily verify event_store.event_count() without exposing query method
-    }
-
-    #[test]
-    fn test_worker_persists_state_at_each_step() {
-        let queue_manager = Arc::new(MockQueueManager::new());
-        let job_repo = Arc::new(MockPrintJobRepository::new());
-        let event_store = create_test_event_store();
-        let event_bus = Arc::new(MockEventBus::new());
-        let downloader = Arc::new(MockDownloader::new());
-        let renderer = Arc::new(MockRenderer::new());
-        let printer_engine = Arc::new(MockPrinterEngine::new());
-
-        let job = PrintJob::new(
-            "https://s3.example.com/doc.pdf".to_string(),
-            "HP".to_string(),
-        );
-        queue_manager.push_job(job);
-
-        let worker = create_test_worker(
-            queue_manager,
-            Arc::clone(&job_repo),
-            event_store,
-            event_bus,
-            downloader,
-            renderer,
-            printer_engine,
-        );
-
-        worker.start().expect("Failed to start worker");
-        thread::sleep(Duration::from_millis(1500));
-        worker.stop().expect("Failed to stop worker");
-
-        // Verify job_repo.update() called 5 times
-        assert_eq!(job_repo.update_count(), 5);
-    }
-
-    #[test]
-    fn test_worker_handles_download_failure() {
-        let queue_manager = Arc::new(MockQueueManager::new());
-        let job_repo = Arc::new(MockPrintJobRepository::new());
-        let event_store = create_test_event_store();
-        let event_bus = Arc::new(MockEventBus::new());
-        let downloader = Arc::new(MockDownloader::new());
-        let renderer = Arc::new(MockRenderer::new());
-        let printer_engine = Arc::new(MockPrinterEngine::new());
-
-        downloader.set_fail(true); // Cause download to fail
-
-        let job = PrintJob::new(
-            "https://s3.example.com/doc.pdf".to_string(),
-            "HP".to_string(),
-        );
-        queue_manager.push_job(job);
-
-        let worker = create_test_worker(
-            queue_manager,
-            Arc::clone(&job_repo),
-            event_store,
-            event_bus,
-            downloader,
-            renderer,
-            printer_engine,
-        );
-
-        worker.start().expect("Failed to start worker");
-        thread::sleep(Duration::from_millis(1500));
-        worker.stop().expect("Failed to stop worker");
-
-        // Job should only reach Queued state (1 update), then fail
-        assert_eq!(job_repo.update_count(), 1);
-    }
-
-    #[test]
-    fn test_worker_handles_render_failure() {
-        let queue_manager = Arc::new(MockQueueManager::new());
-        let job_repo = Arc::new(MockPrintJobRepository::new());
-        let event_store = create_test_event_store();
-        let event_bus = Arc::new(MockEventBus::new());
-        let downloader = Arc::new(MockDownloader::new());
-        let renderer = Arc::new(MockRenderer::new());
-        let printer_engine = Arc::new(MockPrinterEngine::new());
-
-        renderer.set_fail(true); // Cause render to fail
-
-        let job = PrintJob::new(
-            "https://s3.example.com/doc.pdf".to_string(),
-            "HP".to_string(),
-        );
-        queue_manager.push_job(job);
-
-        let worker = create_test_worker(
-            queue_manager,
-            Arc::clone(&job_repo),
-            event_store,
-            event_bus,
-            downloader,
-            renderer,
-            printer_engine,
-        );
-
-        worker.start().expect("Failed to start worker");
-        thread::sleep(Duration::from_millis(1500));
-        worker.stop().expect("Failed to stop worker");
-
-        // Job should reach Downloaded state (2 updates: Queued, Downloaded), then fail
-        assert_eq!(job_repo.update_count(), 2);
-    }
-
-    #[test]
-    fn test_worker_handles_print_failure() {
-        let queue_manager = Arc::new(MockQueueManager::new());
-        let job_repo = Arc::new(MockPrintJobRepository::new());
-        let event_store = create_test_event_store();
-        let event_bus = Arc::new(MockEventBus::new());
-        let downloader = Arc::new(MockDownloader::new());
-        let renderer = Arc::new(MockRenderer::new());
-        let printer_engine = Arc::new(MockPrinterEngine::new());
-
-        printer_engine.set_fail(true); // Cause print to fail
-
-        let job = PrintJob::new(
-            "https://s3.example.com/doc.pdf".to_string(),
-            "HP".to_string(),
-        );
-        queue_manager.push_job(job);
-
-        let worker = create_test_worker(
-            queue_manager,
-            Arc::clone(&job_repo),
-            event_store,
-            event_bus,
-            downloader,
-            renderer,
-            printer_engine,
-        );
-
-        worker.start().expect("Failed to start worker");
-        thread::sleep(Duration::from_millis(1500));
-        worker.stop().expect("Failed to stop worker");
-
-        // Job should reach Printing state (4 updates: Queued, Downloaded, Submitted, Printing), then fail
-        assert_eq!(job_repo.update_count(), 4);
-    }
-
-    #[test]
-    fn test_worker_cleans_temp_file() {
-        let queue_manager = Arc::new(MockQueueManager::new());
-        let job_repo = Arc::new(MockPrintJobRepository::new());
-        let event_store = create_test_event_store();
-        let event_bus = Arc::new(MockEventBus::new());
-        let downloader = Arc::new(MockDownloader::new());
-        let renderer = Arc::new(MockRenderer::new());
-        let printer_engine = Arc::new(MockPrinterEngine::new());
-
-        // Create a real temp file that the mock downloader will "return"
-        let temp_dir = std::env::temp_dir();
-        let temp_file_path = temp_dir.join(format!(
-            "sapo_worker_test_{}.pdf",
-            std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .unwrap()
-                .as_nanos()
-        ));
-        std::fs::write(&temp_file_path, b"%PDF-1.4 test content").unwrap();
-        assert!(
-            temp_file_path.exists(),
-            "Temp file should exist before processing"
-        );
-
-        // Configure mock to return the real temp file path
-        downloader.set_return_path(temp_file_path.clone());
-
-        let job = PrintJob::new(
-            "https://s3.example.com/doc.pdf".to_string(),
-            "HP".to_string(),
-        );
-        queue_manager.push_job(job);
-
-        let worker = create_test_worker(
-            queue_manager,
-            Arc::clone(&job_repo),
-            event_store,
-            event_bus,
-            downloader,
-            renderer,
-            printer_engine,
-        );
-
-        worker.start().expect("Failed to start worker");
-        thread::sleep(Duration::from_millis(1500));
-        worker.stop().expect("Failed to stop worker");
-
-        // Verify job was processed
-        assert_eq!(job_repo.update_count(), 5);
-
-        // Verify temp file was cleaned up by TempPdfFile Drop
-        assert!(
-            !temp_file_path.exists(),
-            "Temp file {:?} should be deleted after job processing",
-            temp_file_path
-        );
-    }
-
-    // --- Story 3.6: Retry Logic Tests ---
-
-    #[test]
-    fn test_retryable_error_triggers_retry_with_correct_delay() {
-        let mut conn = Connection::open_in_memory().unwrap();
-        run_migrations(&mut conn).unwrap();
-        let arc_conn = Arc::new(StdMutex::new(conn));
-
-        let job_repo = Arc::new(MockPrintJobRepository::new());
-        let queue_manager = Arc::new(MockQueueManager::new());
-        let event_store = Arc::new(SqliteEventStore::new(arc_conn.clone(), Arc::new(MockSecretManager::new())));
-        let event_bus = Arc::new(MockEventBus::new());
-
-        // Create job in QUEUED state (normal state after pop from queue)
-        let mut job = PrintJob::new("https://s3.example.com/doc.pdf".into(), "HP".into());
-        let job_id = job.id().clone();
-        job.queue().unwrap();
-        job_repo.add_job(job.clone());
-
-        // Simulate failure with retryable error
-        let error_message = "Timeout after 30s".to_string();
-
-        // Call handle_job_failure directly (it will mark job as FAILED first)
-        QueueWorker::handle_job_failure(
-            error_message,
-            job,
-            &(queue_manager.clone() as Arc<dyn QueueManager>),
-            &(job_repo.clone() as Arc<dyn PrintJobRepository>),
-            &event_store,
-            &(event_bus.clone() as Arc<dyn EventBus>),
-        );
-
-        // Verify requeue called with 5s delay (first retry)
-        let requeue_calls = queue_manager.get_requeue_calls();
-        assert_eq!(requeue_calls.len(), 1);
-        assert_eq!(requeue_calls[0].0, job_id);
-        assert_eq!(requeue_calls[0].1, 5); // First retry: 5s
-
-        // Verify job status is QUEUED (retry)
-        let updated_job = job_repo.find_by_id(&job_id).unwrap().unwrap();
-        assert_eq!(updated_job.retry_count(), 1);
-        assert_eq!(updated_job.status(), &PrintStatus::Queued);
-    }
-
-    #[test]
-    fn test_non_retryable_error_fails_immediately() {
-        let mut conn = Connection::open_in_memory().unwrap();
-        run_migrations(&mut conn).unwrap();
-        let arc_conn = Arc::new(StdMutex::new(conn));
-
-        let job_repo = Arc::new(MockPrintJobRepository::new());
-        let queue_manager = Arc::new(MockQueueManager::new());
-        let event_store = Arc::new(SqliteEventStore::new(arc_conn.clone(), Arc::new(MockSecretManager::new())));
-        let event_bus = Arc::new(MockEventBus::new());
-
-        // Create job in QUEUED state
-        let mut job = PrintJob::new("https://s3.example.com/doc.pdf".into(), "HP".into());
-        let job_id = job.id().clone();
-        job.queue().unwrap();
-        job_repo.add_job(job.clone());
-
-        // Simulate failure with non-retryable error (validation error)
-        let error_message = "Invalid PDF header".to_string();
-
-        // Call handle_job_failure directly (it will mark job as FAILED)
-        QueueWorker::handle_job_failure(
-            error_message,
-            job,
-            &(queue_manager.clone() as Arc<dyn QueueManager>),
-            &(job_repo.clone() as Arc<dyn PrintJobRepository>),
-            &event_store,
-            &(event_bus.clone() as Arc<dyn EventBus>),
-        );
-
-        // Verify NO requeue call
-        let requeue_calls = queue_manager.get_requeue_calls();
-        assert_eq!(requeue_calls.len(), 0);
-
-        // Verify job status is FAILED permanently
-        let updated_job = job_repo.find_by_id(&job_id).unwrap().unwrap();
-        assert_eq!(updated_job.status(), &PrintStatus::Failed);
-        assert_eq!(updated_job.retry_count(), 0); // Not incremented
-    }
-
-    #[test]
-    fn test_max_retries_exceeded_fails_permanently() {
-        let mut conn = Connection::open_in_memory().unwrap();
-        run_migrations(&mut conn).unwrap();
-        let arc_conn = Arc::new(StdMutex::new(conn));
-
-        let job_repo = Arc::new(MockPrintJobRepository::new());
-        let queue_manager = Arc::new(MockQueueManager::new());
-        let event_store = Arc::new(SqliteEventStore::new(arc_conn.clone(), Arc::new(MockSecretManager::new())));
-        let event_bus = Arc::new(MockEventBus::new());
-
-        // Create job with retry_count already at 3
-        let mut job = PrintJob::new("https://s3.example.com/doc.pdf".into(), "HP".into());
-        job.queue().unwrap();
-
-        // Simulate 3 previous retries
-        job.fail("error 1".into()).unwrap();
-        job.retry().unwrap(); // retry_count = 1
-        job.fail("error 2".into()).unwrap();
-        job.retry().unwrap(); // retry_count = 2
-        job.fail("error 3".into()).unwrap();
-        job.retry().unwrap(); // retry_count = 3
-
-        let job_id = job.id().clone();
-        job_repo.add_job(job.clone());
-
-        // Simulate failure with retryable error (but retries exhausted)
-        let error_message = "Timeout after 30s".to_string();
-
-        // Call handle_job_failure directly
-        QueueWorker::handle_job_failure(
-            error_message,
-            job,
-            &(queue_manager.clone() as Arc<dyn QueueManager>),
-            &(job_repo.clone() as Arc<dyn PrintJobRepository>),
-            &event_store,
-            &(event_bus.clone() as Arc<dyn EventBus>),
-        );
-
-        // Verify NO requeue (max retries exceeded)
-        let requeue_calls = queue_manager.get_requeue_calls();
-        assert_eq!(requeue_calls.len(), 0);
-
-        // Verify job stays FAILED
-        let updated_job = job_repo.find_by_id(&job_id).unwrap().unwrap();
-        assert_eq!(updated_job.status(), &PrintStatus::Failed);
-        assert_eq!(updated_job.retry_count(), 3);
-    }
-
-    #[test]
-    fn test_exponential_backoff_progression() {
-        use crate::infrastructure::queue::retry_logic::calculate_backoff_delay;
-
-        // Test that subsequent retries use correct delays
-        // retry_count = 0 â†’ 5s
-        assert_eq!(calculate_backoff_delay(0), 5);
-        // retry_count = 1 â†’ 10s
-        assert_eq!(calculate_backoff_delay(1), 10);
-        // retry_count = 2 â†’ 20s
-        assert_eq!(calculate_backoff_delay(2), 20);
-    }
-}

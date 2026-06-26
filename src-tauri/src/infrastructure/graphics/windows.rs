@@ -5,7 +5,7 @@ use windows::Win32::Graphics::Gdi::{
     CreateDCW, DeleteDC, StretchDIBits,
     BITMAPINFO, BITMAPINFOHEADER, BI_RGB, DIB_RGB_COLORS, HDC, SRCCOPY,
 };
-use windows::Win32::Graphics::Printing::{
+use windows::Win32::Storage::Xps::{
     StartDocW, StartPage, EndPage, EndDoc, DOCINFOW,
 };
 use windows::core::{PCWSTR, HSTRING};
@@ -86,9 +86,9 @@ impl GraphicsBackend for WindowsGraphicsBackend {
         }
     }
 
-    fn draw_bitmap(&mut self, data: &[u8], width: u32, height: u32, bpp: u16) {
+    fn draw_bitmap(&mut self, data: &[u8], x: i32, y: i32, width: u32, height: u32, bpp: u16) {
         if let Some(hdc) = self.hdc {
-            let mut bmi = BITMAPINFO {
+            let bmi = BITMAPINFO {
                 bmiHeader: BITMAPINFOHEADER {
                     biSize: std::mem::size_of::<BITMAPINFOHEADER>() as u32,
                     biWidth: width as i32,
@@ -108,8 +108,8 @@ impl GraphicsBackend for WindowsGraphicsBackend {
             unsafe {
                 StretchDIBits(
                     hdc,
-                    0,
-                    0,
+                    x,
+                    y,
                     width as i32,
                     height as i32,
                     0,

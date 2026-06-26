@@ -35,7 +35,6 @@ pub fn execute_create_print_job(
         job_repo: ctx.job_repo.clone(),
         event_store: ctx.event_store.clone(),
         event_bus: ctx.event_bus.clone(),
-        printer_manager: ctx.printer_manager.clone(),
     };
 
     let request = CreateJobRequest {

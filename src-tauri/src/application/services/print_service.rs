@@ -1,7 +1,6 @@
 use std::sync::Arc;
 use crate::domain::print_job::PrintJob;
 use crate::domain::common::aggregate::AggregateRoot;
-use crate::application::services::layout_engine::LayoutEngine;
 use crate::infrastructure::graphics::backend::GraphicsBackendFactory;
 use crate::infrastructure::pdfium::bitmap_strategy::BitmapRenderStrategy;
 use crate::infrastructure::pdfium::native_strategy::NativePdfRenderStrategy;
@@ -65,21 +64,19 @@ impl PrintService for DefaultPrintService {
         self.persist_and_publish(&mut job)?;
 
         let (pdf_w, pdf_h) = get_pdf_size(&pdf_path); 
-        let transform = LayoutEngine::calculate(&job.settings, pdf_w, pdf_h);
-
         job.mark_printing().map_err(|e| format!("{:?}", e))?;
         self.persist_and_publish(&mut job)?;
         
         let mut backend = GraphicsBackendFactory::create();
         backend.begin_document(job.printer_name(), "Sapo Order")?;
         
-        let strategy: Box<dyn RenderStrategy> = if job.settings.binary {
+        let strategy: Box<dyn RenderStrategy> = if job.settings.print_as_image {
             Box::new(BitmapRenderStrategy::new())
         } else {
             Box::new(NativePdfRenderStrategy::new())
         };
         
-        strategy.render(&pdf_path, &transform, &job.settings, &mut *backend);
+        strategy.render(&pdf_path, &job.settings, &mut *backend);
         
         backend.end_document();
 

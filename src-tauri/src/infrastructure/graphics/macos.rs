@@ -50,7 +50,7 @@ impl GraphicsBackend for MacOsGraphicsBackend {
         NativeGraphicsContext::Mac(0)
     }
 
-    fn draw_bitmap(&mut self, data: &[u8], width: u32, height: u32, bpp: u16) {
+    fn draw_bitmap(&mut self, data: &[u8], _x: i32, _y: i32, width: u32, height: u32, bpp: u16) {
         if let Some(temp_dir) = &self.temp_dir {
             // Save the bitmap data to a temporary PNG file using the `image` crate.
             // Assuming data is in BGR or RGB format.

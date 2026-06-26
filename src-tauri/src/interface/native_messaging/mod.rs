@@ -1,4 +1,4 @@
-﻿pub mod protocol;
+pub mod protocol;
 pub mod registry;
 
 use std::io::{self, BufReader, BufWriter, Write};
@@ -7,14 +7,13 @@ use std::sync::Arc;
 use crate::domain::print_job::PrintJobRepository;
 use crate::infrastructure::database::SqliteEventStore;
 use crate::infrastructure::metrics::MetricsCollector;
-use crate::infrastructure::printer::PrinterManager;
+
 use crate::shared::event_bus::EventBus;
 
 use self::protocol::{NativeMessageHandler, ProtocolError};
 
 pub fn run_native_messaging(
     job_repo: Arc<dyn PrintJobRepository>,
-    printer_manager: Arc<dyn PrinterManager>,
     event_store: Arc<SqliteEventStore>,
     event_bus: Arc<dyn EventBus>,
     metrics_collector: Arc<MetricsCollector>,
@@ -30,7 +29,6 @@ pub fn run_native_messaging(
 
     let handler = NativeMessageHandler::new(
         job_repo,
-        printer_manager,
         event_store,
         event_bus,
         metrics_collector,

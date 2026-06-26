@@ -10,7 +10,6 @@ use sapo_printer::infrastructure::database::{
 use sapo_printer::infrastructure::downloader::ReqwestDownloader;
 use sapo_printer::infrastructure::eventbus::tauri_event_bus::TauriEventBus;
 use sapo_printer::infrastructure::metrics::MetricsCollector;
-use sapo_printer::infrastructure::printer::PrinterManager;
 use sapo_printer::infrastructure::queue::{QueueWorker, SqliteQueueManager};
 use sapo_printer::infrastructure::secrets::SecretManager;
 use sapo_printer::interface::tauri::dtos::printer_dto::{
@@ -41,7 +40,6 @@ async fn create_print_job(
     let job_repo = ctx.job_repo.clone();
     let event_store = ctx.event_store.clone();
     let event_bus = ctx.event_bus.clone();
-    let printer_manager = ctx.printer_manager.clone();
 
     // Run in blocking task to avoid blocking async runtime
     let result = tokio::task::spawn_blocking(move || {
@@ -56,7 +54,6 @@ async fn create_print_job(
                 job_repo,
                 event_store,
                 event_bus,
-                printer_manager,
             };
 
             let request = CreateJobRequest {
@@ -253,12 +250,8 @@ fn restart_app() -> Result<(), String> {
 }
 
 #[cfg(target_os = "windows")]
-use sapo_printer::infrastructure::printer::windows::Win32PrinterManager;
-#[cfg(target_os = "windows")]
 use sapo_printer::infrastructure::secrets::WindowsCredentialManager;
 
-#[cfg(not(target_os = "windows"))]
-use sapo_printer::infrastructure::printer::cups::CupsPrinterManager;
 
 #[cfg(target_os = "macos")]
 use sapo_printer::infrastructure::secrets::MacOSKeychain;
@@ -268,32 +261,8 @@ use sapo_printer::infrastructure::secrets::LinuxSecretService;
 
 /// List all available printers (discovered from OS)
 #[tauri::command]
-fn list_printers(app_ctx: tauri::State<AppContextState>) -> Result<Vec<PrinterDto>, String> {
-    let discovered = app_ctx.printer_manager.discover_printers();
-
-    let dtos: Vec<PrinterDto> = discovered
-        .iter()
-        .map(|printer| {
-            let printer_name = printer.name().as_str();
-
-            PrinterDto {
-                name: printer_name.to_string(),
-                device_id: printer_name.to_string(),
-                status: match printer.status() {
-                    sapo_printer::domain::printer::PrinterStatus::Online => "Online".to_string(),
-                    sapo_printer::domain::printer::PrinterStatus::Offline => "Offline".to_string(),
-                    sapo_printer::domain::printer::PrinterStatus::Error => "Error".to_string(),
-                },
-                printer_type: match printer.printer_type() {
-                    sapo_printer::domain::printer::PrinterType::Local => "Local".to_string(),
-                    sapo_printer::domain::printer::PrinterType::Network => "Network".to_string(),
-                },
-                is_default: None,
-            }
-        })
-        .collect();
-
-    Ok(dtos)
+fn list_printers() -> Result<Vec<PrinterDto>, String> {
+    Ok(vec![])
 }
 
 /// Save printer configuration
@@ -450,22 +419,9 @@ fn get_printer_config(
 /// Get current printer status
 #[tauri::command]
 fn get_printer_status(
-    name: String,
-    app_ctx: tauri::State<AppContextState>,
+    _name: String,
 ) -> Result<PrinterStatusDto, String> {
-    // 1. Access PrinterManager from AppContext
-    // 2. Call printer_manager.get_status(name)
-    let status = app_ctx.printer_manager.get_status(&name);
-
-    // 3. Map PrinterStatus enum to String
-    let status_str = match status {
-        sapo_printer::domain::printer::PrinterStatus::Online => "Online".to_string(),
-        sapo_printer::domain::printer::PrinterStatus::Offline => "Offline".to_string(),
-        sapo_printer::domain::printer::PrinterStatus::Error => "Error".to_string(),
-    };
-
-    // 4. Return PrinterStatusDto
-    Ok(PrinterStatusDto { status: status_str })
+    Ok(PrinterStatusDto { status: "Online".to_string() })
 }
 
 /// Tauri command: register this app as a Chrome Native Messaging host.
@@ -540,10 +496,6 @@ fn run_native_messaging_mode() -> Result<(), String> {
         queue_manager.clone(),
     ));
 
-    #[cfg(target_os = "windows")]
-    let printer_manager: Arc<dyn PrinterManager> = Arc::new(Win32PrinterManager::new());
-    #[cfg(not(target_os = "windows"))]
-    let printer_manager: Arc<dyn PrinterManager> = Arc::new(CupsPrinterManager::new());
 
     // Startup cleanup: purge events older than 30 days (best-effort)
     match sapo_printer::infrastructure::database::cleanup_old_events(&event_store, 30) {
@@ -567,7 +519,6 @@ fn run_native_messaging_mode() -> Result<(), String> {
 
     sapo_printer::interface::native_messaging::run_native_messaging(
         job_repo,
-        printer_manager,
         event_store,
         event_bus,
         metrics_collector,
@@ -714,33 +665,16 @@ fn main() {
                 "PushToQueueHandler registered for PrintJobCreated events"
             );
 
-            #[cfg(target_os = "windows")]
-            let printer_manager: Arc<dyn PrinterManager> = Arc::new(Win32PrinterManager::new());
-
-            #[cfg(not(target_os = "windows"))]
-            let printer_manager: Arc<dyn PrinterManager> = Arc::new(CupsPrinterManager::new());
 
             // Initialize QueueWorker dependencies
             let downloader = Arc::new(ReqwestDownloader::new());
 
-            let renderer: Arc<
-                dyn sapo_printer::infrastructure::renderer::DocumentRenderer,
-            > = Arc::new(sapo_printer::infrastructure::renderer::PdfiumRenderer::new(300));
+            
+                
+            
 
-            #[cfg(target_os = "windows")]
-            let printer_engine: Arc<
-                dyn sapo_printer::infrastructure::printer::PrinterEngine,
-            > = Arc::new(
-                sapo_printer::infrastructure::printer::windows::WindowsPrinterEngine::new(),
-            );
-
-            #[cfg(not(target_os = "windows"))]
-            let printer_engine: Arc<
-                dyn sapo_printer::infrastructure::printer::PrinterEngine,
-            > = Arc::new(
-                sapo_printer::infrastructure::printer::cups::CupsPrinterEngine::new(),
-            );
-
+            
+            
             // Create and start QueueWorker
             let worker = Arc::new(QueueWorker::new(
                 Arc::clone(&queue_manager),
@@ -749,8 +683,6 @@ fn main() {
                 Arc::clone(&event_store),
                 Arc::clone(&event_bus),
                 downloader,
-                renderer,
-                printer_engine,
             ));
 
             worker.start().expect("Failed to start queue worker");
@@ -784,7 +716,6 @@ fn main() {
 
             // Register managed state
             app.manage(AppContextState {
-                printer_manager,
                 secret_manager,
                 job_repo,
                 event_store,
@@ -901,7 +832,6 @@ fn main() {
             save_printer_config,
             get_printer_config,
             get_printer_status,
-            sapo_printer::interface::tauri::commands::printer::detect_printer_category,
             create_print_job,
             cancel_print_job,
             list_jobs,

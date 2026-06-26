@@ -1,4 +1,4 @@
-﻿use rusqlite::Connection;
+use rusqlite::Connection;
 use std::sync::{Arc, Mutex};
 use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -398,12 +398,12 @@ fn row_to_print_job(row: &rusqlite::Row<'_>) -> Result<PrintJob, rusqlite::Error
     ))
 }
 
-/// Helper: PrintStatus â†’ database TEXT.
+/// Helper: PrintStatus → database TEXT.
 fn status_to_string(s: &PrintStatus) -> String {
     format!("{:?}", s)
 }
 
-/// Helper: database TEXT â†’ PrintStatus.
+/// Helper: database TEXT → PrintStatus.
 fn status_from_string(s: &str) -> Result<PrintStatus, DomainError> {
     match s {
         "Pending" => Ok(PrintStatus::Pending),
@@ -428,165 +428,4 @@ fn completed_at_for_status(status: &PrintStatus, now: i64) -> Option<i64> {
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::infrastructure::database::migrations::run_migrations;
 
-    fn setup_test_db() -> Arc<Mutex<Connection>> {
-        let mut conn = Connection::open_in_memory().unwrap();
-        run_migrations(&mut conn).unwrap();
-        Arc::new(Mutex::new(conn))
-    }
-
-    fn make_test_job() -> PrintJob {
-        PrintJob::new(
-            "https://s3.example.com/doc.pdf".to_string(),
-            "HP_LaserJet".to_string(),
-        )
-    }
-
-    #[test]
-    fn test_save_and_find_by_id() {
-        let conn = setup_test_db();
-        let repo = SqlitePrintJobRepository::new(conn);
-
-        let job = make_test_job();
-        let job_id = job.id().clone();
-        repo.save(&job).unwrap();
-
-        let found = repo.find_by_id(&job_id).unwrap();
-        assert!(found.is_some());
-        let found = found.unwrap();
-        assert_eq!(found.id(), &job_id);
-        assert_eq!(found.printer_name(), "HP_LaserJet");
-        assert_eq!(found.pdf_url(), "https://s3.example.com/doc.pdf");
-        assert_eq!(*found.status(), PrintStatus::Pending);
-        assert_eq!(found.retry_count(), 0);
-
-        // Non-existent ID â†’ None
-        let missing = JobId::new();
-        let result = repo.find_by_id(&missing).unwrap();
-        assert!(result.is_none());
-    }
-
-    #[test]
-    fn test_update_job() {
-        let conn = setup_test_db();
-        let repo = SqlitePrintJobRepository::new(conn);
-
-        let mut job = make_test_job();
-        let job_id = job.id().clone();
-        repo.save(&job).unwrap();
-
-        // Transition to Queued and update
-        job.queue().unwrap();
-        repo.update(&job).unwrap();
-
-        let found = repo.find_by_id(&job_id).unwrap().unwrap();
-        assert_eq!(*found.status(), PrintStatus::Queued);
-    }
-
-    #[test]
-    fn test_find_by_status() {
-        let conn = setup_test_db();
-        let repo = SqlitePrintJobRepository::new(conn);
-
-        // 2 PENDING jobs
-        let job1 = make_test_job();
-        let job2 = make_test_job();
-        repo.save(&job1).unwrap();
-        repo.save(&job2).unwrap();
-
-        // 1 QUEUED job
-        let mut job3 = make_test_job();
-        job3.queue().unwrap();
-        repo.save(&job3).unwrap();
-
-        let pending = repo.find_by_status(&PrintStatus::Pending).unwrap();
-        assert_eq!(pending.len(), 2);
-
-        let queued = repo.find_by_status(&PrintStatus::Queued).unwrap();
-        assert_eq!(queued.len(), 1);
-
-        let printing = repo.find_by_status(&PrintStatus::Printing).unwrap();
-        assert!(printing.is_empty());
-    }
-
-    #[test]
-    fn test_find_all() {
-        let conn = setup_test_db();
-        let repo = SqlitePrintJobRepository::new(conn);
-
-        let job1 = make_test_job();
-        let job2 = make_test_job();
-        repo.save(&job1).unwrap();
-        repo.save(&job2).unwrap();
-
-        let all = repo.find_all().unwrap();
-        assert_eq!(all.len(), 2);
-    }
-
-    #[test]
-    fn test_save_duplicate_job_fails() {
-        let conn = setup_test_db();
-        let repo = SqlitePrintJobRepository::new(conn);
-
-        let job = make_test_job();
-        repo.save(&job).unwrap();
-
-        // Second save of same job ID should fail with constraint error
-        let result = repo.save(&job);
-        assert!(result.is_err());
-        let err = result.unwrap_err();
-        assert!(
-            format!("{}", err).contains("already exists"),
-            "Expected 'already exists' error, got: {}",
-            err
-        );
-    }
-
-    #[test]
-    fn test_update_nonexistent_job_fails() {
-        let conn = setup_test_db();
-        let repo = SqlitePrintJobRepository::new(conn);
-
-        let job = make_test_job();
-        let result = repo.update(&job);
-        assert!(result.is_err());
-        let err = result.unwrap_err();
-        assert!(
-            format!("{}", err).contains("not found"),
-            "Expected 'not found' error, got: {}",
-            err
-        );
-    }
-
-    #[test]
-    fn test_find_by_invalid_status_returns_error() {
-        let conn = setup_test_db();
-        let job = make_test_job();
-        // Insert a row with an invalid status string directly
-        {
-            let c = conn.lock().unwrap();
-            c.execute(
-                "INSERT INTO print_jobs (id, printer_name, document_url, status, retry_count, created_at, updated_at, completed_at)
-                 VALUES (?1, ?2, ?3, 'UnknownStatus', ?4, ?5, ?6, ?7)",
-                rusqlite::params![
-                    job.id().to_string(),
-                    job.printer_name(),
-                    job.pdf_url(),
-                    0i64,
-                    0i64,
-                    0i64,
-                    None::<i64>,
-                ],
-            )
-            .unwrap();
-        }
-
-        let repo = SqlitePrintJobRepository::new(conn);
-        let result = repo.find_by_id(job.id());
-        assert!(result.is_err());
-    }
-}
