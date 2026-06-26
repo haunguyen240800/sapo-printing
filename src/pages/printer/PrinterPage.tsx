@@ -115,11 +115,11 @@ export default function PrinterPage() {
   const selectedPrinter = printers.find((p) => p.is_default) || printers[0];
 
   const handleTestPrint = async () => {
-    if (!testPdfUrl || !selectedPrinter) return;
+    if (!testPdfUrl || !printerConfig?.printer_name) return;
     setIsTestPrinting(true);
     setTestPrintStatus(null);
     try {
-      await createPrintJob([testPdfUrl], selectedPrinter.name);
+      await createPrintJob([testPdfUrl], printerConfig.printer_name);
       setTestPrintStatus({success: 'Đã gửi lệnh in test thành công'});
       setTestPdfUrl('');
       await loadMetrics();

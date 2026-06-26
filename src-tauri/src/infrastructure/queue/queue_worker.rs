@@ -363,7 +363,8 @@ impl QueueWorker {
                 printer_type = ?printer_category,
                 "Rendering PDF to bitmap for physical printer"
             );
-            let render_config = RenderConfig::default();
+            let mut render_config = RenderConfig::default();
+            render_config.color_mode = crate::infrastructure::renderer::ColorMode::Bgr;
             print_data = renderer
                 .render(temp_file.path(), &render_config)
                 .map_err(|e| format!("Render failed: {:?}", e))?;
@@ -886,7 +887,7 @@ mod tests {
     }
 
     impl PrinterEngine for MockPrinterEngine {
-        fn print(&self, _printer_name: &str, _data: &[u8]) -> Result<(), InfrastructureError> {
+        fn print(&self, _printer_name: &str, _data: &[u8], _output_path: Option<&str>) -> Result<(), InfrastructureError> {
             if *self.should_fail.lock().unwrap() {
                 Err(InfrastructureError::PrinterError {
                     reason: "Mock print failure".to_string(),

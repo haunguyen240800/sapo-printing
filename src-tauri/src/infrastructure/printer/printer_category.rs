@@ -1,4 +1,4 @@
-use crate::shared::errors::InfrastructureError;
+
 
 /// Printer type classification for rendering strategy
 #[derive(Debug, Clone, PartialEq, Eq)]

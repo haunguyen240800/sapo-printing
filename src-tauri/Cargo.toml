@@ -50,7 +50,7 @@ tauri-plugin-dialog = "2"
 
 # Platform-specific secret management
 [target.'cfg(windows)'.dependencies]
-windows = { version = "0.52", features = ["Win32_Foundation", "Win32_Graphics_Gdi", "Win32_Graphics_Printing", "Win32_Security", "Win32_Security_Credentials"] }
+windows = { version = "0.52", features = ["Win32_Foundation", "Win32_Graphics_Gdi", "Win32_Graphics_Printing", "Win32_Security", "Win32_Security_Credentials", "Win32_Storage_Xps"] }
 winreg = "0.52"
 
 [target.'cfg(target_os = "macos")'.dependencies]

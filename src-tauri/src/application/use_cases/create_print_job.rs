@@ -383,6 +383,7 @@ mod tests {
         let request = CreateJobRequest {
             pdf_urls: vec!["https://s3.example.com/doc1.pdf".to_string()],
             printer_name: "HP_Test1".to_string(),
+            output_path: None,
         };
         let result = use_case.execute(request);
         assert!(result.is_ok());
@@ -408,6 +409,7 @@ mod tests {
                 "https://s3.example.com/doc3.pdf".to_string(),
             ],
             printer_name: "HP_Test2".to_string(),
+            output_path: None,
         };
         let result = use_case.execute(request);
         assert!(result.is_ok());
@@ -425,6 +427,7 @@ mod tests {
         let request = CreateJobRequest {
             pdf_urls: vec![],
             printer_name: "HP_Test3".to_string(),
+            output_path: None,
         };
         let result = use_case.execute(request);
         assert!(result.is_err());
@@ -445,6 +448,7 @@ mod tests {
         let request = CreateJobRequest {
             pdf_urls: urls,
             printer_name: "HP_Test4".to_string(),
+            output_path: None,
         };
         let result = use_case.execute(request);
         assert!(result.is_err());
@@ -465,6 +469,7 @@ mod tests {
         let request = CreateJobRequest {
             pdf_urls: urls,
             printer_name: "HP_Test5".to_string(),
+            output_path: None,
         };
         let result = use_case.execute(request);
         assert!(result.is_ok());
@@ -482,6 +487,7 @@ mod tests {
         let request = CreateJobRequest {
             pdf_urls: vec!["https://s3.example.com/doc.pdf".to_string()],
             printer_name: "HP_Offline".to_string(),
+            output_path: None,
         };
         let result = use_case.execute(request);
         assert!(result.is_err());
@@ -499,6 +505,7 @@ mod tests {
         let request = CreateJobRequest {
             pdf_urls: vec!["https://s3.example.com/doc.pdf".to_string()],
             printer_name: "NonExistent_Printer".to_string(),
+            output_path: None,
         };
         let result = use_case.execute(request);
         assert!(result.is_err());
@@ -587,6 +594,7 @@ mod tests {
         let request = CreateJobRequest {
             pdf_urls: vec!["https://s3.example.com/doc.pdf".to_string()],
             printer_name: "HP_Tracking".to_string(),
+            output_path: None,
         };
         let result = use_case.execute(request);
         assert!(result.is_ok());

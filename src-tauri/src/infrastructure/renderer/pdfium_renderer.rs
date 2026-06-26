@@ -149,10 +149,10 @@ fn convert_bitmap_to_color_mode(
                             "Bitmap data truncated during ARGB conversion".to_string(),
                         ));
                     }
-                    out.push(0xFF); // A
-                    out.push(raw[px + 2]); // R
-                    out.push(raw[px + 1]); // G
                     out.push(raw[px]); // B
+                    out.push(raw[px + 1]); // G
+                    out.push(raw[px + 2]); // R
+                    out.push(0xFF); // A
                 }
             }
             if out.len() != expected_size {
@@ -166,7 +166,10 @@ fn convert_bitmap_to_color_mode(
         }
         ColorMode::Bgr => {
             let actual_w = render_w.min(bitmap_w as u32) as usize;
-            let expected_size = actual_w * render_h as usize * 3;
+            let row_bytes = actual_w * 3;
+            let padding = (4 - (row_bytes % 4)) % 4;
+            let expected_size = (row_bytes + padding) * render_h as usize;
+            
             let mut out = Vec::with_capacity(expected_size);
             for y in 0..render_h as usize {
                 let row_start = y * stride;
@@ -180,6 +183,10 @@ fn convert_bitmap_to_color_mode(
                     out.push(raw[px]); // B
                     out.push(raw[px + 1]); // G
                     out.push(raw[px + 2]); // R
+                }
+                // Pad scanline to 4-byte boundary
+                for _ in 0..padding {
+                    out.push(0);
                 }
             }
             if out.len() != expected_size {

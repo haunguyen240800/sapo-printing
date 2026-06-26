@@ -107,7 +107,7 @@ fn enum_printers_raw() -> (Vec<u8>, usize) {
 /// Queries printer status via `OpenPrinterW` + `GetPrinterW` level 2.
 /// `ClosePrinter` is always called when the handle was successfully opened.
 #[cfg(target_os = "windows")]
-fn query_printer_status(name: &str) -> PrinterStatus {
+pub(crate) fn query_printer_status(name: &str) -> PrinterStatus {
     unsafe {
         let wide: Vec<u16> = name.encode_utf16().chain(std::iter::once(0)).collect();
         let mut handle = HANDLE::default();

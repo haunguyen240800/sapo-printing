@@ -286,6 +286,7 @@ impl NativeMessageHandler {
         let request = CreateJobRequest {
             pdf_urls,
             printer_name,
+            output_path: None,
         };
 
         match use_case.execute(request) {

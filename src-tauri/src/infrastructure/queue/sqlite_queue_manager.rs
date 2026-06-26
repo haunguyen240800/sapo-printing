@@ -127,6 +127,7 @@ impl QueueManager for SqliteQueueManager {
                     0, // created_at not needed for queue pop
                     None, // completed_at not needed for queue pop
                     None, // error_message not needed for queue pop
+                    None, // output_path not needed for queue pop
                 ))
             });
 
