@@ -7,6 +7,7 @@
 //   - Use fully qualified paths: crate::domain::printer vs crate::infrastructure::printer
 //   - Consider aliasing in downstream code: `use crate::infrastructure::printer as print_engine;`
 
+pub mod config_store;
 pub mod database;
 pub mod downloader;
 pub mod eventbus;
@@ -17,4 +18,5 @@ pub mod renderer;
 pub mod secrets;
 pub mod temp_file;
 pub mod updater;
-pub mod config_store;
+pub mod graphics;
+pub mod pdfium;

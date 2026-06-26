@@ -1,4 +1,4 @@
-use std::sync::Arc;
+﻿use std::sync::Arc;
 
 use crate::application::use_cases::errors::ApplicationError;
 use crate::infrastructure::metrics::collector::MetricsSnapshot;
@@ -102,8 +102,8 @@ impl GetMetricsUseCase {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::domain::print_job::aggregate::PrintJob;
-    use crate::domain::print_job::value_objects::JobId;
+    use crate::domain::print_job::PrintJob;
+    use crate::domain::print_job::JobId;
     use crate::infrastructure::database::migrations::run_migrations;
     use crate::infrastructure::queue::{QueueError, QueueManager};
     use rusqlite::Connection;

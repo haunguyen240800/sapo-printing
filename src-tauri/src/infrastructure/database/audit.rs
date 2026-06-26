@@ -1,4 +1,4 @@
-use hmac::{Hmac, Mac};
+﻿use hmac::{Hmac, Mac};
 use sha2::Sha256;
 use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -56,7 +56,7 @@ pub fn verify_event_integrity(
 
 /// Retrieve the audit trail for an aggregate, ordered by sequence_number ASC.
 ///
-/// Does NOT verify integrity — caller decides whether to verify.
+/// Does NOT verify integrity â€” caller decides whether to verify.
 pub fn get_audit_trail(
     store: &SqliteEventStore,
     aggregate_id: &str,
@@ -116,7 +116,7 @@ pub fn cleanup_old_events(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::domain::print_job::aggregate::PrintJob;
+    use crate::domain::print_job::PrintJob;
     use crate::infrastructure::database::migrations::run_migrations;
     use crate::infrastructure::secrets::SecretManager;
     use crate::shared::errors::InfrastructureError;

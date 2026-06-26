@@ -1,8 +1,8 @@
-use crate::domain::print_job::aggregate::PrintJob;
-use crate::domain::print_job::value_objects::PrintStatus;
+﻿use crate::domain::print_job::PrintJob;
+use crate::domain::print_job::PrintStatus;
 use serde::{Deserialize, Serialize};
 
-/// DTO cho danh sách print jobs.
+/// DTO cho danh sĂ¡ch print jobs.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct JobDto {
     pub job_id: String,
@@ -13,7 +13,7 @@ pub struct JobDto {
     pub error_message: Option<String>,
 }
 
-/// DTO cho filtering danh sách jobs.
+/// DTO cho filtering danh sĂ¡ch jobs.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct JobFilterDto {
     pub status: Option<String>,
@@ -35,7 +35,7 @@ impl From<PrintJob> for JobDto {
     }
 }
 
-/// Helper: tính progress percentage dựa trên status.
+/// Helper: tĂ­nh progress percentage dá»±a trĂªn status.
 pub(crate) fn calculate_progress(status: &PrintStatus) -> u8 {
     match status {
         PrintStatus::Pending => 0,
@@ -48,7 +48,7 @@ pub(crate) fn calculate_progress(status: &PrintStatus) -> u8 {
     }
 }
 
-/// Helper: PrintStatus → String cho API response.
+/// Helper: PrintStatus â†’ String cho API response.
 fn status_to_string(status: &PrintStatus) -> String {
     match status {
         PrintStatus::Pending => "PENDING".to_string(),

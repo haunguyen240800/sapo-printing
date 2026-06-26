@@ -1,5 +1,5 @@
-use crate::domain::print_job::aggregate::PrintJob;
-use crate::domain::print_job::value_objects::{JobId, PrintStatus};
+﻿use crate::domain::print_job::PrintJob;
+use crate::domain::print_job::{JobId, PrintStatus};
 use crate::infrastructure::queue::queue_manager::{QueueError, QueueManager};
 use rusqlite::Connection;
 use std::sync::{Arc, Mutex};
@@ -48,7 +48,7 @@ impl QueueManager for SqliteQueueManager {
                     status
                 )))
             }
-            Ok(_) => {} // Pending — proceed
+            Ok(_) => {} // Pending â€” proceed
         }
 
         // Update to Queued with scheduled_at = now (immediate execution)
@@ -128,6 +128,7 @@ impl QueueManager for SqliteQueueManager {
                     None, // completed_at not needed for queue pop
                     None, // error_message not needed for queue pop
                     None, // output_path not needed for queue pop
+                    crate::domain::settings::PrintSettings::default(),
                 ))
             });
 

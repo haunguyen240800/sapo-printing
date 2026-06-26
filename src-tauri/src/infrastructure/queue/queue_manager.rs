@@ -1,5 +1,5 @@
-use crate::domain::print_job::aggregate::PrintJob;
-use crate::domain::print_job::value_objects::JobId;
+﻿use crate::domain::print_job::PrintJob;
+use crate::domain::print_job::JobId;
 
 /// Errors specific to queue operations.
 #[derive(Debug)]

@@ -1,4 +1,4 @@
-use hmac::{Hmac, Mac};
+﻿use hmac::{Hmac, Mac};
 use rand::RngCore;
 use rand::rngs::OsRng;
 use rusqlite::Connection;
@@ -8,7 +8,8 @@ use std::sync::{Arc, Mutex};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use crate::domain::print_job::errors::DomainError;
-use crate::domain::print_job::events::DomainEvent;
+use crate::domain::print_job::print_job_events::PrintJobCreated;
+use crate::domain::common::aggregate::DomainEvent;
 use crate::infrastructure::secrets::SecretManager;
 
 type HmacSha256 = Hmac<Sha256>;
@@ -183,19 +184,19 @@ impl SqliteEventStore {
             .as_secs() as i64;
 
         let signing_key = self.get_or_create_signing_key()?;
-        let hmac_value = compute_hmac(&signing_key, aggregate_id, seq, event.event_type(), &payload, now)?;
+        let hmac_value = compute_hmac(&signing_key, aggregate_id, seq, event.event_name(), &payload, now)?;
 
         conn.execute(
             "INSERT INTO events (aggregate_id, sequence_number, event_type, payload, timestamp, hmac)
              VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
-            rusqlite::params![aggregate_id, seq, event.event_type(), payload, now, hmac_value],
+            rusqlite::params![aggregate_id, seq, event.event_name(), payload, now, hmac_value],
         )
         .map_err(|e| {
             tracing::error!(
                 target = "sapo_printer::repository::event_store",
                 operation = "save_event",
                 aggregate_id = aggregate_id,
-                event_type = event.event_type(),
+                event_type = event.event_name(),
                 error = %e,
                 "Failed to save event"
             );
@@ -272,12 +273,12 @@ impl SqliteEventStore {
                 .unwrap()
                 .as_secs() as i64;
 
-            let hmac_value = compute_hmac(&signing_key, aggregate_id, seq, event.event_type(), &payload, now)?;
+            let hmac_value = compute_hmac(&signing_key, aggregate_id, seq, event.event_name(), &payload, now)?;
 
             if let Err(e) = tx.execute(
                 "INSERT INTO events (aggregate_id, sequence_number, event_type, payload, timestamp, hmac)
                  VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
-                rusqlite::params![aggregate_id, seq, event.event_type(), payload, now, hmac_value],
+                rusqlite::params![aggregate_id, seq, event.event_name(), payload, now, hmac_value],
             ) {
                 // Drop tx to trigger automatic rollback (rusqlite rolls back on uncommitted drop).
                 // We intentionally do NOT call tx.rollback() here because it takes ownership of self,
@@ -417,7 +418,7 @@ impl SqliteEventStore {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::domain::print_job::aggregate::PrintJob;
+    use crate::domain::print_job::PrintJob;
     use crate::infrastructure::database::migrations::run_migrations;
     use crate::shared::errors::InfrastructureError;
     use std::collections::HashMap;

@@ -1,10 +1,10 @@
-pub mod protocol;
+﻿pub mod protocol;
 pub mod registry;
 
 use std::io::{self, BufReader, BufWriter, Write};
 use std::sync::Arc;
 
-use crate::domain::print_job::repository::PrintJobRepository;
+use crate::domain::print_job::PrintJobRepository;
 use crate::infrastructure::database::SqliteEventStore;
 use crate::infrastructure::metrics::MetricsCollector;
 use crate::infrastructure::printer::PrinterManager;
@@ -62,7 +62,7 @@ pub fn run_native_messaging(
                 // Continue processing subsequent messages instead of disconnecting.
             }
             Err(ProtocolError::PartialMessage { expected, received }) => {
-                // Body truncated — send error response before disconnecting.
+                // Body truncated â€” send error response before disconnecting.
                 let err = r#"{"success":false,"error":{"code":"INVALID_REQUEST","message":"Truncated message body"}}"#;
                 let _ = protocol::write_message(&mut writer, err);
                 let _ = writer.flush();
@@ -122,7 +122,7 @@ fn log_to_file(message: &str) {
 }
 
 /// Convert days since UNIX epoch to (year, month, day). Simple algorithm
-/// sufficient for log timestamp formatting (no timezone needed — UTC).
+/// sufficient for log timestamp formatting (no timezone needed â€” UTC).
 fn days_to_ymd(days: i64) -> (i64, u32, u32) {
     // Algorithm from Howard Hinnant's civil calendar.
     let z = days + 719468;

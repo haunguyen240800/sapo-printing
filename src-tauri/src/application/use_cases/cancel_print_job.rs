@@ -1,9 +1,9 @@
-use std::sync::Arc;
+﻿use std::sync::Arc;
 
 use crate::application::dto::cancel_job_request::CancelJobRequest;
 use crate::application::use_cases::errors::ApplicationError;
-use crate::domain::print_job::repository::PrintJobRepository;
-use crate::domain::print_job::value_objects::JobId;
+use crate::domain::print_job::PrintJobRepository;
+use crate::domain::print_job::JobId;
 use crate::infrastructure::database::SqliteEventStore;
 use crate::shared::event_bus::EventBus;
 
@@ -104,10 +104,10 @@ impl CancelPrintJobUseCase {
         // Publish events (after commit)
         for event in &events {
             let payload = event.serialize_payload();
-            if let Err(e) = self.event_bus.publish(event.event_type(), &payload) {
+            if let Err(e) = self.event_bus.publish(event.event_name(), &payload) {
                 eprintln!(
-                    "Warning: Failed to publish cancel event {}: {}",
-                    event.event_type(),
+                    "Warning: Failed to publish event {}: {}",
+                    event.event_name(),
                     e
                 );
             }
@@ -147,13 +147,13 @@ impl CancelPrintJobUseCase {
     }
 }
 
-// ── Unit Tests ──────────────────────────────────────────────────────────────
+// â”€â”€ Unit Tests â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::domain::print_job::aggregate::PrintJob;
-    use crate::domain::print_job::value_objects::PrintStatus;
+    use crate::domain::print_job::PrintJob;
+    use crate::domain::print_job::PrintStatus;
     use crate::infrastructure::database::run_migrations;
     use crate::infrastructure::secrets::SecretManager;
     use crate::shared::errors::InfrastructureError;

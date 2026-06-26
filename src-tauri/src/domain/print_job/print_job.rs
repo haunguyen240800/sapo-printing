@@ -2,8 +2,11 @@ use serde::{Deserialize, Serialize};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use super::errors::DomainError;
-use super::events::*;
-use super::value_objects::*;
+use super::print_job_events::*;
+use super::job_id::JobId;
+use super::print_status::PrintStatus;
+use crate::domain::settings::PrintSettings;
+use crate::domain::common::aggregate::{AggregateRoot, DomainEvent as CommonDomainEvent};
 
 const MAX_RETRY_COUNT: u32 = 3;
 
@@ -25,8 +28,9 @@ pub struct PrintJob {
     completed_at: Option<i64>,
     error_message: Option<String>,
     output_path: Option<String>,
+    pub settings: PrintSettings,
     #[serde(skip)]
-    events: Vec<Box<dyn DomainEvent>>,
+    events: Vec<Box<dyn CommonDomainEvent>>,
 }
 
 impl Clone for PrintJob {
@@ -41,6 +45,7 @@ impl Clone for PrintJob {
             completed_at: self.completed_at,
             error_message: self.error_message.clone(),
             output_path: self.output_path.clone(),
+            settings: self.settings.clone(),
             events: Vec::new(),
         }
     }
@@ -56,14 +61,15 @@ impl PrintJob {
 
     /// Creates a new PrintJob in PENDING status.
     /// Emits a PrintJobCreated event.
-    pub fn new(pdf_url: String, printer_name: String) -> Self {
-        Self::new_with_output_path(pdf_url, printer_name, None)
+    pub fn new(pdf_url: String, printer_name: String, settings: PrintSettings) -> Self {
+        Self::new_with_output_path(pdf_url, printer_name, settings, None)
     }
 
     /// Creates a new PrintJob with optional output path for Print-to-PDF printers.
     pub fn new_with_output_path(
         pdf_url: String,
         printer_name: String,
+        settings: PrintSettings,
         output_path: Option<String>,
     ) -> Self {
         let id = JobId::new();
@@ -78,6 +84,7 @@ impl PrintJob {
             completed_at: None,
             error_message: None,
             output_path,
+            settings,
             events: Vec::new(),
         };
         job.push_event(Box::new(PrintJobCreated::new(
@@ -99,6 +106,7 @@ impl PrintJob {
         completed_at: Option<i64>,
         error_message: Option<String>,
         output_path: Option<String>,
+        settings: PrintSettings,
     ) -> Self {
         Self {
             id,
@@ -110,11 +118,12 @@ impl PrintJob {
             completed_at,
             error_message,
             output_path,
+            settings,
             events: Vec::new(),
         }
     }
 
-    fn push_event(&mut self, event: Box<dyn DomainEvent>) {
+    fn push_event(&mut self, event: Box<dyn CommonDomainEvent>) {
         self.events.push(event);
     }
 
@@ -241,7 +250,7 @@ impl PrintJob {
 
     /// Drains the internal event buffer, returning all collected events.
     /// Called after persistence (Outbox Pattern).
-    pub fn drain_events(&mut self) -> Vec<Box<dyn DomainEvent>> {
+    pub fn drain_events(&mut self) -> Vec<Box<dyn CommonDomainEvent>> {
         std::mem::take(&mut self.events)
     }
 
@@ -288,6 +297,16 @@ impl PrintJob {
     }
 }
 
+impl AggregateRoot for PrintJob {
+    fn domain_events(&self) -> &[Box<dyn CommonDomainEvent>] {
+        &self.events
+    }
+
+    fn clear_domain_events(&mut self) {
+        self.events.clear();
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -296,6 +315,17 @@ mod tests {
         PrintJob::new(
             "https://s3.example.com/doc.pdf".to_string(),
             "HP_LaserJet".to_string(),
+            PrintSettings {
+                paper_size: "A4".to_string(),
+                orientation: "PORTRAIT".to_string(),
+                margin: 0.0,
+                scale_mode: "FIT".to_string(),
+                dpi: 300,
+                grayscale: false,
+                binary: false,
+                copies: 1,
+                rotate: 0.0,
+            }
         )
     }
 
@@ -483,7 +513,7 @@ mod tests {
         assert!(job.cancel().is_ok());
         assert_eq!(job.pending_events_count(), 1);
         let events = job.drain_events();
-        assert_eq!(events[0].event_type(), "PrintJobCancelled");
+        assert_eq!(events[0].event_name(), "PrintJobCancelled");
     }
 
     #[test]
@@ -506,7 +536,7 @@ mod tests {
         assert!(job.mark_printing().is_ok());
         assert_eq!(job.pending_events_count(), 1);
         let events = job.drain_events();
-        assert_eq!(events[0].event_type(), "PrintJobPrinting");
+        assert_eq!(events[0].event_name(), "PrintJobPrinting");
     }
 
     #[test]
@@ -534,8 +564,8 @@ mod tests {
         job.queue().unwrap();
         let events = job.drain_events();
         assert_eq!(events.len(), 2);
-        assert_eq!(events[0].event_type(), "PrintJobCreated");
-        assert_eq!(events[1].event_type(), "PrintJobQueued");
+        assert_eq!(events[0].event_name(), "PrintJobCreated");
+        assert_eq!(events[1].event_name(), "PrintJobQueued");
     }
 
     #[test]

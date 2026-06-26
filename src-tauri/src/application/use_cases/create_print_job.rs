@@ -1,10 +1,10 @@
-use std::sync::Arc;
+﻿use std::sync::Arc;
 
 use crate::application::dto::create_job_request::CreateJobRequest;
 use crate::application::use_cases::errors::ApplicationError;
-use crate::domain::print_job::aggregate::PrintJob;
-use crate::domain::print_job::repository::PrintJobRepository;
-use crate::domain::print_job::value_objects::JobId;
+use crate::domain::print_job::PrintJob;
+use crate::domain::print_job::PrintJobRepository;
+use crate::domain::print_job::JobId;
 use crate::domain::printer::value_objects::PrinterStatus;
 use crate::infrastructure::database::SqliteEventStore;
 use crate::infrastructure::printer::PrinterManager;
@@ -19,8 +19,8 @@ const MAX_URLS: usize = 5000;
 /// 2. Verify printer ONLINE (via printer_manager)
 /// 3. Create one PrintJob aggregate per URL
 /// 4. drain_events() from each job
-/// 5. job_repo.save() + event_store.save_all() — per-URL persistence
-/// 6. event_bus.publish() EACH event — ONLY AFTER save succeeds
+/// 5. job_repo.save() + event_store.save_all() â€” per-URL persistence
+/// 6. event_bus.publish() EACH event â€” ONLY AFTER save succeeds
 /// 7. PushToQueueHandler (subscribed to PrintJobCreated) pushes job to queue
 /// 8. Return Vec<JobId>
 pub struct CreatePrintJobUseCase {
@@ -93,6 +93,7 @@ impl CreatePrintJobUseCase {
             let mut job = PrintJob::new_with_output_path(
                 url.clone(),
                 request.printer_name.clone(),
+                crate::domain::settings::PrintSettings::default(),
                 request.output_path.clone(),
             );
             let events = job.drain_events();
@@ -143,7 +144,7 @@ impl CreatePrintJobUseCase {
 
             // Collect events for publishing AFTER all saves
             for event in &events {
-                all_events.push((event.event_type().to_string(), event.serialize_payload()));
+                all_events.push((event.event_name().to_string(), event.serialize_payload()));
             }
 
             all_job_ids.push(job.id().clone());
@@ -159,7 +160,7 @@ impl CreatePrintJobUseCase {
         // PushToQueueHandler (subscribed to PrintJobCreated) will automatically push to queue
         for (event_type, payload) in &all_events {
             let _ = self.event_bus.publish(event_type, payload);
-            // EventBus publish failures are non-fatal — log but don't fail
+            // EventBus publish failures are non-fatal â€” log but don't fail
         }
 
         tracing::info!(
@@ -178,13 +179,13 @@ impl CreatePrintJobUseCase {
     }
 }
 
-// ── Unit Tests ──────────────────────────────────────────────────────────────
+// â”€â”€ Unit Tests â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::domain::print_job::errors::DomainError;
-    use crate::domain::print_job::events::DomainEvent;
+    use crate::domain::print_job::print_job_events::DomainEvent;
     use crate::domain::printer::aggregate::Printer;
     use crate::shared::event_bus::{EventBusError, EventHandler};
     use crate::infrastructure::secrets::SecretManager;
@@ -224,7 +225,7 @@ mod tests {
         }
     }
 
-    // ── Mock PrintJobRepository ──
+    // â”€â”€ Mock PrintJobRepository â”€â”€
     struct MockJobRepo {
         saved_count: Arc<Mutex<usize>>,
     }
@@ -253,14 +254,14 @@ mod tests {
 
         fn find_by_id(
             &self,
-            _id: &crate::domain::print_job::value_objects::JobId,
+            _id: &crate::domain::print_job::JobId,
         ) -> Result<Option<PrintJob>, DomainError> {
             unimplemented!("find_by_id not needed for unit tests")
         }
 
         fn find_by_status(
             &self,
-            _status: &crate::domain::print_job::value_objects::PrintStatus,
+            _status: &crate::domain::print_job::PrintStatus,
         ) -> Result<Vec<PrintJob>, DomainError> {
             unimplemented!("find_by_status not needed for unit tests")
         }
@@ -270,7 +271,7 @@ mod tests {
         }
     }
 
-    // ── Mock EventStore ──
+    // â”€â”€ Mock EventStore â”€â”€
     struct MockEventStore;
 
     impl MockEventStore {
@@ -287,7 +288,7 @@ mod tests {
         }
     }
 
-    // ── Mock EventBus ──
+    // â”€â”€ Mock EventBus â”€â”€
     struct MockEventBus {
         published_count: Arc<Mutex<usize>>,
     }
@@ -315,7 +316,7 @@ mod tests {
         }
     }
 
-    // ── Mock PrinterManager ──
+    // â”€â”€ Mock PrinterManager â”€â”€
     struct MockPrinterManager {
         status: PrinterStatus,
         known: bool,
@@ -552,14 +553,14 @@ mod tests {
 
             fn find_by_id(
                 &self,
-                _id: &crate::domain::print_job::value_objects::JobId,
+                _id: &crate::domain::print_job::JobId,
             ) -> Result<Option<PrintJob>, DomainError> {
                 unimplemented!()
             }
 
             fn find_by_status(
                 &self,
-                _status: &crate::domain::print_job::value_objects::PrintStatus,
+                _status: &crate::domain::print_job::PrintStatus,
             ) -> Result<Vec<PrintJob>, DomainError> {
                 unimplemented!()
             }

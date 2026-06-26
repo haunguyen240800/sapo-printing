@@ -1,4 +1,4 @@
-//! Document Downloader — Service Contract
+﻿//! Document Downloader â€” Service Contract
 //!
 //! Defines the `DocumentDownloader` trait: a service contract for downloading
 //! PDF documents from URLs (typically S3 presigned or public URLs) for bulk printing.
@@ -17,7 +17,7 @@
 
 use std::path::PathBuf;
 
-use crate::domain::print_job::value_objects::JobId;
+use crate::domain::print_job::JobId;
 use crate::shared::errors::InfrastructureError;
 
 /// Service contract for downloading PDF documents from remote URLs.
@@ -25,7 +25,7 @@ use crate::shared::errors::InfrastructureError;
 /// Implementations must:
 /// - Download the file to the temp directory
 /// - Validate the PDF header (`%PDF-`)
-/// - Use atomic rename (`.tmp` → `.pdf`) only after validation
+/// - Use atomic rename (`.tmp` â†’ `.pdf`) only after validation
 /// - Clean up `.tmp` files on any error
 ///
 /// # Thread Safety
@@ -42,9 +42,9 @@ pub trait DocumentDownloader: Send + Sync {
     /// `PathBuf` pointing to the validated `.pdf` file in the temp directory.
     ///
     /// # Errors
-    /// - `InfrastructureError::NetworkError` — HTTP failure, DNS error, TLS error
-    /// - `InfrastructureError::ValidationError` — downloaded content is not a valid PDF
-    /// - `InfrastructureError::TimeoutError` — request exceeded 30s timeout
-    /// - `InfrastructureError::CircuitOpenError` — circuit breaker is open, call rejected
+    /// - `InfrastructureError::NetworkError` â€” HTTP failure, DNS error, TLS error
+    /// - `InfrastructureError::ValidationError` â€” downloaded content is not a valid PDF
+    /// - `InfrastructureError::TimeoutError` â€” request exceeded 30s timeout
+    /// - `InfrastructureError::CircuitOpenError` â€” circuit breaker is open, call rejected
     fn download(&self, url: &str, job_id: &JobId) -> Result<PathBuf, InfrastructureError>;
 }

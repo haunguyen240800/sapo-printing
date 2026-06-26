@@ -1,6 +1,7 @@
-use super::aggregate::PrintJob;
+use super::print_job::PrintJob;
 use super::errors::DomainError;
-use super::value_objects::{JobId, PrintStatus};
+use super::job_id::JobId;
+use super::print_status::PrintStatus;
 
 /// Repository trait for PrintJob aggregate persistence.
 ///

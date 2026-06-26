@@ -1,13 +1,13 @@
-use std::sync::Arc;
+﻿use std::sync::Arc;
 
 use crate::application::dto::job_status_dto::JobStatusDto;
 use crate::application::use_cases::errors::ApplicationError;
-use crate::domain::print_job::repository::PrintJobRepository;
-use crate::domain::print_job::value_objects::JobId;
+use crate::domain::print_job::PrintJobRepository;
+use crate::domain::print_job::JobId;
 
 /// Use case: Get status of a print job.
 ///
-/// Read-only operation — no transaction, no event publishing.
+/// Read-only operation â€” no transaction, no event publishing.
 /// Returns JobStatusDto with progress calculation for web app polling.
 pub struct GetJobStatusUseCase {
     job_repo: Arc<dyn PrintJobRepository>,
@@ -60,14 +60,14 @@ impl GetJobStatusUseCase {
     }
 }
 
-// ── Unit Tests ──────────────────────────────────────────────────────────────
+// â”€â”€ Unit Tests â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::domain::print_job::aggregate::PrintJob;
+    use crate::domain::print_job::PrintJob;
     use crate::domain::print_job::errors::DomainError as JobDomainError;
-    use crate::domain::print_job::value_objects::PrintStatus;
+    use crate::domain::print_job::PrintStatus;
     use std::sync::Mutex as StdMutex;
 
     struct MockJobRepo {

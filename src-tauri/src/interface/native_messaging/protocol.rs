@@ -1,4 +1,4 @@
-use std::io::{self, Read, Write};
+﻿use std::io::{self, Read, Write};
 use std::sync::Arc;
 
 use serde::{Deserialize, Serialize};
@@ -9,7 +9,7 @@ use crate::application::use_cases::cancel_print_job::CancelPrintJobUseCase;
 use crate::application::use_cases::create_print_job::CreatePrintJobUseCase;
 use crate::application::use_cases::errors::ApplicationError;
 use crate::application::use_cases::get_job_status::GetJobStatusUseCase;
-use crate::domain::print_job::repository::PrintJobRepository;
+use crate::domain::print_job::PrintJobRepository;
 use crate::infrastructure::database::SqliteEventStore;
 use crate::infrastructure::printer::PrinterManager;
 use crate::interface::tauri::dtos::printer_dto::PrinterDto;
@@ -17,7 +17,7 @@ use crate::shared::event_bus::EventBus;
 
 const MAX_MESSAGE_SIZE: u32 = 1_048_576; // 1 MB
 
-// ── Wire Protocol ───────────────────────────────────────────────────────────
+// â”€â”€ Wire Protocol â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 #[derive(Debug)]
 pub enum ProtocolError {
@@ -70,7 +70,7 @@ pub fn read_message(reader: &mut impl Read) -> Result<String, ProtocolError> {
     match reader.read_exact(&mut buf) {
         Ok(()) => {}
         Err(e) if e.kind() == io::ErrorKind::UnexpectedEof => {
-            // Body truncated — partial message. Report expected size.
+            // Body truncated â€” partial message. Report expected size.
             return Err(ProtocolError::PartialMessage { expected: msg_len, received: 0 });
         }
         Err(e) => return Err(ProtocolError::Io(e)),
@@ -102,7 +102,7 @@ pub fn set_binary_mode() {
     // Unix stdin/stdout are binary by default
 }
 
-// ── Origin Validation ───────────────────────────────────────────────────────
+// â”€â”€ Origin Validation â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 const ALLOWED_ORIGINS: &[&str] = &[];
 
@@ -123,7 +123,7 @@ pub fn validate_origin(origin: &Option<String>) -> bool {
     }
 }
 
-// ── JSON Command Types ──────────────────────────────────────────────────────
+// â”€â”€ JSON Command Types â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 #[derive(Deserialize)]
 struct RawMessage {
@@ -175,7 +175,7 @@ struct ListPrintersData {
     printers: Vec<PrinterDto>,
 }
 
-// ── NativeMessageHandler ────────────────────────────────────────────────────
+// â”€â”€ NativeMessageHandler â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 pub struct NativeMessageHandler {
     pub job_repo: Arc<dyn PrintJobRepository>,
@@ -467,15 +467,15 @@ impl NativeMessageHandler {
     }
 }
 
-// ── Unit Tests ──────────────────────────────────────────────────────────────
+// â”€â”€ Unit Tests â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::domain::print_job::aggregate::PrintJob;
+    use crate::domain::print_job::PrintJob;
     use crate::domain::print_job::errors::DomainError as JobDomainError;
-    use crate::domain::print_job::repository::PrintJobRepository;
-    use crate::domain::print_job::value_objects::{JobId, PrintStatus};
+    use crate::domain::print_job::PrintJobRepository;
+    use crate::domain::print_job::{JobId, PrintStatus};
     use crate::domain::printer::aggregate::Printer;
     use crate::domain::printer::value_objects::{PrinterName, PrinterType};
     use crate::infrastructure::database::{run_migrations, SqliteEventStore};
@@ -517,7 +517,7 @@ mod tests {
         }
     }
 
-    // ── Wire Protocol Tests ─────────────────────────────────────────────
+    // â”€â”€ Wire Protocol Tests â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
     #[test]
     fn test_read_message_correctly_parses_framing() {
@@ -572,7 +572,7 @@ mod tests {
         assert_eq!(decoded, original);
     }
 
-    // ── Origin Validation Tests ─────────────────────────────────────────
+    // â”€â”€ Origin Validation Tests â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
     #[test]
     fn test_empty_allowed_origins_accepts_any() {
@@ -580,7 +580,7 @@ mod tests {
         assert!(validate_origin(&Some("chrome-extension://abc123/".to_string())));
     }
 
-    // ── Handler Tests ───────────────────────────────────────────────────
+    // â”€â”€ Handler Tests â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
     struct MockJobRepo {
         jobs: StdMutex<Vec<PrintJob>>,
@@ -1072,7 +1072,7 @@ mod tests {
         assert_eq!(parsed["error"]["code"], "UNKNOWN_COMMAND");
     }
 
-    // ── Missing tests per review ──────────────────────────────────────────
+    // â”€â”€ Missing tests per review â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
     #[test]
     fn test_write_message_exceeding_1mb_returns_error() {
@@ -1140,7 +1140,7 @@ mod tests {
         assert_eq!(printers[0]["name"], "TestPrinter");
     }
 
-    // Offline printer → PRINTER_NOT_AVAILABLE (AC-7, M-8)
+    // Offline printer â†’ PRINTER_NOT_AVAILABLE (AC-7, M-8)
     struct OfflinePrinterManager;
 
     impl PrinterManager for OfflinePrinterManager {

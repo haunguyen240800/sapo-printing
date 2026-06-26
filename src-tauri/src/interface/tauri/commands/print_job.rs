@@ -1,11 +1,11 @@
-use crate::application::dto::cancel_job_request::CancelJobRequest;
+﻿use crate::application::dto::cancel_job_request::CancelJobRequest;
 use crate::application::dto::create_job_request::CreateJobRequest;
 use crate::application::dto::{JobDto, JobFilterDto};
 use crate::application::use_cases::cancel_print_job::CancelPrintJobUseCase;
 use crate::application::use_cases::create_print_job::CreatePrintJobUseCase;
 use crate::application::use_cases::errors::ApplicationError;
 use crate::application::use_cases::list_jobs::ListJobsUseCase;
-use crate::domain::print_job::value_objects::JobId;
+use crate::domain::print_job::JobId;
 use crate::AppContextState;
 use std::str::FromStr;
 
@@ -48,13 +48,13 @@ pub fn execute_create_print_job(
         .execute(request)
         .map(|ids| ids.iter().map(|id| id.to_string()).collect())
         .map_err(|e| match &e {
-            ApplicationError::EmptyJobList => "Danh sách URLs không được rỗng".to_string(),
+            ApplicationError::EmptyJobList => "Danh sĂ¡ch URLs khĂ´ng Ä‘Æ°á»£c rá»—ng".to_string(),
             ApplicationError::TooManyJobs { count } => format!(
-                "Số lượng URLs vượt quá giới hạn 5000 (nhận được: {})",
+                "Sá»‘ lÆ°á»£ng URLs vÆ°á»£t quĂ¡ giá»›i háº¡n 5000 (nháº­n Ä‘Æ°á»£c: {})",
                 count
             ),
             ApplicationError::PrinterNotAvailable { name } => {
-                format!("Máy in '{}' không khả dụng hoặc đang offline", name)
+                format!("MĂ¡y in '{}' khĂ´ng kháº£ dá»¥ng hoáº·c Ä‘ang offline", name)
             }
             _ => format!("{}", e),
         })
@@ -78,19 +78,19 @@ pub fn execute_cancel_print_job(
 
     use_case.execute(request).map_err(|e| match &e {
         ApplicationError::InvalidJobId { job_id } => {
-            format!("Job ID không hợp lệ: {}", job_id)
+            format!("Job ID khĂ´ng há»£p lá»‡: {}", job_id)
         }
         ApplicationError::JobNotFound { job_id } => {
-            format!("Không tìm thấy job với ID: {}", job_id)
+            format!("KhĂ´ng tĂ¬m tháº¥y job vá»›i ID: {}", job_id)
         }
         ApplicationError::CannotCancelCompleted { job_id } => {
-            format!("Không thể hủy job đã hoàn thành: {}", job_id)
+            format!("KhĂ´ng thá»ƒ há»§y job Ä‘Ă£ hoĂ n thĂ nh: {}", job_id)
         }
         ApplicationError::CannotCancelFailed { job_id } => {
-            format!("Không thể hủy job đã thất bại: {}", job_id)
+            format!("KhĂ´ng thá»ƒ há»§y job Ä‘Ă£ tháº¥t báº¡i: {}", job_id)
         }
         ApplicationError::CannotCancelCancelled { job_id } => {
-            format!("Job đã bị hủy trước đó: {}", job_id)
+            format!("Job Ä‘Ă£ bá»‹ há»§y trÆ°á»›c Ä‘Ă³: {}", job_id)
         }
         _ => format!("{}", e),
     })
@@ -106,20 +106,20 @@ pub fn execute_list_jobs(
 
     use_case
         .execute(filter)
-        .map_err(|e| format!("Lấy danh sách job thất bại: {:?}", e))
+        .map_err(|e| format!("Láº¥y danh sĂ¡ch job tháº¥t báº¡i: {:?}", e))
 }
 
 /// Execute get job status by ID.
 /// Called from the `get_job_status` Tauri command in `main.rs`.
 pub fn execute_get_job_status(job_id: String, ctx: &AppContextState) -> Result<JobDto, String> {
     let job_id = JobId::from_str(&job_id)
-        .map_err(|_| format!("Job ID không hợp lệ: {}", job_id))?;
+        .map_err(|_| format!("Job ID khĂ´ng há»£p lá»‡: {}", job_id))?;
 
     let job = ctx
         .job_repo
         .find_by_id(&job_id)
-        .map_err(|e| format!("Lỗi khi lấy job: {:?}", e))?
-        .ok_or_else(|| format!("Không tìm thấy job: {}", job_id))?;
+        .map_err(|e| format!("Lá»—i khi láº¥y job: {:?}", e))?
+        .ok_or_else(|| format!("KhĂ´ng tĂ¬m tháº¥y job: {}", job_id))?;
 
     Ok(job.into())
 }

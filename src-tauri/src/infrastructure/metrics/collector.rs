@@ -1,4 +1,4 @@
-use std::sync::{Arc, Mutex};
+﻿use std::sync::{Arc, Mutex};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use rusqlite::Connection;
@@ -365,10 +365,10 @@ fn percentile(sorted_values: &[f64], p: f64) -> f64 {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::domain::print_job::aggregate::PrintJob;
+    use crate::domain::print_job::PrintJob;
     use crate::infrastructure::database::migrations::run_migrations;
     use crate::infrastructure::queue::QueueError;
-    use crate::domain::print_job::value_objects::JobId;
+    use crate::domain::print_job::JobId;
 
     struct MockQueueManager {
         depth: usize,

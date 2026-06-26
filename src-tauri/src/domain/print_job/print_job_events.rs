@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use super::value_objects::JobId;
+use super::job_id::JobId;
 
 fn now_unix() -> u64 {
     SystemTime::now()
@@ -241,6 +241,17 @@ impl DomainEvent for PrintJobCancelled {
         serde_json::to_string(self).unwrap_or_else(|_| "{}".to_string())
     }
 }
+
+use crate::domain::common::aggregate::DomainEvent as CommonDomainEvent;
+
+impl CommonDomainEvent for PrintJobCreated { fn event_name(&self) -> &'static str { "PrintJobCreated" } }
+impl CommonDomainEvent for PrintJobQueued { fn event_name(&self) -> &'static str { "PrintJobQueued" } }
+impl CommonDomainEvent for PrintJobDownloaded { fn event_name(&self) -> &'static str { "PrintJobDownloaded" } }
+impl CommonDomainEvent for PrintJobSubmitted { fn event_name(&self) -> &'static str { "PrintJobSubmitted" } }
+impl CommonDomainEvent for PrintJobPrinting { fn event_name(&self) -> &'static str { "PrintJobPrinting" } }
+impl CommonDomainEvent for PrintJobCompleted { fn event_name(&self) -> &'static str { "PrintJobCompleted" } }
+impl CommonDomainEvent for PrintJobFailed { fn event_name(&self) -> &'static str { "PrintJobFailed" } }
+impl CommonDomainEvent for PrintJobCancelled { fn event_name(&self) -> &'static str { "PrintJobCancelled" } }
 
 #[cfg(test)]
 mod tests {

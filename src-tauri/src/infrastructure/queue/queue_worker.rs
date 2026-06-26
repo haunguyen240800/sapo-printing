@@ -1,8 +1,8 @@
-//! Queue Worker — Background Job Processor
+﻿//! Queue Worker â€” Background Job Processor
 //!
 //! Implements a background worker thread that continuously polls the queue
 //! and processes print jobs through the complete pipeline:
-//! pop → download → render → print → complete.
+//! pop â†’ download â†’ render â†’ print â†’ complete.
 //!
 //! ## Architecture
 //! - **Pattern:** Worker Pattern + Background Processing
@@ -11,33 +11,33 @@
 //! - **Cleanup:** RAII via TempPdfFile Drop trait (automatic temp file cleanup)
 //!
 //! ## Lifecycle
-//! 1. `start()` — spawns background thread, begins polling
-//! 2. `process_loop()` — polls queue every 500ms, processes jobs sequentially
-//! 3. `stop()` — sets running=false, waits for graceful shutdown
+//! 1. `start()` â€” spawns background thread, begins polling
+//! 2. `process_loop()` â€” polls queue every 500ms, processes jobs sequentially
+//! 3. `stop()` â€” sets running=false, waits for graceful shutdown
 //!
 //! ## Event-Driven Architecture
 //! Worker publishes 5 events per job:
-//! - PrintJobQueued (PENDING → QUEUED)
-//! - PrintJobDownloaded (QUEUED → DOWNLOADED)
-//! - PrintJobSubmitted (DOWNLOADED → SUBMITTED_TO_QUEUE)
-//! - PrintJobPrinting (SUBMITTED_TO_QUEUE → PRINTING)
-//! - PrintJobCompleted (PRINTING → COMPLETED)
+//! - PrintJobQueued (PENDING â†’ QUEUED)
+//! - PrintJobDownloaded (QUEUED â†’ DOWNLOADED)
+//! - PrintJobSubmitted (DOWNLOADED â†’ SUBMITTED_TO_QUEUE)
+//! - PrintJobPrinting (SUBMITTED_TO_QUEUE â†’ PRINTING)
+//! - PrintJobCompleted (PRINTING â†’ COMPLETED)
 //!
 //! ## Story Context
-//! This is Story 3.5 — implements sequential job processing only.
-//! - ✅ Single worker thread
-//! - ✅ FIFO queue processing
-//! - ✅ State transitions + event publishing
-//! - ❌ Auto-retry logic (Story 3.6)
-//! - ❌ Job cancellation (Story 3.7)
-//! - ❌ Concurrent workers (Story 4.x)
+//! This is Story 3.5 â€” implements sequential job processing only.
+//! - âœ… Single worker thread
+//! - âœ… FIFO queue processing
+//! - âœ… State transitions + event publishing
+//! - âŒ Auto-retry logic (Story 3.6)
+//! - âŒ Job cancellation (Story 3.7)
+//! - âŒ Concurrent workers (Story 4.x)
 
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::thread::{self, JoinHandle};
 use std::time::Duration;
 
-use crate::domain::print_job::aggregate::PrintJob;
+use crate::domain::print_job::PrintJob;
 use crate::domain::print_job::PrintJobRepository;
 use crate::infrastructure::database::SqliteEventStore;
 use crate::infrastructure::downloader::DocumentDownloader;
@@ -168,7 +168,7 @@ impl QueueWorker {
         self.running.load(Ordering::SeqCst)
     }
 
-    /// Main processing loop — runs in background thread.
+    /// Main processing loop â€” runs in background thread.
     ///
     /// Polls the queue every 500ms, processes jobs sequentially, and handles errors gracefully.
     #[allow(clippy::too_many_arguments)]
@@ -268,14 +268,14 @@ impl QueueWorker {
     /// Process a single job through the complete pipeline.
     ///
     /// Pipeline steps:
-    /// 1. PENDING → QUEUED (transition from pop state)
+    /// 1. PENDING â†’ QUEUED (transition from pop state)
     /// 2. Download document
-    /// 3. QUEUED → DOWNLOADED
+    /// 3. QUEUED â†’ DOWNLOADED
     /// 4. Render document
-    /// 5. DOWNLOADED → SUBMITTED_TO_QUEUE
-    /// 6. SUBMITTED_TO_QUEUE → PRINTING
+    /// 5. DOWNLOADED â†’ SUBMITTED_TO_QUEUE
+    /// 6. SUBMITTED_TO_QUEUE â†’ PRINTING
     /// 7. Send to printer
-    /// 8. PRINTING → COMPLETED
+    /// 8. PRINTING â†’ COMPLETED
     ///
     /// Each step persists the job state and publishes domain events.
     /// Temp files are auto-cleaned via RAII (TempPdfFile Drop).
@@ -297,7 +297,7 @@ impl QueueWorker {
         job.queue()
             .map_err(|e| format!("Failed to queue job: {:?}", e))?;
         if let Err(e) = Self::persist_and_publish(&mut job, job_repo, event_store, event_bus) {
-            // Persist failed — job is stuck in Pending in DB.
+            // Persist failed â€” job is stuck in Pending in DB.
             // Mark as Failed so it's not orphaned (pop only selects Queued rows).
             eprintln!(
                 "Worker: initial persist failed for job {}, marking as Failed: {}",
@@ -409,7 +409,7 @@ impl QueueWorker {
             .map_err(|e| format!("Failed to mark complete: {:?}", e))?;
         Self::persist_and_publish(&mut job, job_repo, event_store, event_bus)?;
 
-        // Step 6: temp_file is dropped here → RAII cleanup deletes the file
+        // Step 6: temp_file is dropped here â†’ RAII cleanup deletes the file
 
         Ok(())
     }
@@ -434,7 +434,7 @@ impl QueueWorker {
         let events = job.drain_events();
 
         // 2. Persist events to event store FIRST
-        // If this fails, job state is not updated — consistent (no change).
+        // If this fails, job state is not updated â€” consistent (no change).
         // Events are drained but the job stays in its old state and can be retried.
         event_store
             .save_all(job.id().to_string().as_str(), &events)
@@ -442,7 +442,7 @@ impl QueueWorker {
 
         // 3. Persist job state
         // If this fails after events were saved, events exist in store but job
-        // state is not updated — recoverable via event replay.
+        // state is not updated â€” recoverable via event replay.
         job_repo
             .update(job)
             .map_err(|e| format!("Failed to update job: {:?}", e))?;
@@ -450,13 +450,13 @@ impl QueueWorker {
         // 4. Publish events to event bus (non-fatal)
         for event in &events {
             let payload = event.serialize_payload();
-            if let Err(e) = event_bus.publish(event.event_type(), &payload) {
+            if let Err(e) = event_bus.publish(event.event_name(), &payload) {
                 eprintln!(
                     "Warning: Failed to publish event {}: {}",
-                    event.event_type(),
+                    event.event_name(),
                     e
                 );
-                // Non-fatal — continue processing
+                // Non-fatal â€” continue processing
             }
         }
 
@@ -469,7 +469,7 @@ impl QueueWorker {
     /// 1. Mark job as FAILED first
     /// 2. Parse error string to determine if retryable
     /// 3. If retryable AND retry_count < 3:
-    ///    - Call job.retry() (increments retry_count, FAILED → QUEUED)
+    ///    - Call job.retry() (increments retry_count, FAILED â†’ QUEUED)
     ///    - Calculate backoff delay
     ///    - Call queue_manager.requeue(job_id, delay)
     ///    - Persist and publish events
@@ -593,7 +593,7 @@ mod tests {
     use std::sync::Mutex as StdMutex;
 
     use crate::domain::print_job::errors::DomainError;
-    use crate::domain::print_job::value_objects::{JobId, PrintStatus};
+    use crate::domain::print_job::{JobId, PrintStatus};
     use crate::domain::print_job::PrintJobRepository;
     use crate::infrastructure::database::{run_migrations, SqliteEventStore};
     use crate::infrastructure::queue::QueueError;
@@ -1048,7 +1048,7 @@ mod tests {
 
         worker.stop().expect("Failed to stop worker");
 
-        // Verify all 3 jobs processed (3 jobs × 5 updates each = 15)
+        // Verify all 3 jobs processed (3 jobs Ă— 5 updates each = 15)
         assert_eq!(job_repo.update_count(), 15);
     }
 
@@ -1076,7 +1076,7 @@ mod tests {
 
         worker.start().expect("Failed to start worker");
 
-        // Run for 1.5s with empty queue — verify timing (not busy-loop)
+        // Run for 1.5s with empty queue â€” verify timing (not busy-loop)
         let start_time = std::time::Instant::now();
         thread::sleep(Duration::from_millis(1500));
         let elapsed = start_time.elapsed();
@@ -1471,11 +1471,11 @@ mod tests {
         use crate::infrastructure::queue::retry_logic::calculate_backoff_delay;
 
         // Test that subsequent retries use correct delays
-        // retry_count = 0 → 5s
+        // retry_count = 0 â†’ 5s
         assert_eq!(calculate_backoff_delay(0), 5);
-        // retry_count = 1 → 10s
+        // retry_count = 1 â†’ 10s
         assert_eq!(calculate_backoff_delay(1), 10);
-        // retry_count = 2 → 20s
+        // retry_count = 2 â†’ 20s
         assert_eq!(calculate_backoff_delay(2), 20);
     }
 }

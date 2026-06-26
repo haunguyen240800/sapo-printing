@@ -1,12 +1,12 @@
-use serde::{Deserialize, Serialize};
+﻿use serde::{Deserialize, Serialize};
 
 use crate::application::dto::job_dto::calculate_progress;
-use crate::domain::print_job::aggregate::PrintJob;
-use crate::domain::print_job::value_objects::PrintStatus;
+use crate::domain::print_job::PrintJob;
+use crate::domain::print_job::PrintStatus;
 
-/// DTO cho status polling — dùng bởi web app polling qua native messaging.
+/// DTO cho status polling â€” dĂ¹ng bá»Ÿi web app polling qua native messaging.
 ///
-/// Bao gồm đầy đủ timestamps và error_message để web app render UI chi tiết.
+/// Bao gá»“m Ä‘áº§y Ä‘á»§ timestamps vĂ  error_message Ä‘á»ƒ web app render UI chi tiáº¿t.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct JobStatusDto {
     pub job_id: String,
@@ -36,7 +36,7 @@ impl From<PrintJob> for JobStatusDto {
     }
 }
 
-/// Helper: PrintStatus → String cho API response.
+/// Helper: PrintStatus â†’ String cho API response.
 pub fn status_to_string(status: &PrintStatus) -> String {
     match status {
         PrintStatus::Pending => "PENDING".to_string(),

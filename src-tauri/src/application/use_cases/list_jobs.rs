@@ -1,16 +1,16 @@
-use crate::application::dto::{JobDto, JobFilterDto};
+﻿use crate::application::dto::{JobDto, JobFilterDto};
 use crate::application::use_cases::errors::ApplicationError;
 use crate::domain::print_job::PrintJobRepository;
 use std::sync::Arc;
 
-/// Use case: List print jobs với filtering capabilities.
+/// Use case: List print jobs vá»›i filtering capabilities.
 ///
 /// Filters supported:
 /// - Status: filter by specific PrintStatus
 /// - Printer name: filter by printer_name
-/// - Date range: from_date và to_date (Unix timestamps)
+/// - Date range: from_date vĂ  to_date (Unix timestamps)
 ///
-/// Returns: Vec<JobDto> với timestamps và progress calculations
+/// Returns: Vec<JobDto> vá»›i timestamps vĂ  progress calculations
 pub struct ListJobsUseCase {
     job_repo: Arc<dyn PrintJobRepository>,
 }
@@ -72,11 +72,11 @@ impl ListJobsUseCase {
     }
 }
 
-/// Helper: parse status string từ filter DTO.
+/// Helper: parse status string tá»« filter DTO.
 fn parse_status(
     status_str: &str,
-) -> Result<crate::domain::print_job::value_objects::PrintStatus, ApplicationError> {
-    use crate::domain::print_job::value_objects::PrintStatus;
+) -> Result<crate::domain::print_job::PrintStatus, ApplicationError> {
+    use crate::domain::print_job::PrintStatus;
 
     match status_str {
         "PENDING" => Ok(PrintStatus::Pending),
@@ -96,9 +96,9 @@ fn parse_status(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::domain::print_job::aggregate::PrintJob;
+    use crate::domain::print_job::PrintJob;
     use crate::domain::print_job::errors::DomainError;
-    use crate::domain::print_job::value_objects::{JobId, PrintStatus};
+    use crate::domain::print_job::{JobId, PrintStatus};
     use std::sync::Mutex;
 
     // Mock repository for testing
@@ -289,6 +289,6 @@ mod tests {
 
         let result = use_case.execute(filter).unwrap();
         assert_eq!(result.len(), 1);
-        assert_eq!(result[0].progress, 10); // QUEUED → 10%
+        assert_eq!(result[0].progress, 10); // QUEUED â†’ 10%
     }
 }

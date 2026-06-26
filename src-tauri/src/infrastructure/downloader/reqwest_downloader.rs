@@ -1,4 +1,4 @@
-//! Reqwest-based Document Downloader Implementation
+﻿//! Reqwest-based Document Downloader Implementation
 //!
 //! Concrete implementation of `DocumentDownloader` using `reqwest::blocking::Client`
 //! with a 30-second timeout, circuit breaker integration, and atomic download pattern.
@@ -7,7 +7,7 @@
 //! 1. Check circuit breaker state
 //! 2. Download to `.tmp` file
 //! 3. Validate PDF header (`%PDF-`)
-//! 4. Atomic rename `.tmp` → `.pdf`
+//! 4. Atomic rename `.tmp` â†’ `.pdf`
 //! 5. Return final path
 //!
 //! ## Error Handling
@@ -20,7 +20,7 @@ use std::sync::Mutex;
 
 use reqwest::blocking::Client;
 
-use crate::domain::print_job::value_objects::JobId;
+use crate::domain::print_job::JobId;
 use crate::infrastructure::downloader::circuit_breaker::CircuitBreaker;
 use crate::infrastructure::downloader::document_downloader::DocumentDownloader;
 use crate::shared::errors::InfrastructureError;

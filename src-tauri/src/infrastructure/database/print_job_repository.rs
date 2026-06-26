@@ -1,11 +1,11 @@
-use rusqlite::Connection;
+﻿use rusqlite::Connection;
 use std::sync::{Arc, Mutex};
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use crate::domain::print_job::aggregate::PrintJob;
+use crate::domain::print_job::PrintJob;
 use crate::domain::print_job::errors::DomainError;
-use crate::domain::print_job::repository::PrintJobRepository;
-use crate::domain::print_job::value_objects::{JobId, PrintStatus};
+use crate::domain::print_job::PrintJobRepository;
+use crate::domain::print_job::{JobId, PrintStatus};
 
 /// SQLite implementation of `PrintJobRepository`.
 ///
@@ -394,15 +394,16 @@ fn row_to_print_job(row: &rusqlite::Row<'_>) -> Result<PrintJob, rusqlite::Error
         completed_at,
         error_message,
         output_path,
+        crate::domain::settings::PrintSettings::default(),
     ))
 }
 
-/// Helper: PrintStatus → database TEXT.
+/// Helper: PrintStatus â†’ database TEXT.
 fn status_to_string(s: &PrintStatus) -> String {
     format!("{:?}", s)
 }
 
-/// Helper: database TEXT → PrintStatus.
+/// Helper: database TEXT â†’ PrintStatus.
 fn status_from_string(s: &str) -> Result<PrintStatus, DomainError> {
     match s {
         "Pending" => Ok(PrintStatus::Pending),
@@ -463,7 +464,7 @@ mod tests {
         assert_eq!(*found.status(), PrintStatus::Pending);
         assert_eq!(found.retry_count(), 0);
 
-        // Non-existent ID → None
+        // Non-existent ID â†’ None
         let missing = JobId::new();
         let result = repo.find_by_id(&missing).unwrap();
         assert!(result.is_none());

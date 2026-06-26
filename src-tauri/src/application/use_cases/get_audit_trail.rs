@@ -1,4 +1,4 @@
-use std::sync::Arc;
+﻿use std::sync::Arc;
 
 use crate::application::use_cases::errors::ApplicationError;
 use crate::infrastructure::database::audit::{
@@ -111,7 +111,7 @@ impl AuditTrailUseCase {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::domain::print_job::aggregate::PrintJob;
+    use crate::domain::print_job::PrintJob;
     use crate::infrastructure::database::migrations::run_migrations;
     use crate::shared::errors::InfrastructureError;
     use rusqlite::Connection;
