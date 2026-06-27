@@ -2,8 +2,8 @@ use std::sync::Arc;
 
 use crate::application::dto::job_status_dto::JobStatusDto;
 use crate::application::use_cases::errors::ApplicationError;
-use crate::domain::print_job::PrintJobRepository;
-use crate::domain::print_job::JobId;
+use crate::domain::repository::PrintJobRepository;
+use crate::domain::models::JobId;
 
 /// Use case: Get status of a print job.
 ///

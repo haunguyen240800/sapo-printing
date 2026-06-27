@@ -1,4 +1,4 @@
-use crate::domain::print_job::errors::DomainError;
+use crate::domain::models::DomainError;
 use std::fmt;
 
 /// Application-layer error enum for use case operations.

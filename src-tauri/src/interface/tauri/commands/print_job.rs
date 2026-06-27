@@ -5,7 +5,7 @@ use crate::application::use_cases::cancel_print_job::CancelPrintJobUseCase;
 use crate::application::use_cases::create_print_job::CreatePrintJobUseCase;
 use crate::application::use_cases::errors::ApplicationError;
 use crate::application::use_cases::list_jobs::ListJobsUseCase;
-use crate::domain::print_job::JobId;
+use crate::domain::models::JobId;
 use crate::AppContextState;
 use std::str::FromStr;
 

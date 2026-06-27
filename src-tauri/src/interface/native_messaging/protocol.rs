@@ -9,8 +9,8 @@ use crate::application::use_cases::cancel_print_job::CancelPrintJobUseCase;
 use crate::application::use_cases::create_print_job::CreatePrintJobUseCase;
 use crate::application::use_cases::errors::ApplicationError;
 use crate::application::use_cases::get_job_status::GetJobStatusUseCase;
-use crate::domain::print_job::PrintJobRepository;
-use crate::infrastructure::database::SqliteEventStore;
+use crate::domain::repository::PrintJobRepository;
+use crate::infrastructure::persistence::sqlite::SqliteEventStore;
 
 use crate::interface::tauri::dtos::printer_dto::PrinterDto;
 use crate::shared::event_bus::EventBus;
@@ -181,7 +181,7 @@ pub struct NativeMessageHandler {
     pub job_repo: Arc<dyn PrintJobRepository>,
     pub event_store: Arc<SqliteEventStore>,
     pub event_bus: Arc<dyn EventBus>,
-    pub metrics_collector: Arc<crate::infrastructure::metrics::MetricsCollector>,
+    pub metrics_collector: Arc<crate::infrastructure::telemetry::metrics::MetricsCollector>,
 }
 
 impl NativeMessageHandler {
@@ -189,7 +189,7 @@ impl NativeMessageHandler {
         job_repo: Arc<dyn PrintJobRepository>,
         event_store: Arc<SqliteEventStore>,
         event_bus: Arc<dyn EventBus>,
-        metrics_collector: Arc<crate::infrastructure::metrics::MetricsCollector>,
+        metrics_collector: Arc<crate::infrastructure::telemetry::metrics::MetricsCollector>,
     ) -> Self {
         Self {
             job_repo,            event_store,

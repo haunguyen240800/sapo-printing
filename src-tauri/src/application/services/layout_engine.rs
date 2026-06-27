@@ -1,5 +1,5 @@
-use crate::domain::layout::Transform;
-use crate::domain::settings::PrintSettings;
+use crate::domain::common::Transform;
+use crate::domain::models::PrintJobSettings;
 
 pub struct LayoutEngine;
 
@@ -11,7 +11,7 @@ impl LayoutEngine {
     /// - `pdf_width`, `pdf_height`: Original PDF page dimensions in points (1/72 inch).
     /// Output:
     /// - `Transform`: scale and translation (in points) to apply before rendering.
-    pub fn calculate(settings: &PrintSettings, pdf_width: f32, pdf_height: f32) -> Transform {
+    pub fn calculate(settings: &PrintJobSettings, pdf_width: f32, pdf_height: f32) -> Transform {
         // 1. Determine paper size in mm
         let (mut paper_w_mm, mut paper_h_mm) = Self::resolve_paper_size(
             &settings.paper_size,

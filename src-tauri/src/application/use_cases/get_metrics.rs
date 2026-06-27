@@ -1,8 +1,8 @@
 ﻿use std::sync::Arc;
 
 use crate::application::use_cases::errors::ApplicationError;
-use crate::infrastructure::metrics::collector::MetricsSnapshot;
-use crate::infrastructure::metrics::MetricsCollector;
+use crate::infrastructure::telemetry::metrics::collector::MetricsSnapshot;
+use crate::infrastructure::telemetry::metrics::MetricsCollector;
 
 pub struct GetMetricsUseCase {
     metrics_collector: Arc<MetricsCollector>,
@@ -31,9 +31,9 @@ impl GetMetricsUseCase {
             .unwrap_or_default()
             .as_secs() as i64;
 
-        let snapshot = crate::infrastructure::metrics::collector::MetricsSnapshot {
+        let snapshot = crate::infrastructure::telemetry::metrics::collector::MetricsSnapshot {
             collected_at,
-            job_metrics: crate::infrastructure::metrics::collector::JobMetrics {
+            job_metrics: crate::infrastructure::telemetry::metrics::collector::JobMetrics {
                 total_jobs: 0,
                 pending: 0,
                 queued: 0,
@@ -45,14 +45,14 @@ impl GetMetricsUseCase {
                 cancelled: 0,
                 success_rate: 0.0,
             },
-            queue_metrics: crate::infrastructure::metrics::collector::QueueMetrics {
+            queue_metrics: crate::infrastructure::telemetry::metrics::collector::QueueMetrics {
                 current_depth: 0,
                 avg_wait_time_secs: 0.0,
             },
-            printer_metrics: crate::infrastructure::metrics::collector::PrinterMetrics {
+            printer_metrics: crate::infrastructure::telemetry::metrics::collector::PrinterMetrics {
                 printers: vec![],
             },
-            performance_metrics: crate::infrastructure::metrics::collector::PerformanceMetrics {
+            performance_metrics: crate::infrastructure::telemetry::metrics::collector::PerformanceMetrics {
                 avg_job_duration_secs: 0.0,
                 p50_job_duration_secs: 0.0,
                 p95_job_duration_secs: 0.0,
@@ -102,10 +102,10 @@ impl GetMetricsUseCase {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::domain::print_job::PrintJob;
-    use crate::domain::print_job::JobId;
-    use crate::infrastructure::database::migrations::run_migrations;
-    use crate::infrastructure::queue::{QueueError, QueueManager};
+    use crate::domain::models::PrintJob;
+    use crate::domain::models::JobId;
+    use crate::infrastructure::persistence::sqlite::migrations::run_migrations;
+    use crate::infrastructure::persistence::task_queue::{QueueError, QueueManager};
     use rusqlite::Connection;
     use std::sync::Mutex as StdMutex;
 

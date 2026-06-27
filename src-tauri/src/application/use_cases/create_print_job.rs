@@ -2,10 +2,10 @@ use std::sync::Arc;
 
 use crate::application::dto::create_job_request::CreateJobRequest;
 use crate::application::use_cases::errors::ApplicationError;
-use crate::domain::print_job::PrintJob;
-use crate::domain::print_job::PrintJobRepository;
-use crate::domain::print_job::JobId;
-use crate::infrastructure::database::SqliteEventStore;
+use crate::domain::models::PrintJob;
+use crate::domain::repository::PrintJobRepository;
+use crate::domain::models::JobId;
+use crate::infrastructure::persistence::sqlite::SqliteEventStore;
 use crate::shared::event_bus::EventBus;
 
 const MAX_URLS: usize = 5000;
@@ -54,8 +54,8 @@ impl CreatePrintJobUseCase {
 
         // 2. Verify printer ONLINE via PrinterManager
         // NOTE: Windows API calls (OpenPrinterW/GetPrinterW) can hang for network printers
-                // Load global configuration and map to PrintSettings
-        let global_config = crate::infrastructure::config_store::load_config()
+                // Load global configuration and map to PrintJobSettings
+        let global_config = crate::infrastructure::app_print_config::load_config()
             .unwrap_or_default()
             .unwrap_or_default();
 
@@ -72,7 +72,7 @@ impl CreatePrintJobUseCase {
             });
         }
 
-        let settings = crate::domain::settings::PrintSettings {
+        let settings = crate::domain::models::PrintJobSettings {
             paper_size: global_config.paper_size,
             paper_width: global_config.paper_width,
             paper_height: global_config.paper_height,

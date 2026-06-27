@@ -1,6 +1,6 @@
 use crate::application::dto::{JobDto, JobFilterDto};
 use crate::application::use_cases::errors::ApplicationError;
-use crate::domain::print_job::PrintJobRepository;
+use crate::domain::repository::PrintJobRepository;
 use std::sync::Arc;
 
 /// Use case: List print jobs với filtering capabilities.
@@ -75,8 +75,8 @@ impl ListJobsUseCase {
 /// Helper: parse status string từ filter DTO.
 fn parse_status(
     status_str: &str,
-) -> Result<crate::domain::print_job::PrintStatus, ApplicationError> {
-    use crate::domain::print_job::PrintStatus;
+) -> Result<crate::domain::models::PrintStatus, ApplicationError> {
+    use crate::domain::models::PrintStatus;
 
     match status_str {
         "PENDING" => Ok(PrintStatus::Pending),

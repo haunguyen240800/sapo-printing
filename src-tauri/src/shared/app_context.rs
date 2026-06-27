@@ -1,27 +1,27 @@
 use std::sync::Arc;
 
-use crate::domain::print_job::PrintJobRepository;
-use crate::infrastructure::database::{
+use crate::domain::repository::PrintJobRepository;
+use crate::infrastructure::persistence::sqlite::{
     run_migrations, DbPool, SqliteEventStore, SqlitePrintJobRepository,
 };
 
-use crate::infrastructure::secrets::SecretManager;
+use crate::infrastructure::platform::keychain::SecretManager;
 use crate::shared::errors::InfrastructureError;
 use crate::shared::event_bus::EventBus;
 
 // TODO (Story 3.1): Add DocumentDownloader to AppContext
 // When Use Cases are created (Story 3.8+), inject:
-//   use crate::infrastructure::downloader::{DocumentDownloader, ReqwestDownloader};
+//   use crate::infrastructure::integrations::network::{DocumentDownloader, ReqwestDownloader};
 //   pub downloader: Arc<dyn DocumentDownloader>,
 // Initialize in AppContext::new():
 //   downloader: Arc::new(ReqwestDownloader::new()),
 
 #[cfg(target_os = "linux")]
-use crate::infrastructure::secrets::LinuxSecretService;
+use crate::infrastructure::platform::keychain::LinuxSecretService;
 #[cfg(target_os = "macos")]
-use crate::infrastructure::secrets::MacOSKeychain;
+use crate::infrastructure::platform::keychain::MacOSKeychain;
 #[cfg(target_os = "windows")]
-use crate::infrastructure::secrets::WindowsCredentialManager;
+use crate::infrastructure::platform::keychain::WindowsCredentialManager;
 
 /// Application-wide dependency injection container.
 ///

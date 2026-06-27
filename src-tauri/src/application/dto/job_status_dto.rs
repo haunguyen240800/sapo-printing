@@ -1,8 +1,8 @@
 use serde::{Deserialize, Serialize};
 
 use crate::application::dto::job_dto::calculate_progress;
-use crate::domain::print_job::PrintJob;
-use crate::domain::print_job::PrintStatus;
+use crate::domain::models::PrintJob;
+use crate::domain::models::PrintStatus;
 
 /// DTO cho status polling — dùng bởi web app polling qua native messaging.
 ///

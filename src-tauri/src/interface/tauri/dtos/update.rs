@@ -10,7 +10,7 @@ pub struct UpdateCheckResponse {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::infrastructure::updater::update_checker::UpdateCheckResult;
+    use crate::infrastructure::platform::updater::update_checker::UpdateCheckResult;
 
     #[test]
     fn test_dto_serialize() {

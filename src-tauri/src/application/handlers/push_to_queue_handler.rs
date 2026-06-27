@@ -1,5 +1,5 @@
-﻿use crate::domain::print_job::JobId;
-use crate::infrastructure::queue::QueueManager;
+﻿use crate::domain::models::JobId;
+use crate::infrastructure::persistence::task_queue::QueueManager;
 use crate::shared::event_bus::EventHandler;
 use std::str::FromStr;
 use std::sync::Arc;

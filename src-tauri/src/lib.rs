@@ -21,14 +21,14 @@ pub mod shared;
 /// Shared state registered with Tauri via `.manage()`.
 /// Commands access this via `tauri::State<'_, AppContextState>`.
 pub struct AppContextState {
-    pub secret_manager: Arc<dyn infrastructure::secrets::SecretManager>,
-    pub job_repo: Arc<dyn domain::print_job::PrintJobRepository>,
-    pub event_store: Arc<infrastructure::database::SqliteEventStore>,
+    pub secret_manager: Arc<dyn infrastructure::platform::keychain::SecretManager>,
+    pub job_repo: Arc<dyn domain::repository::PrintJobRepository>,
+    pub event_store: Arc<infrastructure::persistence::sqlite::SqliteEventStore>,
     pub event_bus: Arc<dyn shared::event_bus::EventBus>,
-    pub queue_manager: Arc<dyn infrastructure::queue::QueueManager>,
-    pub queue_worker: Arc<infrastructure::queue::QueueWorker>,
-    pub metrics_collector: Arc<infrastructure::metrics::MetricsCollector>,
+    pub queue_manager: Arc<dyn infrastructure::persistence::task_queue::QueueManager>,
+    pub queue_worker: Arc<infrastructure::persistence::task_queue::QueueWorker>,
+    pub metrics_collector: Arc<infrastructure::telemetry::metrics::MetricsCollector>,
     pub app_handle: tauri::AppHandle,
-    pub install_guard: infrastructure::updater::update_checker::InstallGuard,
+    pub install_guard: infrastructure::platform::updater::update_checker::InstallGuard,
     pub last_emitted_update_version: std::sync::Mutex<Option<String>>,
 }

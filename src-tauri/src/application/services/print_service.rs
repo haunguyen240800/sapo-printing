@@ -1,10 +1,10 @@
 use std::sync::Arc;
-use crate::domain::print_job::PrintJob;
+use crate::domain::models::PrintJob;
 use crate::domain::common::aggregate::AggregateRoot;
-use crate::infrastructure::graphics::backend::GraphicsBackendFactory;
-use crate::infrastructure::pdfium::bitmap_strategy::BitmapRenderStrategy;
-use crate::infrastructure::pdfium::native_strategy::NativePdfRenderStrategy;
-use crate::infrastructure::pdfium::renderer::RenderStrategy;
+use crate::infrastructure::platform::printer_api::backend::GraphicsBackendFactory;
+use crate::infrastructure::integrations::pdf_engine::bitmap_strategy::BitmapRenderStrategy;
+use crate::infrastructure::integrations::pdf_engine::native_strategy::NativePdfRenderStrategy;
+use crate::infrastructure::integrations::pdf_engine::renderer::RenderStrategy;
 
 pub trait IJobRepository: Send + Sync {
     fn save(&self, job: &PrintJob) -> Result<(), String>;

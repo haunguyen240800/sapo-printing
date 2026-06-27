@@ -3,7 +3,9 @@
 // CRITICAL: Domain must remain completely independent of all other layers
 
 pub mod common;
-
-pub mod layout;
-pub mod print_job;
-pub mod settings;
+pub mod models;
+pub mod events;
+pub mod repository;
+pub mod rules;
+// TODO(1-N PrintJob): Uncomment below to use the Document aggregate when implementing 1-N relationship between PrintJob and PDF files
+// pub mod document;

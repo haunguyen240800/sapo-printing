@@ -1,5 +1,5 @@
-use crate::domain::print_job::PrintJob;
-use crate::domain::print_job::PrintStatus;
+use crate::domain::models::PrintJob;
+use crate::domain::models::PrintStatus;
 use serde::{Deserialize, Serialize};
 
 /// DTO cho danh sách print jobs.

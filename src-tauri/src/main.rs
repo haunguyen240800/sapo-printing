@@ -4,14 +4,14 @@
 // Prevents additional console window on Windows in release builds
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
-use sapo_printer::infrastructure::database::{
+use sapo_printer::infrastructure::persistence::sqlite::{
     run_migrations, DbPool, SqliteEventStore, SqlitePrintJobRepository,
 };
-use sapo_printer::infrastructure::downloader::ReqwestDownloader;
-use sapo_printer::infrastructure::eventbus::tauri_event_bus::TauriEventBus;
-use sapo_printer::infrastructure::metrics::MetricsCollector;
-use sapo_printer::infrastructure::queue::{QueueWorker, SqliteQueueManager};
-use sapo_printer::infrastructure::secrets::SecretManager;
+use sapo_printer::infrastructure::integrations::network::ReqwestDownloader;
+use sapo_printer::infrastructure::bus::event_bus::tauri_event_bus::TauriEventBus;
+use sapo_printer::infrastructure::telemetry::metrics::MetricsCollector;
+use sapo_printer::infrastructure::persistence::task_queue::{QueueWorker, SqliteQueueManager};
+use sapo_printer::infrastructure::platform::keychain::SecretManager;
 use sapo_printer::interface::tauri::dtos::printer_dto::{
     PrinterConfigDto, PrinterDto, PrinterStatusDto,
 };
@@ -250,14 +250,14 @@ fn restart_app() -> Result<(), String> {
 }
 
 #[cfg(target_os = "windows")]
-use sapo_printer::infrastructure::secrets::WindowsCredentialManager;
+use sapo_printer::infrastructure::platform::keychain::WindowsCredentialManager;
 
 
 #[cfg(target_os = "macos")]
-use sapo_printer::infrastructure::secrets::MacOSKeychain;
+use sapo_printer::infrastructure::platform::keychain::MacOSKeychain;
 
 #[cfg(target_os = "linux")]
-use sapo_printer::infrastructure::secrets::LinuxSecretService;
+use sapo_printer::infrastructure::platform::keychain::LinuxSecretService;
 
 /// List all available printers (discovered from OS)
 #[tauri::command]
@@ -271,7 +271,7 @@ fn save_printer_config(
     config: PrinterConfigDto,
     _app_ctx: tauri::State<AppContextState>,
 ) -> Result<(), String> {
-    use sapo_printer::infrastructure::config_store;
+    use sapo_printer::infrastructure::app_print_config;
 
     // 1. Validate config fields
     // Paper size validation
@@ -351,7 +351,7 @@ fn save_printer_config(
     }
 
     // 2. Convert DTO to config store model
-    let print_config = config_store::PrintConfig {
+    let print_config = app_print_config::AppPrintConfig {
         printer_name: config.printer_name,
         paper_size: config.paper_size,
         paper_width: config.paper_width,
@@ -368,7 +368,7 @@ fn save_printer_config(
     };
 
     // 3. Save to JSON file
-    config_store::save_config(&print_config)?;
+    app_print_config::save_config(&print_config)?;
 
     Ok(())
 }
@@ -378,9 +378,9 @@ fn save_printer_config(
 fn get_printer_config(
     _app_ctx: tauri::State<AppContextState>,
 ) -> Result<PrinterConfigDto, String> {
-    use sapo_printer::infrastructure::config_store;
+    use sapo_printer::infrastructure::app_print_config;
 
-    let config = config_store::load_config()?;
+    let config = app_print_config::load_config()?;
 
     match config {
         Some(cfg) => Ok(PrinterConfigDto {
@@ -498,7 +498,7 @@ fn run_native_messaging_mode() -> Result<(), String> {
 
 
     // Startup cleanup: purge events older than 30 days (best-effort)
-    match sapo_printer::infrastructure::database::cleanup_old_events(&event_store, 30) {
+    match sapo_printer::infrastructure::persistence::sqlite::cleanup_old_events(&event_store, 30) {
         Ok(deleted) => {
             if deleted > 0 {
                 tracing::info!(
@@ -652,7 +652,7 @@ fn main() {
             let event_store = Arc::new(SqliteEventStore::new(pool.get_arc(), secret_manager.clone()));
             let event_bus: Arc<dyn EventBus> =
                 Arc::new(TauriEventBus::new(app_handle.clone()));
-            let queue_manager: Arc<dyn sapo_printer::infrastructure::queue::QueueManager> =
+            let queue_manager: Arc<dyn sapo_printer::infrastructure::persistence::task_queue::QueueManager> =
                 Arc::new(SqliteQueueManager::new(pool.get_arc()));
 
             // Register PushToQueueHandler to listen for PrintJobCreated events
@@ -679,7 +679,7 @@ fn main() {
             let worker = Arc::new(QueueWorker::new(
                 Arc::clone(&queue_manager),
                 job_repo.clone()
-                    as Arc<dyn sapo_printer::domain::print_job::PrintJobRepository>,
+                    as Arc<dyn sapo_printer::domain::repository::PrintJobRepository>,
                 Arc::clone(&event_store),
                 Arc::clone(&event_bus),
                 downloader,
@@ -695,7 +695,7 @@ fn main() {
             ));
 
             // Startup cleanup: purge events older than 30 days (best-effort)
-            match sapo_printer::infrastructure::database::cleanup_old_events(&event_store, 30) {
+            match sapo_printer::infrastructure::persistence::sqlite::cleanup_old_events(&event_store, 30) {
                 Ok(deleted) => {
                     if deleted > 0 {
                         tracing::info!(
@@ -724,7 +724,7 @@ fn main() {
                 queue_worker: worker,
                 metrics_collector,
                 app_handle,
-                install_guard: sapo_printer::infrastructure::updater::update_checker::InstallGuard::new(),
+                install_guard: sapo_printer::infrastructure::platform::updater::update_checker::InstallGuard::new(),
                 last_emitted_update_version: std::sync::Mutex::new(None),
             });
 
@@ -746,7 +746,7 @@ fn main() {
                     use tauri::Emitter;
 
                     // Startup check
-                    match sapo_printer::infrastructure::updater::update_checker::check_for_updates(
+                    match sapo_printer::infrastructure::platform::updater::update_checker::check_for_updates(
                         &update_handle,
                     )
                     .await
@@ -784,7 +784,7 @@ fn main() {
                     // Periodic check every 24 hours
                     loop {
                         tokio::time::sleep(std::time::Duration::from_secs(24 * 60 * 60)).await;
-                        match sapo_printer::infrastructure::updater::update_checker::check_for_updates(
+                        match sapo_printer::infrastructure::platform::updater::update_checker::check_for_updates(
                             &update_handle,
                         )
                         .await

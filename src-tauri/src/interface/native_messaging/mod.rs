@@ -4,9 +4,9 @@ pub mod registry;
 use std::io::{self, BufReader, BufWriter, Write};
 use std::sync::Arc;
 
-use crate::domain::print_job::PrintJobRepository;
-use crate::infrastructure::database::SqliteEventStore;
-use crate::infrastructure::metrics::MetricsCollector;
+use crate::domain::repository::PrintJobRepository;
+use crate::infrastructure::persistence::sqlite::SqliteEventStore;
+use crate::infrastructure::telemetry::metrics::MetricsCollector;
 
 use crate::shared::event_bus::EventBus;
 
