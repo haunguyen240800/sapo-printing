@@ -1,4 +1,4 @@
-﻿use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use rusqlite::Connection;
@@ -73,6 +73,13 @@ impl MetricsCollector {
     }
 
     pub fn collect_metrics(&self) -> Result<MetricsSnapshot, MetricsError> {
+        // Collect current_depth before acquiring the database lock to prevent deadlocking
+        // with queue_manager, which might also try to lock the database connection.
+        let current_depth = self
+            .queue_manager
+            .queue_depth()
+            .map_err(|e| MetricsError::QueueError(format!("{}", e)))?;
+
         tracing::debug!(
             target = "sapo_printer::metrics",
             "MetricsCollector: acquiring database lock"
@@ -88,7 +95,7 @@ impl MetricsCollector {
         );
 
         let job_metrics = self.collect_job_metrics(&conn)?;
-        let queue_metrics = self.collect_queue_metrics(&conn)?;
+        let queue_metrics = self.collect_queue_metrics(&conn, current_depth)?;
         let printer_metrics = self.collect_printer_metrics(&conn)?;
         let performance_metrics = self.collect_performance_metrics(&conn)?;
 
@@ -168,11 +175,7 @@ impl MetricsCollector {
         })
     }
 
-    fn collect_queue_metrics(&self, conn: &Connection) -> Result<QueueMetrics, MetricsError> {
-        let current_depth = self
-            .queue_manager
-            .queue_depth()
-            .map_err(|e| MetricsError::QueueError(format!("{}", e)))?;
+    fn collect_queue_metrics(&self, conn: &Connection, current_depth: usize) -> Result<QueueMetrics, MetricsError> {
 
         let avg_wait_time_secs: f64 = conn
             .query_row(

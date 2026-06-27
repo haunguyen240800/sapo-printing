@@ -424,6 +424,67 @@ fn get_printer_status(
     Ok(PrinterStatusDto { status: "Online".to_string() })
 }
 
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+struct PrinterCategoryResult {
+    category: String,
+    needs_rendering: bool,
+    needs_save_dialog: bool,
+    description: String,
+}
+
+/// Detect printer category based on printer name
+#[tauri::command]
+fn detect_printer_category(printer_name: String) -> Result<PrinterCategoryResult, String> {
+    let printer_lower = printer_name.to_lowercase();
+    
+    let pdf_patterns = [
+        "microsoft print to pdf",
+        "print to pdf",
+        "save as pdf",
+        "pdf printer",
+        "adobe pdf",
+        "foxit reader pdf printer",
+        "nitro pdf creator",
+        "cutepdf writer",
+        "dopdf",
+    ];
+    
+    let virtual_patterns = [
+        "microsoft xps document writer",
+        "microsoft print to image",
+        "fax",
+        "onenote",
+        "send to onenote",
+    ];
+    
+    let is_pdf = pdf_patterns.iter().any(|&p| printer_lower.contains(p));
+    let is_virtual = virtual_patterns.iter().any(|&p| printer_lower.contains(p));
+    
+    if is_pdf {
+        Ok(PrinterCategoryResult {
+            category: "pdf".to_string(),
+            needs_rendering: false,
+            needs_save_dialog: true,
+            description: "Print to PDF Virtual Printer".to_string(),
+        })
+    } else if is_virtual {
+        Ok(PrinterCategoryResult {
+            category: "virtual".to_string(),
+            needs_rendering: false,
+            needs_save_dialog: false,
+            description: "Virtual/Image Printer".to_string(),
+        })
+    } else {
+        Ok(PrinterCategoryResult {
+            category: "physical".to_string(),
+            needs_rendering: true,
+            needs_save_dialog: false,
+            description: "Physical Network/USB Printer".to_string(),
+        })
+    }
+}
+
 /// Tauri command: register this app as a Chrome Native Messaging host.
 /// Accepts a comma-separated list of allowed extension IDs.
 #[tauri::command]
@@ -832,6 +893,7 @@ fn main() {
             save_printer_config,
             get_printer_config,
             get_printer_status,
+            detect_printer_category,
             create_print_job,
             cancel_print_job,
             list_jobs,

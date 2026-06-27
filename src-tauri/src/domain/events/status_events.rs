@@ -25,7 +25,10 @@ macro_rules! define_status_event {
             fn aggregate_id(&self) -> &JobId { &self.job_id }
             fn serialize_payload(&self) -> String { serde_json::to_string(self).unwrap_or_else(|_| "{}".to_string()) }
         }
-        impl CommonDomainEvent for $name { fn event_name(&self) -> &'static str { $event_type } }
+        impl CommonDomainEvent for $name {
+            fn event_name(&self) -> &'static str { $event_type }
+            fn serialize_payload(&self) -> String { serde_json::to_string(self).unwrap_or_else(|_| "{}".to_string()) }
+        }
     };
 }
 

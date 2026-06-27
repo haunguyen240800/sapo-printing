@@ -27,4 +27,7 @@ impl DomainEvent for PrintJobFailed {
     fn aggregate_id(&self) -> &JobId { &self.job_id }
     fn serialize_payload(&self) -> String { serde_json::to_string(self).unwrap_or_else(|_| "{}".to_string()) }
 }
-impl CommonDomainEvent for PrintJobFailed { fn event_name(&self) -> &'static str { "PrintJobFailed" } }
+impl CommonDomainEvent for PrintJobFailed {
+    fn event_name(&self) -> &'static str { "PrintJobFailed" }
+    fn serialize_payload(&self) -> String { serde_json::to_string(self).unwrap_or_else(|_| "{}".to_string()) }
+}
