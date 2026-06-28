@@ -7,6 +7,7 @@ use sha2::Sha256;
 use std::sync::{Arc, Mutex};
 use std::time::{SystemTime, UNIX_EPOCH};
 
+use crate::application::ports::EventStore;
 use crate::domain::models::DomainError;
 use crate::domain::common::aggregate::DomainEvent;
 use crate::infrastructure::platform::keychain::SecretManager;
@@ -414,4 +415,39 @@ impl SqliteEventStore {
     }
 }
 
+/// Implement the application-layer `EventStore` port so that use cases and
+/// the `QueueWorker` can depend on `Arc<dyn EventStore>` instead of the
+/// concrete `SqliteEventStore`.
+impl EventStore for SqliteEventStore {
+    fn save_all(
+        &self,
+        aggregate_id: &str,
+        events: &[Box<dyn DomainEvent>],
+    ) -> Result<(), DomainError> {
+        self.save_all(aggregate_id, events)
+    }
 
+    fn find_by_aggregate(
+        &self,
+        aggregate_id: &str,
+    ) -> Result<Vec<crate::application::ports::StoredEventData>, DomainError> {
+        self.find_by_aggregate(aggregate_id).map(|events| {
+            events
+                .into_iter()
+                .map(|e| crate::application::ports::StoredEventData {
+                    id: e.id,
+                    aggregate_id: e.aggregate_id,
+                    sequence_number: e.sequence_number,
+                    event_type: e.event_type,
+                    payload: e.payload,
+                    timestamp: e.timestamp,
+                    hmac: e.hmac,
+                })
+                .collect()
+        })
+    }
+
+    fn delete_events_before(&self, cutoff_timestamp: i64) -> Result<u64, DomainError> {
+        self.delete_events_before(cutoff_timestamp)
+    }
+}

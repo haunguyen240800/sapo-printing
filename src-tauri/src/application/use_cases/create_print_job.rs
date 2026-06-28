@@ -1,11 +1,11 @@
 use std::sync::Arc;
 
 use crate::application::dto::create_job_request::CreateJobRequest;
+use crate::application::ports::EventStore;
 use crate::application::use_cases::errors::ApplicationError;
 use crate::domain::models::PrintJob;
 use crate::domain::repository::PrintJobRepository;
 use crate::domain::models::JobId;
-use crate::infrastructure::persistence::sqlite::SqliteEventStore;
 use crate::shared::event_bus::EventBus;
 
 const MAX_URLS: usize = 5000;
@@ -23,7 +23,7 @@ const MAX_URLS: usize = 5000;
 /// 8. Return Vec<JobId>
 pub struct CreatePrintJobUseCase {
     pub job_repo: Arc<dyn PrintJobRepository>,
-    pub event_store: Arc<SqliteEventStore>,
+    pub event_store: Arc<dyn EventStore>,
     pub event_bus: Arc<dyn EventBus>,
 }
 

@@ -2,8 +2,9 @@ use std::ffi::OsStr;
 use std::os::windows::ffi::OsStrExt;
 // Removed unused imports
 use windows::Win32::Graphics::Gdi::{
-    CreateDCW, DeleteDC, StretchDIBits,
+    CreateDCW, DeleteDC, StretchDIBits, GetDeviceCaps,
     BITMAPINFO, BITMAPINFOHEADER, BI_RGB, DIB_RGB_COLORS, HDC, SRCCOPY,
+    LOGPIXELSX, LOGPIXELSY, HORZRES, VERTRES, HORZSIZE, VERTSIZE,
 };
 use windows::Win32::Storage::Xps::{
     StartDocW, StartPage, EndPage, EndDoc, DOCINFOW,
@@ -30,7 +31,7 @@ impl WindowsGraphicsBackend {
 }
 
 impl GraphicsBackend for WindowsGraphicsBackend {
-    fn begin_document(&mut self, printer_name: &str, doc_name: &str) -> Result<(), String> {
+    fn begin_document(&mut self, printer_name: &str, doc_name: &str, output_path: Option<&str>) -> Result<(), String> {
         let printer_hstr = HSTRING::from(printer_name);
         
         // 1. Create Device Context
@@ -51,11 +52,12 @@ impl GraphicsBackend for WindowsGraphicsBackend {
 
         // 2. Start Document
         let doc_name_w = Self::to_wstring(doc_name);
+        let output_w = output_path.map(Self::to_wstring);
         
         let doc_info = DOCINFOW {
             cbSize: std::mem::size_of::<DOCINFOW>() as i32,
             lpszDocName: PCWSTR(doc_name_w.as_ptr()),
-            lpszOutput: PCWSTR::null(),
+            lpszOutput: output_w.as_ref().map_or(PCWSTR::null(), |w| PCWSTR(w.as_ptr())),
             lpszDatatype: PCWSTR::null(),
             fwType: 0,
         };
@@ -68,6 +70,30 @@ impl GraphicsBackend for WindowsGraphicsBackend {
         }
 
         Ok(())
+    }
+
+    fn get_dpi(&self) -> (u32, u32) {
+        if let Some(hdc) = self.hdc {
+            unsafe {
+                let log_x = GetDeviceCaps(hdc, LOGPIXELSX);
+                let log_y = GetDeviceCaps(hdc, LOGPIXELSY);
+                
+                let horz_res = GetDeviceCaps(hdc, HORZRES);
+                let vert_res = GetDeviceCaps(hdc, VERTRES);
+                let horz_size = GetDeviceCaps(hdc, HORZSIZE); // in mm
+                let vert_size = GetDeviceCaps(hdc, VERTSIZE); // in mm
+
+                let phys_dpi_x = if horz_size > 0 { (horz_res as f64 / (horz_size as f64 / 25.4)).round() as u32 } else { log_x as u32 };
+                let phys_dpi_y = if vert_size > 0 { (vert_res as f64 / (vert_size as f64 / 25.4)).round() as u32 } else { log_y as u32 };
+
+                tracing::info!("Printer DPI metrics: LOGPIXELS={}x{}, HORZRES={}x{}, SIZE={}x{}mm, PHYS_DPI={}x{}", 
+                    log_x, log_y, horz_res, vert_res, horz_size, vert_size, phys_dpi_x, phys_dpi_y);
+
+                (phys_dpi_x, phys_dpi_y)
+            }
+        } else {
+            (300, 300)
+        }
     }
 
     fn begin_page(&mut self) {

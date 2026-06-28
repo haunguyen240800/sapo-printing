@@ -3,6 +3,8 @@
 
 use std::sync::Arc;
 
+use application::ports::EventStore;
+
 // Interface Layer - External-facing APIs
 pub mod interface;
 
@@ -23,7 +25,7 @@ pub mod shared;
 pub struct AppContextState {
     pub secret_manager: Arc<dyn infrastructure::platform::keychain::SecretManager>,
     pub job_repo: Arc<dyn domain::repository::PrintJobRepository>,
-    pub event_store: Arc<infrastructure::persistence::sqlite::SqliteEventStore>,
+    pub event_store: Arc<dyn EventStore>,
     pub event_bus: Arc<dyn shared::event_bus::EventBus>,
     pub queue_manager: Arc<dyn infrastructure::persistence::task_queue::QueueManager>,
     pub queue_worker: Arc<infrastructure::persistence::task_queue::QueueWorker>,

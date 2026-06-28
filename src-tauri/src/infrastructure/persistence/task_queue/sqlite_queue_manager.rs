@@ -94,7 +94,7 @@ impl QueueManager for SqliteQueueManager {
         let job_opt = {
             let mut stmt = tx
                 .prepare(
-                    "SELECT id, printer_name, document_url, retry_count
+                    "SELECT id, printer_name, document_url, retry_count, output_path
                      FROM print_jobs
                      WHERE status = 'Queued'
                        AND (scheduled_at IS NULL OR scheduled_at <= ?)
@@ -108,6 +108,7 @@ impl QueueManager for SqliteQueueManager {
                 let printer_name: String = row.get(1)?;
                 let document_url: String = row.get(2)?;
                 let retry_count: i64 = row.get(3)?;
+                let output_path: Option<String> = row.get(4)?;
 
                 let id: JobId = id_str.parse().map_err(|e: uuid::Error| {
                     rusqlite::Error::InvalidColumnType(
@@ -127,7 +128,7 @@ impl QueueManager for SqliteQueueManager {
                     0, // created_at not needed for queue pop
                     None, // completed_at not needed for queue pop
                     None, // error_message not needed for queue pop
-                    None, // output_path not needed for queue pop
+                    output_path,
                     crate::domain::models::PrintJobSettings::default(),
                 ))
             });

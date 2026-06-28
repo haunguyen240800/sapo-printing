@@ -4,8 +4,8 @@ pub mod registry;
 use std::io::{self, BufReader, BufWriter, Write};
 use std::sync::Arc;
 
+use crate::application::ports::EventStore;
 use crate::domain::repository::PrintJobRepository;
-use crate::infrastructure::persistence::sqlite::SqliteEventStore;
 use crate::infrastructure::telemetry::metrics::MetricsCollector;
 
 use crate::shared::event_bus::EventBus;
@@ -14,7 +14,7 @@ use self::protocol::{NativeMessageHandler, ProtocolError};
 
 pub fn run_native_messaging(
     job_repo: Arc<dyn PrintJobRepository>,
-    event_store: Arc<SqliteEventStore>,
+    event_store: Arc<dyn EventStore>,
     event_bus: Arc<dyn EventBus>,
     metrics_collector: Arc<MetricsCollector>,
 ) -> Result<(), String> {

@@ -1,10 +1,10 @@
 use std::sync::Arc;
 
 use crate::application::dto::cancel_job_request::CancelJobRequest;
+use crate::application::ports::EventStore;
 use crate::application::use_cases::errors::ApplicationError;
 use crate::domain::repository::PrintJobRepository;
 use crate::domain::models::JobId;
-use crate::infrastructure::persistence::sqlite::SqliteEventStore;
 use crate::shared::event_bus::EventBus;
 
 /// Use case: Cancel a print job.
@@ -22,14 +22,14 @@ use crate::shared::event_bus::EventBus;
 /// 5. Publish events to event bus (after commit)
 pub struct CancelPrintJobUseCase {
     job_repo: Arc<dyn PrintJobRepository>,
-    event_store: Arc<SqliteEventStore>,
+    event_store: Arc<dyn EventStore>,
     event_bus: Arc<dyn EventBus>,
 }
 
 impl CancelPrintJobUseCase {
     pub fn new(
         job_repo: Arc<dyn PrintJobRepository>,
-        event_store: Arc<SqliteEventStore>,
+        event_store: Arc<dyn EventStore>,
         event_bus: Arc<dyn EventBus>,
     ) -> Self {
         Self {

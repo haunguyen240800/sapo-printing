@@ -19,7 +19,17 @@ impl RenderStrategy for NativePdfRenderStrategy {
         settings: &PrintJobSettings,
         backend: &mut dyn GraphicsBackend,
     ) {
-        let pdfium = Pdfium::default();
+        let bind = Pdfium::bind_to_library(Pdfium::pdfium_platform_library_name_at_path("./bin/"))
+            .or_else(|_| Pdfium::bind_to_library(Pdfium::pdfium_platform_library_name_at_path("./")))
+            .or_else(|_| Pdfium::bind_to_system_library());
+
+        let pdfium = match bind {
+            Ok(b) => Pdfium::new(b),
+            Err(e) => {
+                eprintln!("Failed to load PDFium library: {:?}", e);
+                return;
+            }
+        };
         let document = match pdfium.load_pdf_from_file(pdf_path, None) {
             Ok(doc) => doc,
             Err(e) => {

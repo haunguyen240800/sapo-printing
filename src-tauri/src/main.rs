@@ -8,10 +8,12 @@ use sapo_printer::infrastructure::persistence::sqlite::{
     run_migrations, DbPool, SqliteEventStore, SqlitePrintJobRepository,
 };
 use sapo_printer::infrastructure::integrations::network::ReqwestDownloader;
+use sapo_printer::infrastructure::integrations::pdf_engine::bitmap_strategy::BitmapRenderStrategy;
 use sapo_printer::infrastructure::bus::event_bus::tauri_event_bus::TauriEventBus;
 use sapo_printer::infrastructure::telemetry::metrics::MetricsCollector;
 use sapo_printer::infrastructure::persistence::task_queue::{QueueWorker, SqliteQueueManager};
 use sapo_printer::infrastructure::platform::keychain::SecretManager;
+use sapo_printer::application::ports::EventStore;
 use sapo_printer::interface::tauri::dtos::printer_dto::{
     PrinterConfigDto, PrinterDto, PrinterStatusDto,
 };
@@ -259,10 +261,27 @@ use sapo_printer::infrastructure::platform::keychain::MacOSKeychain;
 #[cfg(target_os = "linux")]
 use sapo_printer::infrastructure::platform::keychain::LinuxSecretService;
 
-/// List all available printers (discovered from OS)
 #[tauri::command]
 fn list_printers() -> Result<Vec<PrinterDto>, String> {
-    Ok(vec![])
+    use sapo_printer::infrastructure::platform::printer_api::discovery::SystemPrinterDiscovery;
+    use sapo_printer::application::use_cases::ListPrintersUseCase;
+    use std::sync::Arc;
+
+    let discovery = Arc::new(SystemPrinterDiscovery::new());
+    let use_case = ListPrintersUseCase::new(discovery);
+    
+    match use_case.execute() {
+        Ok(domain_printers) => {
+            Ok(domain_printers.into_iter().map(|p| PrinterDto {
+                name: p.name,
+                device_id: p.device_id,
+                status: p.status,
+                printer_type: p.printer_type,
+                is_default: p.is_default,
+            }).collect())
+        }
+        Err(e) => Err(format!("{:?}", e)),
+    }
 }
 
 /// Save printer configuration
@@ -425,7 +444,6 @@ fn get_printer_status(
 }
 
 #[derive(serde::Serialize)]
-#[serde(rename_all = "camelCase")]
 struct PrinterCategoryResult {
     category: String,
     needs_rendering: bool,
@@ -557,9 +575,11 @@ fn run_native_messaging_mode() -> Result<(), String> {
         queue_manager.clone(),
     ));
 
+    // Cast to EventStore port for cleanup and messaging handler
+    let event_store_port: Arc<dyn EventStore> = Arc::clone(&event_store) as Arc<dyn EventStore>;
 
     // Startup cleanup: purge events older than 30 days (best-effort)
-    match sapo_printer::infrastructure::persistence::sqlite::cleanup_old_events(&event_store, 30) {
+    match sapo_printer::infrastructure::persistence::sqlite::cleanup_old_events(&event_store_port, 30) {
         Ok(deleted) => {
             if deleted > 0 {
                 tracing::info!(
@@ -578,9 +598,11 @@ fn run_native_messaging_mode() -> Result<(), String> {
         }
     }
 
+    let event_store_port: Arc<dyn EventStore> = event_store_port;
+
     sapo_printer::interface::native_messaging::run_native_messaging(
         job_repo,
-        event_store,
+        event_store_port,
         event_bus,
         metrics_collector,
     )
@@ -729,21 +751,20 @@ fn main() {
 
             // Initialize QueueWorker dependencies
             let downloader = Arc::new(ReqwestDownloader::new());
+            let render_strategy = Arc::new(BitmapRenderStrategy::new());
 
-            
-                
-            
+            // Cast event_store to the application port trait for DI
+            let event_store_port: Arc<dyn EventStore> = Arc::clone(&event_store) as Arc<dyn EventStore>;
 
-            
-            
             // Create and start QueueWorker
             let worker = Arc::new(QueueWorker::new(
                 Arc::clone(&queue_manager),
                 job_repo.clone()
                     as Arc<dyn sapo_printer::domain::repository::PrintJobRepository>,
-                Arc::clone(&event_store),
+                Arc::clone(&event_store_port),
                 Arc::clone(&event_bus),
                 downloader,
+                render_strategy,
             ));
 
             worker.start().expect("Failed to start queue worker");
@@ -756,7 +777,7 @@ fn main() {
             ));
 
             // Startup cleanup: purge events older than 30 days (best-effort)
-            match sapo_printer::infrastructure::persistence::sqlite::cleanup_old_events(&event_store, 30) {
+            match sapo_printer::infrastructure::persistence::sqlite::cleanup_old_events(&event_store_port, 30) {
                 Ok(deleted) => {
                     if deleted > 0 {
                         tracing::info!(
@@ -779,7 +800,7 @@ fn main() {
             app.manage(AppContextState {
                 secret_manager,
                 job_repo,
-                event_store,
+                event_store: Arc::clone(&event_store) as Arc<dyn EventStore>,
                 event_bus,
                 queue_manager,
                 queue_worker: worker,

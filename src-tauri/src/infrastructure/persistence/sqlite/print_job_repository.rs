@@ -398,22 +398,31 @@ fn row_to_print_job(row: &rusqlite::Row<'_>) -> Result<PrintJob, rusqlite::Error
     ))
 }
 
-/// Helper: PrintStatus → database TEXT.
+/// Helper: PrintStatus → database TEXT (UPPER_CASE, matches DB schema default 'PENDING').
 fn status_to_string(s: &PrintStatus) -> String {
-    format!("{:?}", s)
+    match s {
+        PrintStatus::Pending => "PENDING".to_string(),
+        PrintStatus::Queued => "QUEUED".to_string(),
+        PrintStatus::Downloaded => "DOWNLOADED".to_string(),
+        PrintStatus::SubmittedToQueue => "SUBMITTED_TO_QUEUE".to_string(),
+        PrintStatus::Printing => "PRINTING".to_string(),
+        PrintStatus::Completed => "COMPLETED".to_string(),
+        PrintStatus::Failed => "FAILED".to_string(),
+        PrintStatus::Cancelled => "CANCELLED".to_string(),
+    }
 }
 
-/// Helper: database TEXT → PrintStatus.
+/// Helper: database TEXT → PrintStatus (UPPER_CASE, matches DB schema).
 fn status_from_string(s: &str) -> Result<PrintStatus, DomainError> {
     match s {
-        "Pending" => Ok(PrintStatus::Pending),
-        "Queued" => Ok(PrintStatus::Queued),
-        "Downloaded" => Ok(PrintStatus::Downloaded),
-        "SubmittedToQueue" => Ok(PrintStatus::SubmittedToQueue),
-        "Printing" => Ok(PrintStatus::Printing),
-        "Completed" => Ok(PrintStatus::Completed),
-        "Failed" => Ok(PrintStatus::Failed),
-        "Cancelled" => Ok(PrintStatus::Cancelled),
+        "PENDING" => Ok(PrintStatus::Pending),
+        "QUEUED" => Ok(PrintStatus::Queued),
+        "DOWNLOADED" => Ok(PrintStatus::Downloaded),
+        "SUBMITTED_TO_QUEUE" => Ok(PrintStatus::SubmittedToQueue),
+        "PRINTING" => Ok(PrintStatus::Printing),
+        "COMPLETED" => Ok(PrintStatus::Completed),
+        "FAILED" => Ok(PrintStatus::Failed),
+        "CANCELLED" => Ok(PrintStatus::Cancelled),
         _ => Err(DomainError::InvalidStatus {
             status: s.to_string(),
         }),

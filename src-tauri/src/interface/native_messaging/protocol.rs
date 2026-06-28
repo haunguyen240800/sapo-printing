@@ -5,12 +5,12 @@ use serde::{Deserialize, Serialize};
 
 use crate::application::dto::create_job_request::CreateJobRequest;
 use crate::application::dto::cancel_job_request::CancelJobRequest;
+use crate::application::ports::EventStore;
 use crate::application::use_cases::cancel_print_job::CancelPrintJobUseCase;
 use crate::application::use_cases::create_print_job::CreatePrintJobUseCase;
 use crate::application::use_cases::errors::ApplicationError;
 use crate::application::use_cases::get_job_status::GetJobStatusUseCase;
 use crate::domain::repository::PrintJobRepository;
-use crate::infrastructure::persistence::sqlite::SqliteEventStore;
 
 use crate::interface::tauri::dtos::printer_dto::PrinterDto;
 use crate::shared::event_bus::EventBus;
@@ -179,7 +179,7 @@ struct ListPrintersData {
 
 pub struct NativeMessageHandler {
     pub job_repo: Arc<dyn PrintJobRepository>,
-    pub event_store: Arc<SqliteEventStore>,
+    pub event_store: Arc<dyn EventStore>,
     pub event_bus: Arc<dyn EventBus>,
     pub metrics_collector: Arc<crate::infrastructure::telemetry::metrics::MetricsCollector>,
 }
@@ -187,7 +187,7 @@ pub struct NativeMessageHandler {
 impl NativeMessageHandler {
     pub fn new(
         job_repo: Arc<dyn PrintJobRepository>,
-        event_store: Arc<SqliteEventStore>,
+        event_store: Arc<dyn EventStore>,
         event_bus: Arc<dyn EventBus>,
         metrics_collector: Arc<crate::infrastructure::telemetry::metrics::MetricsCollector>,
     ) -> Self {

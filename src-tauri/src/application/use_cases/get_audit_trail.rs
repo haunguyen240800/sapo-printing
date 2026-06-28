@@ -1,16 +1,15 @@
 use std::sync::Arc;
 
+use crate::application::ports::{EventStore, StoredEventData};
 use crate::application::use_cases::errors::ApplicationError;
 use crate::infrastructure::persistence::sqlite::audit::{
     get_audit_trail, verify_audit_trail_integrity, AuditIntegrityReport,
 };
-use crate::infrastructure::persistence::sqlite::event_store::StoredEvent;
-use crate::infrastructure::persistence::sqlite::SqliteEventStore;
 use crate::infrastructure::platform::keychain::SecretManager;
 
 /// Result of an audit trail retrieval.
 pub struct AuditTrailResult {
-    pub events: Vec<StoredEvent>,
+    pub events: Vec<StoredEventData>,
     pub report: AuditIntegrityReport,
     /// Per-event HMAC validity, aligned with `events` by index.
     pub event_hmac_valid: Vec<bool>,
@@ -18,13 +17,13 @@ pub struct AuditTrailResult {
 
 /// Use case: Retrieve and verify the audit trail for a print job.
 pub struct AuditTrailUseCase {
-    event_store: Arc<SqliteEventStore>,
+    event_store: Arc<dyn EventStore>,
     secret_manager: Arc<dyn SecretManager>,
 }
 
 impl AuditTrailUseCase {
     pub fn new(
-        event_store: Arc<SqliteEventStore>,
+        event_store: Arc<dyn EventStore>,
         secret_manager: Arc<dyn SecretManager>,
     ) -> Self {
         Self {
@@ -107,5 +106,3 @@ impl AuditTrailUseCase {
         })
     }
 }
-
-

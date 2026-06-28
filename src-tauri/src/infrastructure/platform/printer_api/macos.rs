@@ -25,9 +25,9 @@ impl MacOsGraphicsBackend {
 }
 
 impl GraphicsBackend for MacOsGraphicsBackend {
-    fn begin_document(&mut self, printer_name: &str, doc_name: &str) -> Result<(), String> {
-        self.printer_name = printer_name.to_string();
-        self.doc_name = doc_name.to_string();
+    fn begin_document(&mut self, _printer_name: &str, _doc_name: &str, _output_path: Option<&str>) -> Result<(), String> {
+        self.printer_name = _printer_name.to_string();
+        self.doc_name = _doc_name.to_string();
         self.current_page = 0;
         self.page_files.clear();
 
@@ -42,6 +42,43 @@ impl GraphicsBackend for MacOsGraphicsBackend {
 
     fn begin_page(&mut self) {
         self.current_page += 1;
+    }
+
+    fn get_dpi(&self) -> (u32, u32) {
+        if self.printer_name.is_empty() {
+            return (300, 300);
+        }
+
+        if let Ok(output) = Command::new("lpoptions")
+            .arg("-p")
+            .arg(&self.printer_name)
+            .arg("-l")
+            .output()
+        {
+            if let Ok(text) = String::from_utf8(output.stdout) {
+                for line in text.lines() {
+                    let line_lower = line.to_lowercase();
+                    if line_lower.contains("resolution") {
+                        if let Some(start) = line.find('*') {
+                            let rest = &line[start + 1..];
+                            let end = rest.find(' ').or_else(|| rest.find("dpi")).unwrap_or(rest.len());
+                            let value = &rest[..end];
+                            let parts: Vec<&str> = value.split('x').collect();
+                            if parts.len() == 2 {
+                                if let (Ok(x), Ok(y)) = (parts[0].parse::<u32>(), parts[1].parse::<u32>()) {
+                                    return (x, y);
+                                }
+                            } else if parts.len() == 1 {
+                                if let Ok(dpi) = parts[0].parse::<u32>() {
+                                    return (dpi, dpi);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        (300, 300)
     }
 
     fn native_context(&mut self) -> NativeGraphicsContext {

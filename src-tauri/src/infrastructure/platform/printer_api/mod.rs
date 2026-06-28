@@ -2,3 +2,4 @@ pub mod backend;
 pub mod windows;
 pub mod macos;
 pub mod linux;
+pub mod discovery;

@@ -1,5 +1,6 @@
 use std::sync::Arc;
 
+use crate::application::ports::EventStore;
 use crate::domain::repository::PrintJobRepository;
 use crate::infrastructure::persistence::sqlite::{
     run_migrations, DbPool, SqliteEventStore, SqlitePrintJobRepository,
@@ -31,7 +32,7 @@ pub struct AppContext {
     pub job_repo: Arc<dyn PrintJobRepository>,
     pub event_bus: Arc<dyn EventBus>,
     pub secret_manager: Arc<dyn SecretManager>,
-    pub event_store: Arc<SqliteEventStore>,
+    pub event_store: Arc<dyn EventStore>,
 }
 
 impl AppContext {
@@ -60,7 +61,7 @@ impl AppContext {
         #[cfg(target_os = "linux")]
         let secret_manager: Arc<dyn SecretManager> = Arc::new(LinuxSecretService::new()?);
 
-        let event_store: Arc<SqliteEventStore> = Arc::new(SqliteEventStore::new(pool.get_arc(), secret_manager.clone()));
+        let event_store: Arc<dyn EventStore> = Arc::new(SqliteEventStore::new(pool.get_arc(), secret_manager.clone()));
 
         // EventBus: in-memory for now (future: outbox pattern with persistent queue)
         let event_bus: Arc<dyn EventBus> =

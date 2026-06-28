@@ -37,10 +37,11 @@ use std::sync::{Arc, Mutex};
 use std::thread::{self, JoinHandle};
 use std::time::Duration;
 
+use crate::application::ports::EventStore;
 use crate::domain::models::PrintJob;
 use crate::domain::repository::PrintJobRepository;
-use crate::infrastructure::persistence::sqlite::SqliteEventStore;
 use crate::infrastructure::integrations::network::DocumentDownloader;
+use crate::infrastructure::integrations::pdf_engine::renderer::RenderStrategy;
 use crate::infrastructure::persistence::task_queue::QueueManager;
 use crate::infrastructure::temp_file::TempPdfFile;
 use crate::shared::event_bus::EventBus;
@@ -56,9 +57,10 @@ use crate::shared::event_bus::EventBus;
 pub struct QueueWorker {
     queue_manager: Arc<dyn QueueManager>,
     job_repo: Arc<dyn PrintJobRepository>,
-    event_store: Arc<SqliteEventStore>,
+    event_store: Arc<dyn EventStore>,
     event_bus: Arc<dyn EventBus>,
     downloader: Arc<dyn DocumentDownloader>,
+    render_strategy: Arc<dyn RenderStrategy>,
 
     // Worker lifecycle control
     running: Arc<AtomicBool>,
@@ -73,9 +75,10 @@ impl QueueWorker {
     pub fn new(
         queue_manager: Arc<dyn QueueManager>,
         job_repo: Arc<dyn PrintJobRepository>,
-        event_store: Arc<SqliteEventStore>,
+        event_store: Arc<dyn EventStore>,
         event_bus: Arc<dyn EventBus>,
         downloader: Arc<dyn DocumentDownloader>,
+        render_strategy: Arc<dyn RenderStrategy>,
     ) -> Self {
         Self {
             queue_manager,
@@ -83,6 +86,7 @@ impl QueueWorker {
             event_store,
             event_bus,
             downloader,
+            render_strategy,
             running: Arc::new(AtomicBool::new(false)),
             thread_handle: Mutex::new(None),
         }
@@ -111,6 +115,7 @@ impl QueueWorker {
         let event_store = Arc::clone(&self.event_store);
         let event_bus = Arc::clone(&self.event_bus);
         let downloader = Arc::clone(&self.downloader);
+        let render_strategy = Arc::clone(&self.render_strategy);
         let running = Arc::clone(&self.running);
 
         // Spawn background thread
@@ -121,6 +126,7 @@ impl QueueWorker {
                 event_store,
                 event_bus,
                 downloader,
+                render_strategy,
                     running,
             );
         });
@@ -163,9 +169,10 @@ impl QueueWorker {
     fn process_loop(
         queue_manager: Arc<dyn QueueManager>,
         job_repo: Arc<dyn PrintJobRepository>,
-        event_store: Arc<SqliteEventStore>,
+        event_store: Arc<dyn EventStore>,
         event_bus: Arc<dyn EventBus>,
         downloader: Arc<dyn DocumentDownloader>,
+        render_strategy: Arc<dyn RenderStrategy>,
         running: Arc<AtomicBool>,
     ) {
         const POLL_INTERVAL_MS: u64 = 500; // 0.5s poll interval
@@ -203,6 +210,7 @@ impl QueueWorker {
                         &event_store,
                         &event_bus,
                         &downloader,
+                        &render_strategy,
                     );
 
                     if let Err(e) = result {
@@ -271,9 +279,10 @@ impl QueueWorker {
     fn process_job(
         mut job: PrintJob,
         job_repo: &Arc<dyn PrintJobRepository>,
-        event_store: &SqliteEventStore,
+        event_store: &Arc<dyn EventStore>,
         event_bus: &Arc<dyn EventBus>,
         downloader: &Arc<dyn DocumentDownloader>,
+        render_strategy: &Arc<dyn RenderStrategy>,
     ) -> Result<(), String> {
         // Step 1: Transition to Queued (pop returns Pending, we transition to Queued)
         job.queue()
@@ -316,21 +325,26 @@ impl QueueWorker {
         // Step 3: Render document & Step 4: Send to printer
         let render_start = std::time::Instant::now();
         
-        let mut backend = crate::infrastructure::platform::printer_api::backend::GraphicsBackendFactory::create();
-        backend.begin_document(job.printer_name(), "Sapo Print Job").map_err(|e| format!("Begin document failed: {}", e))?;
-        
-        let strategy: Box<dyn crate::infrastructure::integrations::pdf_engine::renderer::RenderStrategy> = if job.settings.print_as_image {
-            Box::new(crate::infrastructure::integrations::pdf_engine::bitmap_strategy::BitmapRenderStrategy::new())
+        if let Some(out_path) = job.output_path() {
+            tracing::info!(
+                target = "sapo_printer::queue_worker",
+                job_id = %job.id(),
+                out_path = out_path,
+                "Virtual PDF printer detected, bypassing spooler and copying file directly"
+            );
+            std::fs::copy(temp_file.path(), out_path)
+                .map_err(|e| format!("Failed to save PDF to {}: {}", out_path, e))?;
         } else {
-            Box::new(crate::infrastructure::integrations::pdf_engine::native_strategy::NativePdfRenderStrategy::new())
-        };
-        
-        strategy.render(
-            temp_file.path().to_str().unwrap(), 
-            &job.settings, 
-            &mut *backend
-        );
-        backend.end_document();
+            let mut backend = crate::infrastructure::platform::printer_api::backend::GraphicsBackendFactory::create();
+            backend.begin_document(job.printer_name(), "Sapo Print Job", None).map_err(|e| format!("Begin document failed: {}", e))?;
+
+            render_strategy.render(
+                temp_file.path().to_str().unwrap(),
+                &job.settings,
+                &mut *backend
+            );
+            backend.end_document();
+        }
         
         let render_duration = render_start.elapsed();
         tracing::info!(
@@ -370,7 +384,7 @@ impl QueueWorker {
     fn persist_and_publish(
         job: &mut PrintJob,
         job_repo: &Arc<dyn PrintJobRepository>,
-        event_store: &SqliteEventStore,
+        event_store: &Arc<dyn EventStore>,
         event_bus: &Arc<dyn EventBus>,
     ) -> Result<(), String> {
         // 1. Drain events from aggregate
@@ -424,7 +438,7 @@ impl QueueWorker {
         mut job: PrintJob,
         queue_manager: &Arc<dyn QueueManager>,
         job_repo: &Arc<dyn PrintJobRepository>,
-        event_store: &Arc<SqliteEventStore>,
+        event_store: &Arc<dyn EventStore>,
         event_bus: &Arc<dyn EventBus>,
     ) {
         use crate::infrastructure::persistence::task_queue::retry_logic::calculate_backoff_delay;

@@ -19,7 +19,17 @@ impl RenderStrategy for BitmapRenderStrategy {
         settings: &PrintJobSettings,
         backend: &mut dyn GraphicsBackend,
     ) {
-        let pdfium = Pdfium::default();
+        let bind = Pdfium::bind_to_library(Pdfium::pdfium_platform_library_name_at_path("./bin/"))
+            .or_else(|_| Pdfium::bind_to_library(Pdfium::pdfium_platform_library_name_at_path("./")))
+            .or_else(|_| Pdfium::bind_to_system_library());
+
+        let pdfium = match bind {
+            Ok(b) => Pdfium::new(b),
+            Err(e) => {
+                eprintln!("Failed to load PDFium library: {:?}", e);
+                return;
+            }
+        };
         let document = match pdfium.load_pdf_from_file(pdf_path, None) {
             Ok(doc) => doc,
             Err(e) => {
@@ -28,8 +38,8 @@ impl RenderStrategy for BitmapRenderStrategy {
             }
         };
 
-        let dpi = settings.dpi;
-
+        let (dpi_x, dpi_y) = backend.get_dpi();
+        
         for page in document.pages().iter() {
             backend.begin_page();
 
@@ -37,16 +47,17 @@ impl RenderStrategy for BitmapRenderStrategy {
             let height_points = page.height().value;
 
             // Convert points (1/72 inch) to pixels using target DPI
-                        let transform = LayoutEngine::calculate(settings, width_points, height_points);
-            let dpi_f = dpi as f32;
+            let transform = LayoutEngine::calculate(settings, width_points, height_points);
+            let dpi_x_f = dpi_x as f32;
+            let dpi_y_f = dpi_y as f32;
             let scale_x = transform.scale_x;
             let scale_y = transform.scale_y;
             
-            let render_w = (width_points * scale_x * dpi_f / 72.0) as i32;
-            let render_h = (height_points * scale_y * dpi_f / 72.0) as i32;
+            let render_w = (width_points * scale_x * dpi_x_f / 72.0) as i32;
+            let render_h = (height_points * scale_y * dpi_y_f / 72.0) as i32;
             
-            let pos_x = (transform.translate_x * dpi_f / 72.0) as i32;
-            let pos_y = (transform.translate_y * dpi_f / 72.0) as i32;
+            let pos_x = (transform.translate_x * dpi_x_f / 72.0) as i32;
+            let pos_y = (transform.translate_y * dpi_y_f / 72.0) as i32;
 
             let mut render_config = PdfRenderConfig::new().set_fixed_size(render_w, render_h);
 

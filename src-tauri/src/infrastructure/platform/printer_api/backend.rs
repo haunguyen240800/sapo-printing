@@ -6,7 +6,8 @@ pub enum NativeGraphicsContext {
 }
 
 pub trait GraphicsBackend {
-    fn begin_document(&mut self, printer_name: &str, doc_name: &str) -> Result<(), String>;
+    fn begin_document(&mut self, printer_name: &str, doc_name: &str, output_path: Option<&str>) -> Result<(), String>;
+    fn get_dpi(&self) -> (u32, u32);
     fn begin_page(&mut self);
     fn native_context(&mut self) -> NativeGraphicsContext;
     fn draw_bitmap(&mut self, data: &[u8], x: i32, y: i32, width: u32, height: u32, bpp: u16);

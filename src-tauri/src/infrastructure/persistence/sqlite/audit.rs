@@ -1,9 +1,10 @@
 use hmac::{Hmac, Mac};
 use sha2::Sha256;
+use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
 
+use crate::application::ports::{EventStore, StoredEventData};
 use crate::domain::models::DomainError;
-use crate::infrastructure::persistence::sqlite::event_store::{SqliteEventStore, StoredEvent};
 
 type HmacSha256 = Hmac<Sha256>;
 
@@ -22,7 +23,7 @@ pub struct AuditIntegrityReport {
 /// Recomputes HMAC from event fields and compares against stored value.
 /// Returns `Ok(true)` if valid, `Ok(false)` if tampered.
 pub fn verify_event_integrity(
-    event: &StoredEvent,
+    event: &StoredEventData,
     secret_key: &str,
 ) -> Result<bool, DomainError> {
     let stored_hmac = match &event.hmac {
@@ -58,15 +59,15 @@ pub fn verify_event_integrity(
 ///
 /// Does NOT verify integrity — caller decides whether to verify.
 pub fn get_audit_trail(
-    store: &SqliteEventStore,
+    store: &Arc<dyn EventStore>,
     aggregate_id: &str,
-) -> Result<Vec<StoredEvent>, DomainError> {
+) -> Result<Vec<StoredEventData>, DomainError> {
     store.find_by_aggregate(aggregate_id)
 }
 
 /// Verify integrity of all events in an aggregate's audit trail.
 pub fn verify_audit_trail_integrity(
-    store: &SqliteEventStore,
+    store: &Arc<dyn EventStore>,
     aggregate_id: &str,
     secret_key: &str,
 ) -> Result<AuditIntegrityReport, DomainError> {
@@ -97,7 +98,7 @@ pub fn verify_audit_trail_integrity(
 /// Delete events older than `retention_days` from now.
 /// Returns count of deleted events.
 pub fn cleanup_old_events(
-    store: &SqliteEventStore,
+    store: &Arc<dyn EventStore>,
     retention_days: u32,
 ) -> Result<u64, DomainError> {
     if retention_days == 0 {
@@ -112,5 +113,3 @@ pub fn cleanup_old_events(
     let cutoff = now - (retention_days as i64 * 86400);
     store.delete_events_before(cutoff)
 }
-
-

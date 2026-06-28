@@ -68,7 +68,7 @@ impl PrintService for DefaultPrintService {
         self.persist_and_publish(&mut job)?;
         
         let mut backend = GraphicsBackendFactory::create();
-        backend.begin_document(job.printer_name(), "Sapo Order")?;
+        backend.begin_document(job.printer_name(), "Sapo Order", job.output_path().map(|s| s.as_str()))?;
         
         let strategy: Box<dyn RenderStrategy> = if job.settings.print_as_image {
             Box::new(BitmapRenderStrategy::new())
