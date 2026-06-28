@@ -1,11 +1,10 @@
 use std::sync::Arc;
 
-use crate::application::ports::{EventStore, StoredEventData};
-use crate::application::use_cases::errors::ApplicationError;
-use crate::infrastructure::persistence::sqlite::audit::{
-    get_audit_trail, verify_audit_trail_integrity, AuditIntegrityReport,
+use crate::application::ports::{EventStore, SecretManager, StoredEventData};
+use crate::application::errors::ApplicationError;
+use crate::application::services::audit_service::{
+    get_audit_trail, verify_audit_trail_integrity, verify_event_integrity, AuditIntegrityReport,
 };
-use crate::infrastructure::platform::keychain::SecretManager;
 
 /// Result of an audit trail retrieval.
 pub struct AuditTrailResult {
@@ -16,12 +15,12 @@ pub struct AuditTrailResult {
 }
 
 /// Use case: Retrieve and verify the audit trail for a print job.
-pub struct AuditTrailUseCase {
+pub struct GetAuditTrailUseCase {
     event_store: Arc<dyn EventStore>,
     secret_manager: Arc<dyn SecretManager>,
 }
 
-impl AuditTrailUseCase {
+impl GetAuditTrailUseCase {
     pub fn new(
         event_store: Arc<dyn EventStore>,
         secret_manager: Arc<dyn SecretManager>,
@@ -35,9 +34,9 @@ impl AuditTrailUseCase {
     /// Execute the use case: retrieve audit trail for a job and verify integrity.
     pub fn execute(&self, job_id: &str) -> Result<AuditTrailResult, ApplicationError> {
         tracing::info!(
-            target = "sapo_printer::use_case::get_audit_trail",
+            target = "sapo_printer::application::use_case::get_audit_trail",
             job_id = job_id,
-            "AuditTrailUseCase: starting"
+            "GetAuditTrailUseCase: starting"
         );
 
         let events = get_audit_trail(&self.event_store, job_id).map_err(|e| {
@@ -86,17 +85,17 @@ impl AuditTrailUseCase {
         let event_hmac_valid: Vec<bool> = events
             .iter()
             .map(|event| {
-                crate::infrastructure::persistence::sqlite::audit::verify_event_integrity(event, &signing_key)
+                verify_event_integrity(event, &signing_key)
                     .unwrap_or(false)
             })
             .collect();
 
         tracing::debug!(
-            target = "sapo_printer::use_case::get_audit_trail",
+            target = "sapo_printer::application::use_case::get_audit_trail",
             job_id = job_id,
             total_events = report.total_events,
             chain_valid = report.chain_valid,
-            "AuditTrailUseCase: completed"
+            "GetAuditTrailUseCase: completed"
         );
 
         Ok(AuditTrailResult {

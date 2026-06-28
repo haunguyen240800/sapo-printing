@@ -1,55 +1,47 @@
-use rusqlite::Connection;
-use std::sync::{Arc, Mutex};
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use crate::domain::models::PrintJob;
-use crate::domain::models::DomainError;
-use crate::domain::repository::PrintJobRepository;
-use crate::domain::models::{JobId, PrintStatus};
+use crate::domain::print_job::{
+    PrintJob, PrintJobError, PrintJobId, PrintJobRepository, PrintStatus, PrinterId,
+};
+use crate::infrastructure::configs::db::DbPool;
 
 /// SQLite implementation of `PrintJobRepository`.
 ///
 /// Persists `PrintJob` aggregates to the `print_jobs` table.
-/// Uses prepared statements for all queries. Locks mutex before each operation.
+/// Uses prepared statements for all queries. Acquires a pooled connection
+/// per operation.
 pub struct SqlitePrintJobRepository {
-    conn: Arc<Mutex<Connection>>,
+    pool: DbPool,
 }
 
 impl SqlitePrintJobRepository {
-    /// Create a new repository with a shared database connection.
-    pub fn new(conn: Arc<Mutex<Connection>>) -> Self {
-        Self { conn }
+    /// Create a new repository with a shared connection pool.
+    pub fn new(pool: DbPool) -> Self {
+        Self { pool }
+    }
+
+    fn acquire(&self) -> Result<crate::infrastructure::configs::db::SqliteConn, PrintJobError> {
+        self.pool.get().map_err(|e| PrintJobError::RepositoryError {
+            reason: format!("Failed to acquire DB connection: {}", e),
+        })
     }
 }
 
 impl PrintJobRepository for SqlitePrintJobRepository {
-    fn save(&self, job: &PrintJob) -> Result<(), DomainError> {
-        tracing::info!(
-            target = "sapo_printer::repository::print_job",
-            operation = "save",
-            job_id = %job.id(),
-            "SqlitePrintJobRepository::save() - STARTING"
-        );
+    fn save(&self, job: &PrintJob) -> Result<(), PrintJobError> {
+        let acquire_start = std::time::Instant::now();
+        let conn = self.acquire()?;
+        let acquire_duration = acquire_start.elapsed();
 
-        let lock_start = std::time::Instant::now();
-        let conn = self.conn.lock().unwrap_or_else(|p| p.into_inner());
-        let lock_duration = lock_start.elapsed();
-
-        tracing::info!(
-            target = "sapo_printer::repository::print_job",
-            operation = "save",
-            job_id = %job.id(),
-            lock_wait_ms = lock_duration.as_millis(),
-            "SqlitePrintJobRepository::save() - got database lock"
-        );
-
-        if lock_duration.as_secs() > 5 {
+        // Only emit a record at INFO when something is actually wrong;
+        // the happy path stays at TRACE so bulk inserts don't flood logs.
+        if acquire_duration.as_secs() > 5 {
             tracing::warn!(
                 target = "sapo_printer::repository::print_job",
                 operation = "save",
                 job_id = %job.id(),
-                lock_wait_secs = lock_duration.as_secs(),
-                "SqlitePrintJobRepository::save() - SLOW LOCK (waited >5s)"
+                pool_wait_secs = acquire_duration.as_secs(),
+                "SqlitePrintJobRepository::save() - SLOW POOL ACQUIRE (waited >5s)"
             );
         }
 
@@ -60,19 +52,13 @@ impl PrintJobRepository for SqlitePrintJobRepository {
 
         let completed_at = completed_at_for_status(job.status(), now);
 
-        tracing::debug!(
+        tracing::trace!(
             target = "sapo_printer::repository::print_job",
             operation = "save",
             job_id = %job.id(),
             status = ?job.status(),
+            pool_wait_ms = acquire_duration.as_millis(),
             "INSERT INTO print_jobs"
-        );
-
-        tracing::info!(
-            target = "sapo_printer::repository::print_job",
-            operation = "save",
-            job_id = %job.id(),
-            "SqlitePrintJobRepository::save() - executing INSERT"
         );
 
         let rows = conn
@@ -81,9 +67,9 @@ impl PrintJobRepository for SqlitePrintJobRepository {
                  VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
                 rusqlite::params![
                     job.id().to_string(),
-                    job.printer_name(),
+                    job.printer_id().as_str(),
                     job.pdf_url(),
-                    status_to_string(job.status()),
+                    job.status().to_db_string(),
                     job.retry_count() as i64,
                     now,
                     now,
@@ -111,35 +97,35 @@ impl PrintJobRepository for SqlitePrintJobRepository {
                         _
                     )
                 ) {
-                    DomainError::RepositoryError {
+                    PrintJobError::RepositoryError {
                         reason: format!("Job '{}' already exists", job.id()),
                     }
                 } else {
-                    DomainError::RepositoryError {
+                    PrintJobError::RepositoryError {
                         reason: format!("Failed to save print job: {}", e),
                     }
                 }
             })?;
 
         if rows == 0 {
-            return Err(DomainError::RepositoryError {
+            return Err(PrintJobError::RepositoryError {
                 reason: "Failed to save print job: no rows inserted".into(),
             });
         }
 
-        tracing::info!(
+        tracing::trace!(
             target = "sapo_printer::repository::print_job",
             operation = "save",
             job_id = %job.id(),
             rows = rows,
-            "SqlitePrintJobRepository::save() - INSERT SUCCESS"
+            "INSERT print_jobs OK"
         );
 
         Ok(())
     }
 
-    fn update(&self, job: &PrintJob) -> Result<(), DomainError> {
-        let conn = self.conn.lock().unwrap_or_else(|p| p.into_inner());
+    fn update(&self, job: &PrintJob) -> Result<(), PrintJobError> {
+        let conn = self.acquire()?;
 
         let now = SystemTime::now()
             .duration_since(UNIX_EPOCH)
@@ -160,7 +146,7 @@ impl PrintJobRepository for SqlitePrintJobRepository {
             .execute(
                 "UPDATE print_jobs SET status = ?1, retry_count = ?2, updated_at = ?3, completed_at = ?4, error_message = ?5 WHERE id = ?6",
                 rusqlite::params![
-                    status_to_string(job.status()),
+                    job.status().to_db_string(),
                     job.retry_count() as i64,
                     now,
                     completed_at,
@@ -176,13 +162,13 @@ impl PrintJobRepository for SqlitePrintJobRepository {
                     error = %e,
                     "Failed to update print job"
                 );
-                DomainError::RepositoryError {
+                PrintJobError::RepositoryError {
                     reason: format!("Failed to update print job: {}", e),
                 }
             })?;
 
         if rows == 0 {
-            return Err(DomainError::RepositoryError {
+            return Err(PrintJobError::RepositoryError {
                 reason: format!("Job '{}' not found", job.id()),
             });
         }
@@ -190,8 +176,8 @@ impl PrintJobRepository for SqlitePrintJobRepository {
         Ok(())
     }
 
-    fn find_by_id(&self, id: &JobId) -> Result<Option<PrintJob>, DomainError> {
-        let conn = self.conn.lock().unwrap_or_else(|p| p.into_inner());
+    fn find_by_id(&self, id: &PrintJobId) -> Result<Option<PrintJob>, PrintJobError> {
+        let conn = self.acquire()?;
 
         tracing::debug!(
             target = "sapo_printer::repository::print_job",
@@ -213,7 +199,7 @@ impl PrintJobRepository for SqlitePrintJobRepository {
                     error = %e,
                     "Failed to prepare query"
                 );
-                DomainError::RepositoryError {
+                PrintJobError::RepositoryError {
                     reason: format!("Failed to prepare query: {}", e),
                 }
             })?;
@@ -231,15 +217,15 @@ impl PrintJobRepository for SqlitePrintJobRepository {
                     error = %e,
                     "Failed to query print job"
                 );
-                Err(DomainError::RepositoryError {
+                Err(PrintJobError::RepositoryError {
                     reason: format!("Failed to query print job: {}", e),
                 })
             }
         }
     }
 
-    fn find_by_status(&self, status: &PrintStatus) -> Result<Vec<PrintJob>, DomainError> {
-        let conn = self.conn.lock().unwrap_or_else(|p| p.into_inner());
+    fn find_by_status(&self, status: &PrintStatus) -> Result<Vec<PrintJob>, PrintJobError> {
+        let conn = self.acquire()?;
 
         tracing::debug!(
             target = "sapo_printer::repository::print_job",
@@ -260,13 +246,13 @@ impl PrintJobRepository for SqlitePrintJobRepository {
                     error = %e,
                     "Failed to prepare query"
                 );
-                DomainError::RepositoryError {
+                PrintJobError::RepositoryError {
                     reason: format!("Failed to prepare query: {}", e),
                 }
             })?;
 
         let job_iter = stmt
-            .query_map([status_to_string(status)], |row| row_to_print_job(row))
+            .query_map([status.to_db_string()], |row| row_to_print_job(row))
             .map_err(|e| {
                 tracing::error!(
                     target = "sapo_printer::repository::print_job",
@@ -274,7 +260,7 @@ impl PrintJobRepository for SqlitePrintJobRepository {
                     error = %e,
                     "Failed to query print jobs"
                 );
-                DomainError::RepositoryError {
+                PrintJobError::RepositoryError {
                     reason: format!("Failed to query print jobs: {}", e),
                 }
             })?;
@@ -288,7 +274,7 @@ impl PrintJobRepository for SqlitePrintJobRepository {
                     error = %e,
                     "Failed to read print job row"
                 );
-                DomainError::RepositoryError {
+                PrintJobError::RepositoryError {
                     reason: format!("Failed to read print job row: {}", e),
                 }
             })?);
@@ -297,8 +283,8 @@ impl PrintJobRepository for SqlitePrintJobRepository {
         Ok(jobs)
     }
 
-    fn find_all(&self) -> Result<Vec<PrintJob>, DomainError> {
-        let conn = self.conn.lock().unwrap_or_else(|p| p.into_inner());
+    fn find_all(&self) -> Result<Vec<PrintJob>, PrintJobError> {
+        let conn = self.acquire()?;
 
         tracing::debug!(
             target = "sapo_printer::repository::print_job",
@@ -318,7 +304,7 @@ impl PrintJobRepository for SqlitePrintJobRepository {
                     error = %e,
                     "Failed to prepare query"
                 );
-                DomainError::RepositoryError {
+                PrintJobError::RepositoryError {
                     reason: format!("Failed to prepare query: {}", e),
                 }
             })?;
@@ -332,7 +318,7 @@ impl PrintJobRepository for SqlitePrintJobRepository {
                     error = %e,
                     "Failed to query print jobs"
                 );
-                DomainError::RepositoryError {
+                PrintJobError::RepositoryError {
                     reason: format!("Failed to query print jobs: {}", e),
                 }
             })?;
@@ -346,7 +332,7 @@ impl PrintJobRepository for SqlitePrintJobRepository {
                     error = %e,
                     "Failed to read print job row"
                 );
-                DomainError::RepositoryError {
+                PrintJobError::RepositoryError {
                     reason: format!("Failed to read print job row: {}", e),
                 }
             })?);
@@ -357,9 +343,12 @@ impl PrintJobRepository for SqlitePrintJobRepository {
 }
 
 /// Helper: convert a row to a PrintJob via reconstruct().
+///
+/// Note: the on-disk column is still named `printer_name` for backward
+/// compatibility, but the stored value is semantically a `PrinterId`.
 fn row_to_print_job(row: &rusqlite::Row<'_>) -> Result<PrintJob, rusqlite::Error> {
     let id_str: String = row.get(0)?;
-    let printer_name: String = row.get(1)?;
+    let printer_id_raw: String = row.get(1)?;
     let document_url: String = row.get(2)?;
     let status_str: String = row.get(3)?;
     let retry_count: i64 = row.get(4)?;
@@ -368,7 +357,7 @@ fn row_to_print_job(row: &rusqlite::Row<'_>) -> Result<PrintJob, rusqlite::Error
     let error_message: Option<String> = row.get(7)?;
     let output_path: Option<String> = row.get(8)?;
 
-    let id: JobId = id_str.parse().map_err(|e: uuid::Error| {
+    let id: PrintJobId = id_str.parse().map_err(|e: uuid::Error| {
         rusqlite::Error::InvalidColumnType(
             0,
             format!("Invalid UUID: {}", e),
@@ -376,10 +365,10 @@ fn row_to_print_job(row: &rusqlite::Row<'_>) -> Result<PrintJob, rusqlite::Error
         )
     })?;
 
-    let status = status_from_string(&status_str).map_err(|e| {
+    let status = PrintStatus::from_db_string(&status_str).map_err(|invalid| {
         rusqlite::Error::InvalidColumnType(
             3,
-            format!("Invalid status: {:?}", e),
+            format!("Invalid status: {}", invalid),
             rusqlite::types::Type::Text,
         )
     })?;
@@ -389,44 +378,13 @@ fn row_to_print_job(row: &rusqlite::Row<'_>) -> Result<PrintJob, rusqlite::Error
         status,
         retry_count as u32,
         document_url,
-        printer_name,
+        PrinterId::new(printer_id_raw),
         created_at,
         completed_at,
         error_message,
         output_path,
-        crate::domain::models::PrintJobSettings::default(),
+        crate::domain::print_job::PrintJobSettings::default(),
     ))
-}
-
-/// Helper: PrintStatus → database TEXT (UPPER_CASE, matches DB schema default 'PENDING').
-fn status_to_string(s: &PrintStatus) -> String {
-    match s {
-        PrintStatus::Pending => "PENDING".to_string(),
-        PrintStatus::Queued => "QUEUED".to_string(),
-        PrintStatus::Downloaded => "DOWNLOADED".to_string(),
-        PrintStatus::SubmittedToQueue => "SUBMITTED_TO_QUEUE".to_string(),
-        PrintStatus::Printing => "PRINTING".to_string(),
-        PrintStatus::Completed => "COMPLETED".to_string(),
-        PrintStatus::Failed => "FAILED".to_string(),
-        PrintStatus::Cancelled => "CANCELLED".to_string(),
-    }
-}
-
-/// Helper: database TEXT → PrintStatus (UPPER_CASE, matches DB schema).
-fn status_from_string(s: &str) -> Result<PrintStatus, DomainError> {
-    match s {
-        "PENDING" => Ok(PrintStatus::Pending),
-        "QUEUED" => Ok(PrintStatus::Queued),
-        "DOWNLOADED" => Ok(PrintStatus::Downloaded),
-        "SUBMITTED_TO_QUEUE" => Ok(PrintStatus::SubmittedToQueue),
-        "PRINTING" => Ok(PrintStatus::Printing),
-        "COMPLETED" => Ok(PrintStatus::Completed),
-        "FAILED" => Ok(PrintStatus::Failed),
-        "CANCELLED" => Ok(PrintStatus::Cancelled),
-        _ => Err(DomainError::InvalidStatus {
-            status: s.to_string(),
-        }),
-    }
 }
 
 /// Helper: determine completed_at based on status (uses the same timestamp as created_at/updated_at).
@@ -436,5 +394,3 @@ fn completed_at_for_status(status: &PrintStatus, now: i64) -> Option<i64> {
         _ => None,
     }
 }
-
-

@@ -8,6 +8,14 @@ edition = "2021"
 [build-dependencies]
 tauri-build = { version = "2.0", features = [] }
 
+[features]
+default = []
+# Enable the (incomplete) native PDF render path. Off by default because the
+# FFI bridge to FPDF_RenderPage is not wired yet — turning this on will fail
+# every job at render time. Kept behind a feature so the dead code path can be
+# developed without poisoning production builds.
+native_pdf_render = []
+
 [dependencies]
 tauri = { version = "2.0", features = [] }
 serde = { version = "1", features = ["derive"] }
@@ -16,6 +24,8 @@ serde_json = "1"
 # Database
 rusqlite = { version = "0.32", features = ["bundled"] }
 rusqlite_migration = "1.2"
+r2d2 = "0.8"
+r2d2_sqlite = "0.25"
 
 # Async runtime
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "sync", "time", "fs", "io-util"] }

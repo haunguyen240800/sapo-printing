@@ -8,7 +8,7 @@
 //! enabling straightforward mocking in unit tests.
 
 use crate::domain::common::aggregate::DomainEvent;
-use crate::domain::models::DomainError;
+use crate::domain::print_job::PrintJobError;
 
 /// A persisted domain event as returned by the event store.
 /// Kept here to avoid re-exporting from the infrastructure layer.
@@ -33,15 +33,15 @@ pub trait EventStore: Send + Sync {
         &self,
         aggregate_id: &str,
         events: &[Box<dyn DomainEvent>],
-    ) -> Result<(), DomainError>;
+    ) -> Result<(), PrintJobError>;
 
     /// Retrieve all events for an aggregate ordered by `sequence_number` ASC.
     fn find_by_aggregate(
         &self,
         aggregate_id: &str,
-    ) -> Result<Vec<StoredEventData>, DomainError>;
+    ) -> Result<Vec<StoredEventData>, PrintJobError>;
 
     /// Delete events with a timestamp older than `cutoff_timestamp` (Unix epoch seconds).
     /// Returns the number of deleted rows.
-    fn delete_events_before(&self, cutoff_timestamp: i64) -> Result<u64, DomainError>;
+    fn delete_events_before(&self, cutoff_timestamp: i64) -> Result<u64, PrintJobError>;
 }

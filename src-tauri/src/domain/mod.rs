@@ -1,11 +1,15 @@
-// Domain Layer - Core Business Logic (PURE - NO EXTERNAL DEPENDENCIES)
-// This layer contains aggregates, entities, value objects, domain events, and repository traits
-// CRITICAL: Domain must remain completely independent of all other layers
+// Domain Layer — Core Business Logic (PURE — NO EXTERNAL DEPENDENCIES)
+//
+// Organized by Bounded Context per DDD strategic design:
+//   - print_job/  : Print Job Management context (aggregate, entities, VOs, events,
+//                   repository, services). Owns `PrinterId` as a cross-aggregate
+//                   reference VO — the OS-owned printer resource is *not* modelled
+//                   as a domain aggregate in this application (see ADR notes).
+//   - document/   : Document Management context (currently inactive — wired in for
+//                   the future 1-N PrintTask feature).
+//   - common/     : Shared kernel (AggregateRoot trait, base ValueObject/Entity/Rule
+//                   traits, DomainEvent base).
 
 pub mod common;
-pub mod models;
-pub mod events;
-pub mod repository;
-pub mod rules;
-// TODO(1-N PrintJob): Uncomment below to use the Document aggregate when implementing 1-N relationship between PrintJob and PDF files
-// pub mod document;
+pub mod document;
+pub mod print_job;

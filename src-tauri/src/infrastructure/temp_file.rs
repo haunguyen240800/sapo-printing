@@ -1,9 +1,32 @@
+//! Temporary PDF file lifecycle.
+//!
+//! Three responsibilities live in this module because they share the same
+//! filesystem layout and are tightly coupled — splitting them across modules
+//! buys nothing:
+//!
+//! * [`TempPdfFile`] — RAII handle that deletes the file when dropped unless
+//!   marked with `keep()`.
+//! * [`FilesystemTempFileManager`] — port adapter that wraps downloaded files
+//!   in a `TempPdfFile` and cleans up per-job state.
+//! * [`startup_cleanup`] — purges orphan `.tmp` files and old `.pdf` files
+//!   from previous runs. Retention is supplied by the caller (read from
+//!   `app_settings.temp_file_retention_hours`).
+
 use std::path::{Path, PathBuf};
 use std::time::{Duration, SystemTime};
 
+use crate::application::ports::{TempFileHandle, TempFileManager};
+use crate::domain::print_job::PrintJobId;
+use crate::infrastructure::configs::db::DbPool;
 use crate::shared::errors::InfrastructureError;
 
-pub(crate) const DEFERRED_RETENTION: Duration = Duration::from_secs(24 * 60 * 60);
+/// Fallback retention if `app_settings.temp_file_retention_hours` is unset or
+/// unreadable. Matches the seed value in the migration.
+pub const DEFAULT_RETENTION_HOURS: u32 = 24;
+
+// =============================================================================
+// TempPdfFile — RAII handle for one downloaded job artifact.
+// =============================================================================
 
 /// RAII wrapper for a temporary PDF file.
 ///
@@ -74,7 +97,95 @@ impl Drop for TempPdfFile {
     }
 }
 
-pub fn startup_cleanup(temp_dir: &Path) {
+// =============================================================================
+// FilesystemTempFileManager — port adapter.
+// =============================================================================
+
+pub struct FilesystemTempFileManager {
+    temp_dir: PathBuf,
+}
+
+impl FilesystemTempFileManager {
+    pub fn new(temp_dir: PathBuf) -> Self {
+        Self { temp_dir }
+    }
+
+    fn job_temp_path(&self, job_id: &PrintJobId) -> PathBuf {
+        self.temp_dir.join(format!("{}.pdf", job_id))
+    }
+}
+
+impl TempFileHandle for TempPdfFile {
+    fn path(&self) -> &Path {
+        TempPdfFile::path(self)
+    }
+
+    fn keep(&mut self) {
+        TempPdfFile::keep(self);
+    }
+}
+
+impl TempFileManager for FilesystemTempFileManager {
+    fn wrap(&self, path: PathBuf) -> Result<Box<dyn TempFileHandle>, InfrastructureError> {
+        let temp_file = TempPdfFile::try_new(path, &self.temp_dir)?;
+        Ok(Box::new(temp_file))
+    }
+
+    fn cleanup_for_job(&self, job_id: &PrintJobId) {
+        let temp_path = self.job_temp_path(job_id);
+        if temp_path.exists() {
+            match std::fs::remove_file(&temp_path) {
+                Ok(()) => {
+                    tracing::info!(
+                        target = "sapo_printer::temp_file",
+                        path = ?temp_path,
+                        "Cleaned up temp file"
+                    );
+                }
+                Err(e) => {
+                    tracing::warn!(
+                        target = "sapo_printer::temp_file",
+                        path = ?temp_path,
+                        error = %e,
+                        "Failed to cleanup temp file"
+                    );
+                }
+            }
+        }
+    }
+}
+
+// =============================================================================
+// Startup cleanup + retention lookup.
+// =============================================================================
+
+/// Read `temp_file_retention_hours` from the `app_settings` table.
+///
+/// On any error (table missing, parse failure, etc.) falls back to
+/// [`DEFAULT_RETENTION_HOURS`]. Cleanup is a best-effort operation, so we
+/// never want to block startup because a setting is malformed.
+pub fn load_retention(pool: &DbPool) -> Duration {
+    let hours = (|| -> Option<u32> {
+        let conn = pool.get().ok()?;
+        let value: String = conn
+            .query_row(
+                "SELECT value FROM app_settings WHERE key = 'temp_file_retention_hours'",
+                [],
+                |row| row.get(0),
+            )
+            .ok()?;
+        value.parse::<u32>().ok()
+    })()
+    .unwrap_or(DEFAULT_RETENTION_HOURS);
+
+    Duration::from_secs(hours as u64 * 3600)
+}
+
+/// Purge stale temp artifacts left behind by previous runs.
+///
+/// * `.tmp` files (failed downloads) are always removed.
+/// * `.pdf` files older than `retention` are removed.
+pub fn startup_cleanup(temp_dir: &Path, retention: Duration) {
     if !temp_dir.exists() {
         if let Err(e) = std::fs::create_dir_all(temp_dir) {
             tracing::warn!("Failed to create temp directory {:?}: {}", temp_dir, e);
@@ -121,7 +232,7 @@ pub fn startup_cleanup(temp_dir: &Path) {
                     removed += 1;
                 }
             }
-            Some("pdf") if is_older_than(&path, DEFERRED_RETENTION) => {
+            Some("pdf") if is_older_than(&path, retention) => {
                 if let Err(e) = std::fs::remove_file(&path) {
                     tracing::warn!("Failed to remove old .pdf file {:?}: {}", path, e);
                 } else {
@@ -137,7 +248,13 @@ pub fn startup_cleanup(temp_dir: &Path) {
         }
     }
 
-    tracing::info!("Startup cleanup: {} files removed, {} kept", removed, kept);
+    tracing::info!(
+        target = "sapo_printer::temp_file",
+        retention_secs = retention.as_secs(),
+        removed,
+        kept,
+        "Startup temp-dir cleanup complete"
+    );
 }
 
 fn is_older_than(path: &Path, retention: Duration) -> bool {
@@ -162,6 +279,8 @@ mod tests {
         fs::create_dir_all(&dir).unwrap();
         dir
     }
+
+    const TEST_RETENTION: Duration = Duration::from_secs(24 * 60 * 60);
 
     #[test]
     fn test_temp_file_deleted_on_drop_when_keep_false() {
@@ -211,7 +330,7 @@ mod tests {
         let tmp_file = dir.join("orphan.tmp");
         fs::write(&tmp_file, b"incomplete download").unwrap();
 
-        startup_cleanup(&dir);
+        startup_cleanup(&dir, TEST_RETENTION);
 
         assert!(!tmp_file.exists());
         let _ = fs::remove_dir_all(&dir);
@@ -229,12 +348,12 @@ mod tests {
                     .duration_since(SystemTime::UNIX_EPOCH)
                     .unwrap()
                     .as_secs()
-                    - DEFERRED_RETENTION.as_secs()
+                    - TEST_RETENTION.as_secs()
                     - 3600,
             );
         filetime::set_file_mtime(&old_pdf, filetime::FileTime::from_system_time(old_time)).unwrap();
 
-        startup_cleanup(&dir);
+        startup_cleanup(&dir, TEST_RETENTION);
 
         assert!(!old_pdf.exists());
         let _ = fs::remove_dir_all(&dir);
@@ -246,7 +365,7 @@ mod tests {
         let recent_pdf = dir.join("recent.pdf");
         fs::write(&recent_pdf, b"%PDF-1.4").unwrap();
 
-        startup_cleanup(&dir);
+        startup_cleanup(&dir, TEST_RETENTION);
 
         assert!(recent_pdf.exists());
         let _ = fs::remove_dir_all(&dir);
@@ -258,7 +377,7 @@ mod tests {
         let nonexistent = base.join("nonexistent");
         assert!(!nonexistent.exists());
 
-        startup_cleanup(&nonexistent);
+        startup_cleanup(&nonexistent, TEST_RETENTION);
 
         assert!(nonexistent.exists());
         let _ = fs::remove_dir_all(&base);
@@ -323,5 +442,58 @@ mod tests {
 
         let _ = fs::remove_file(&outside_path);
         let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn test_load_retention_uses_app_settings_value() {
+        let nanos = SystemTime::now()
+            .duration_since(SystemTime::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let path = std::env::temp_dir().join(format!("sapo_retention_{nanos}.db"));
+        let pool = DbPool::new(path.to_str().unwrap()).unwrap();
+        {
+            let mut conn = pool.get().unwrap();
+            crate::infrastructure::configs::db::run_migrations(&mut *conn).unwrap();
+            conn.execute(
+                "UPDATE app_settings SET value = '48' WHERE key = 'temp_file_retention_hours'",
+                [],
+            )
+            .unwrap();
+        }
+
+        let retention = load_retention(&pool);
+        assert_eq!(retention, Duration::from_secs(48 * 3600));
+
+        drop(pool);
+        let _ = std::fs::remove_file(&path);
+    }
+
+    #[test]
+    fn test_load_retention_falls_back_to_default_when_missing() {
+        let nanos = SystemTime::now()
+            .duration_since(SystemTime::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let path = std::env::temp_dir().join(format!("sapo_retention_missing_{nanos}.db"));
+        let pool = DbPool::new(path.to_str().unwrap()).unwrap();
+        {
+            let mut conn = pool.get().unwrap();
+            crate::infrastructure::configs::db::run_migrations(&mut *conn).unwrap();
+            conn.execute(
+                "DELETE FROM app_settings WHERE key = 'temp_file_retention_hours'",
+                [],
+            )
+            .unwrap();
+        }
+
+        let retention = load_retention(&pool);
+        assert_eq!(
+            retention,
+            Duration::from_secs(DEFAULT_RETENTION_HOURS as u64 * 3600)
+        );
+
+        drop(pool);
+        let _ = std::fs::remove_file(&path);
     }
 }

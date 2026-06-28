@@ -3,7 +3,10 @@
 
 use std::sync::Arc;
 
-use application::ports::EventStore;
+use application::ports::{
+    ConfigProvider, EventStore, MetricsProvider, PrinterManager, QueueManager, SecretManager,
+    TempFileManager,
+};
 
 // Interface Layer - External-facing APIs
 pub mod interface;
@@ -23,13 +26,16 @@ pub mod shared;
 /// Shared state registered with Tauri via `.manage()`.
 /// Commands access this via `tauri::State<'_, AppContextState>`.
 pub struct AppContextState {
-    pub secret_manager: Arc<dyn infrastructure::platform::keychain::SecretManager>,
-    pub job_repo: Arc<dyn domain::repository::PrintJobRepository>,
+    pub secret_manager: Arc<dyn SecretManager>,
+    pub job_repo: Arc<dyn domain::print_job::PrintJobRepository>,
     pub event_store: Arc<dyn EventStore>,
     pub event_bus: Arc<dyn shared::event_bus::EventBus>,
-    pub queue_manager: Arc<dyn infrastructure::persistence::task_queue::QueueManager>,
-    pub queue_worker: Arc<infrastructure::persistence::task_queue::QueueWorker>,
-    pub metrics_collector: Arc<infrastructure::telemetry::metrics::MetricsCollector>,
+    pub queue_manager: Arc<dyn QueueManager>,
+    pub queue_worker: Arc<infrastructure::worker::QueueWorker>,
+    pub metrics_provider: Arc<dyn MetricsProvider>,
+    pub config_provider: Arc<dyn ConfigProvider>,
+    pub printer_manager: Arc<dyn PrinterManager>,
+    pub temp_files: Arc<dyn TempFileManager>,
     pub app_handle: tauri::AppHandle,
     pub install_guard: infrastructure::platform::updater::update_checker::InstallGuard,
     pub last_emitted_update_version: std::sync::Mutex<Option<String>>,

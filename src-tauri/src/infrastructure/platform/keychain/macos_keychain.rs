@@ -17,7 +17,8 @@ use security_framework::passwords::{
     delete_generic_password, get_generic_password, set_generic_password,
 };
 
-use crate::infrastructure::platform::keychain::SecretManager;
+use crate::application::services::secret_key_service::{validate_key, MAX_SECRET_SIZE};
+use crate::application::ports::SecretManager;
 use crate::shared::errors::InfrastructureError;
 
 /// macOS Keychain implementation using Keychain Services.
@@ -35,14 +36,14 @@ impl MacOSKeychain {
 impl SecretManager for MacOSKeychain {
     fn store(&self, key: &str, value: &str) -> Result<(), InfrastructureError> {
         // Validate key format
-        super::validate_key(key)?;
+        validate_key(key)?;
 
         // Validate size limit (apply Windows limit for consistency)
-        if value.len() > super::MAX_SECRET_SIZE {
+        if value.len() > MAX_SECRET_SIZE {
             return Err(InfrastructureError::SecretStoreError(format!(
                 "Secret value too large: {} bytes (max {} bytes)",
                 value.len(),
-                super::MAX_SECRET_SIZE
+                MAX_SECRET_SIZE
             )));
         }
 

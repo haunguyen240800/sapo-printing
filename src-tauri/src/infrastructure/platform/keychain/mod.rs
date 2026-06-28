@@ -9,10 +9,6 @@
 //! Uses the Strategy pattern with compile-time dispatch via conditional compilation.
 //! Only the platform-specific implementation for the target OS is compiled.
 
-mod secret_manager;
-
-pub use secret_manager::{format_key, validate_key, SecretManager, MAX_SECRET_SIZE};
-
 #[cfg(target_os = "windows")]
 mod windows_credential_manager;
 #[cfg(target_os = "windows")]

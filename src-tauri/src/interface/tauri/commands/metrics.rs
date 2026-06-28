@@ -6,7 +6,7 @@ use crate::interface::tauri::dtos::metrics::{
 use crate::AppContextState;
 
 pub fn execute_get_metrics(ctx: &AppContextState) -> Result<MetricsDto, String> {
-    let use_case = GetMetricsUseCase::new(ctx.metrics_collector.clone());
+    let use_case = GetMetricsUseCase::new(ctx.metrics_provider.clone());
     let snapshot = use_case.execute().map_err(|e| format!("{}", e))?;
 
     Ok(MetricsDto {

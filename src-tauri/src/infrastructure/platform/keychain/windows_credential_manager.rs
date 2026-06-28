@@ -23,7 +23,8 @@ use windows::Win32::Security::Credentials::{
     CRED_PERSIST_LOCAL_MACHINE, CRED_TYPE_GENERIC,
 };
 
-use crate::infrastructure::platform::keychain::SecretManager;
+use crate::application::services::secret_key_service::{format_key, validate_key, MAX_SECRET_SIZE};
+use crate::application::ports::SecretManager;
 use crate::shared::errors::InfrastructureError;
 
 /// Windows Credential Manager implementation using Win32 API.
@@ -54,18 +55,18 @@ impl SecretManager for WindowsCredentialManager {
         );
 
         // Validate key format
-        super::validate_key(key)?;
+        validate_key(key)?;
 
         // Validate size limit (CRED_MAX_CREDENTIAL_BLOB_SIZE = 2560 bytes)
-        if value.len() > super::MAX_SECRET_SIZE {
+        if value.len() > MAX_SECRET_SIZE {
             return Err(InfrastructureError::SecretStoreError(format!(
                 "Secret value too large: {} bytes (max {} bytes)",
                 value.len(),
-                super::MAX_SECRET_SIZE
+                MAX_SECRET_SIZE
             )));
         }
 
-        let target_name = super::format_key(key);
+        let target_name = format_key(key);
 
         // Validate target name length (CRED_MAX_STRING_LENGTH = 256)
         let target_name_wide: Vec<u16> = target_name.encode_utf16().chain(Some(0)).collect();
@@ -131,7 +132,7 @@ impl SecretManager for WindowsCredentialManager {
             "WindowsCredentialManager::retrieve() - STARTING"
         );
 
-        let target_name = super::format_key(key);
+        let target_name = format_key(key);
         let target_name_wide: Vec<u16> = target_name.encode_utf16().chain(Some(0)).collect();
 
         let mut p_credential: *mut CREDENTIALW = std::ptr::null_mut();
@@ -215,7 +216,7 @@ impl SecretManager for WindowsCredentialManager {
     }
 
     fn delete(&self, key: &str) -> Result<(), InfrastructureError> {
-        let target_name = super::format_key(key);
+        let target_name = format_key(key);
         let target_name_wide: Vec<u16> = target_name.encode_utf16().chain(Some(0)).collect();
 
         unsafe {
@@ -284,7 +285,7 @@ mod tests {
 
         manager.store(&key, value).unwrap();
 
-        let formatted = super::super::format_key(&key);
+        let formatted = format_key(&key);
         assert!(formatted.starts_with("com.sapo.printer/"));
 
         manager.delete(&key).unwrap();

@@ -1,97 +1,48 @@
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use rusqlite::Connection;
 
-use crate::infrastructure::telemetry::metrics::MetricsError;
-use crate::infrastructure::persistence::task_queue::QueueManager;
-
-#[derive(Debug, Clone)]
-pub struct JobMetrics {
-    pub total_jobs: u64,
-    pub pending: u64,
-    pub queued: u64,
-    pub downloaded: u64,
-    pub submitted: u64,
-    pub printing: u64,
-    pub completed: u64,
-    pub failed: u64,
-    pub cancelled: u64,
-    pub success_rate: f64,
-}
-
-#[derive(Debug, Clone)]
-pub struct QueueMetrics {
-    pub current_depth: usize,
-    pub avg_wait_time_secs: f64,
-}
-
-#[derive(Debug, Clone)]
-pub struct PrinterJobStats {
-    pub printer_name: String,
-    pub total_jobs: u64,
-    pub completed_jobs: u64,
-    pub utilization_percent: f64,
-}
-
-#[derive(Debug, Clone)]
-pub struct PrinterMetrics {
-    pub printers: Vec<PrinterJobStats>,
-}
-
-#[derive(Debug, Clone)]
-pub struct PerformanceMetrics {
-    pub avg_job_duration_secs: f64,
-    pub p50_job_duration_secs: f64,
-    pub p95_job_duration_secs: f64,
-    pub p99_job_duration_secs: f64,
-    pub avg_download_time_secs: f64,
-    pub avg_render_time_secs: f64,
-    pub avg_print_time_secs: f64,
-}
-
-#[derive(Debug, Clone)]
-pub struct MetricsSnapshot {
-    pub collected_at: i64,
-    pub job_metrics: JobMetrics,
-    pub queue_metrics: QueueMetrics,
-    pub printer_metrics: PrinterMetrics,
-    pub performance_metrics: PerformanceMetrics,
-}
+use crate::application::ports::{
+    JobMetrics, MetricsProvider, MetricsSnapshot, PerformanceMetrics, PrinterJobStats,
+    PrinterMetrics, QueueManager, QueueMetrics,
+};
+use crate::infrastructure::configs::db::DbPool;
+use crate::shared::errors::InfrastructureError;
 
 pub struct MetricsCollector {
-    conn: Arc<Mutex<Connection>>,
+    pool: DbPool,
     queue_manager: Arc<dyn QueueManager>,
 }
 
 impl MetricsCollector {
-    pub fn new(conn: Arc<Mutex<Connection>>, queue_manager: Arc<dyn QueueManager>) -> Self {
+    pub fn new(pool: DbPool, queue_manager: Arc<dyn QueueManager>) -> Self {
         Self {
-            conn,
+            pool,
             queue_manager,
         }
     }
 
-    pub fn collect_metrics(&self) -> Result<MetricsSnapshot, MetricsError> {
-        // Collect current_depth before acquiring the database lock to prevent deadlocking
-        // with queue_manager, which might also try to lock the database connection.
+    pub fn collect_metrics(&self) -> Result<MetricsSnapshot, InfrastructureError> {
         let current_depth = self
             .queue_manager
             .queue_depth()
-            .map_err(|e| MetricsError::QueueError(format!("{}", e)))?;
+            .map_err(|e| InfrastructureError::DatabaseError {
+                reason: format!("Failed to read queue depth: {}", e),
+            })?;
 
         tracing::debug!(
             target = "sapo_printer::metrics",
-            "MetricsCollector: acquiring database lock"
+            "MetricsCollector: acquiring pooled connection"
         );
 
-        let conn = self.conn.lock().map_err(|e| {
-            MetricsError::DatabaseError(format!("Failed to lock connection: {}", e))
+        let conn = self.pool.get().map_err(|e| InfrastructureError::DatabaseError {
+            reason: format!("Failed to acquire DB connection: {}", e),
         })?;
 
         tracing::debug!(
             target = "sapo_printer::metrics",
-            "MetricsCollector: lock acquired, collecting metrics"
+            "MetricsCollector: connection acquired, collecting metrics"
         );
 
         let job_metrics = self.collect_job_metrics(&conn)?;
@@ -99,12 +50,11 @@ impl MetricsCollector {
         let printer_metrics = self.collect_printer_metrics(&conn)?;
         let performance_metrics = self.collect_performance_metrics(&conn)?;
 
-        // Explicitly drop lock ASAP
         drop(conn);
 
         tracing::debug!(
             target = "sapo_printer::metrics",
-            "MetricsCollector: lock released"
+            "MetricsCollector: connection released"
         );
 
         let collected_at = SystemTime::now()
@@ -121,10 +71,12 @@ impl MetricsCollector {
         })
     }
 
-    fn collect_job_metrics(&self, conn: &Connection) -> Result<JobMetrics, MetricsError> {
+    fn collect_job_metrics(&self, conn: &Connection) -> Result<JobMetrics, InfrastructureError> {
         let mut stmt = conn
             .prepare("SELECT status, COUNT(*) FROM print_jobs GROUP BY status")
-            .map_err(|e| MetricsError::DatabaseError(format!("Failed to prepare query: {}", e)))?;
+            .map_err(|e| InfrastructureError::DatabaseError {
+                reason: format!("Failed to prepare query: {}", e),
+            })?;
 
         let mut counts = std::collections::HashMap::new();
         let rows = stmt
@@ -133,11 +85,14 @@ impl MetricsCollector {
                 let count: u64 = row.get(1)?;
                 Ok((status, count))
             })
-            .map_err(|e| MetricsError::DatabaseError(format!("Failed to query: {}", e)))?;
+            .map_err(|e| InfrastructureError::DatabaseError {
+                reason: format!("Failed to query: {}", e),
+            })?;
 
         for row in rows {
-            let (status, count) =
-                row.map_err(|e| MetricsError::DatabaseError(format!("Row error: {}", e)))?;
+            let (status, count) = row.map_err(|e| InfrastructureError::DatabaseError {
+                reason: format!("Row error: {}", e),
+            })?;
             counts.insert(status, count);
         }
 
@@ -152,7 +107,9 @@ impl MetricsCollector {
 
         let total_jobs: u64 = conn
             .query_row("SELECT COUNT(*) FROM print_jobs", [], |row| row.get(0))
-            .map_err(|e| MetricsError::DatabaseError(format!("Failed to count total jobs: {}", e)))?;
+            .map_err(|e| InfrastructureError::DatabaseError {
+                reason: format!("Failed to count total jobs: {}", e),
+            })?;
 
         let terminal = completed + failed;
         let success_rate = if terminal > 0 {
@@ -175,8 +132,11 @@ impl MetricsCollector {
         })
     }
 
-    fn collect_queue_metrics(&self, conn: &Connection, current_depth: usize) -> Result<QueueMetrics, MetricsError> {
-
+    fn collect_queue_metrics(
+        &self,
+        conn: &Connection,
+        current_depth: usize,
+    ) -> Result<QueueMetrics, InfrastructureError> {
         let avg_wait_time_secs: f64 = conn
             .query_row(
                 "SELECT COALESCE(AVG(CAST(e.timestamp AS FLOAT) - CAST(j.created_at AS FLOAT)), 0.0)
@@ -193,7 +153,9 @@ impl MetricsCollector {
                 [],
                 |row| row.get(0),
             )
-            .map_err(|e| MetricsError::DatabaseError(format!("Failed to query avg wait time: {}", e)))?;
+            .map_err(|e| InfrastructureError::DatabaseError {
+                reason: format!("Failed to query avg wait time: {}", e),
+            })?;
 
         Ok(QueueMetrics {
             current_depth,
@@ -201,7 +163,10 @@ impl MetricsCollector {
         })
     }
 
-    fn collect_printer_metrics(&self, conn: &Connection) -> Result<PrinterMetrics, MetricsError> {
+    fn collect_printer_metrics(
+        &self,
+        conn: &Connection,
+    ) -> Result<PrinterMetrics, InfrastructureError> {
         let mut stmt = conn
             .prepare(
                 "SELECT printer_name,
@@ -211,7 +176,9 @@ impl MetricsCollector {
                  GROUP BY printer_name
                  ORDER BY printer_name",
             )
-            .map_err(|e| MetricsError::DatabaseError(format!("Failed to prepare printer query: {}", e)))?;
+            .map_err(|e| InfrastructureError::DatabaseError {
+                reason: format!("Failed to prepare printer query: {}", e),
+            })?;
 
         let printers = stmt
             .query_map([], |row| {
@@ -220,12 +187,16 @@ impl MetricsCollector {
                 let completed_jobs: u64 = row.get(2)?;
                 Ok((printer_name, total_jobs, completed_jobs))
             })
-            .map_err(|e| MetricsError::DatabaseError(format!("Failed to query printers: {}", e)))?;
+            .map_err(|e| InfrastructureError::DatabaseError {
+                reason: format!("Failed to query printers: {}", e),
+            })?;
 
         let mut result = Vec::new();
         for row in printers {
             let (printer_name, total_jobs, completed_jobs) =
-                row.map_err(|e| MetricsError::DatabaseError(format!("Row error: {}", e)))?;
+                row.map_err(|e| InfrastructureError::DatabaseError {
+                    reason: format!("Row error: {}", e),
+                })?;
             let utilization_percent = if total_jobs > 0 {
                 (completed_jobs as f64 / total_jobs as f64) * 100.0
             } else {
@@ -245,7 +216,7 @@ impl MetricsCollector {
     fn collect_performance_metrics(
         &self,
         conn: &Connection,
-    ) -> Result<PerformanceMetrics, MetricsError> {
+    ) -> Result<PerformanceMetrics, InfrastructureError> {
         let durations = self.fetch_completed_durations(conn)?;
 
         let avg_job_duration_secs = if durations.is_empty() {
@@ -261,23 +232,12 @@ impl MetricsCollector {
         let p95_job_duration_secs = percentile(&sorted, 95.0);
         let p99_job_duration_secs = percentile(&sorted, 99.0);
 
-        let avg_download_time_secs = self.fetch_step_duration(
-            conn,
-            "PrintJobQueued",
-            "PrintJobDownloaded",
-        )?;
-
-        let avg_render_time_secs = self.fetch_step_duration(
-            conn,
-            "PrintJobDownloaded",
-            "PrintJobSubmitted",
-        )?;
-
-        let avg_print_time_secs = self.fetch_step_duration(
-            conn,
-            "PrintJobPrinting",
-            "PrintJobCompleted",
-        )?;
+        let avg_download_time_secs =
+            self.fetch_step_duration(conn, "PrintJobQueued", "PrintJobDownloaded")?;
+        let avg_render_time_secs =
+            self.fetch_step_duration(conn, "PrintJobDownloaded", "PrintJobSubmitted")?;
+        let avg_print_time_secs =
+            self.fetch_step_duration(conn, "PrintJobPrinting", "PrintJobCompleted")?;
 
         Ok(PerformanceMetrics {
             avg_job_duration_secs,
@@ -293,7 +253,7 @@ impl MetricsCollector {
     fn fetch_completed_durations(
         &self,
         conn: &Connection,
-    ) -> Result<Vec<f64>, MetricsError> {
+    ) -> Result<Vec<f64>, InfrastructureError> {
         let mut stmt = conn
             .prepare(
                 "SELECT CAST(completed_at AS FLOAT) - CAST(created_at AS FLOAT)
@@ -302,16 +262,21 @@ impl MetricsCollector {
                    AND completed_at IS NOT NULL
                    AND completed_at >= created_at",
             )
-            .map_err(|e| MetricsError::DatabaseError(format!("Failed to prepare durations query: {}", e)))?;
+            .map_err(|e| InfrastructureError::DatabaseError {
+                reason: format!("Failed to prepare durations query: {}", e),
+            })?;
 
         let rows = stmt
             .query_map([], |row| row.get(0))
-            .map_err(|e| MetricsError::DatabaseError(format!("Failed to query durations: {}", e)))?;
+            .map_err(|e| InfrastructureError::DatabaseError {
+                reason: format!("Failed to query durations: {}", e),
+            })?;
 
         let mut durations = Vec::new();
         for row in rows {
-            let val: f64 =
-                row.map_err(|e| MetricsError::DatabaseError(format!("Row error: {}", e)))?;
+            let val: f64 = row.map_err(|e| InfrastructureError::DatabaseError {
+                reason: format!("Row error: {}", e),
+            })?;
             durations.push(val);
         }
         Ok(durations)
@@ -322,7 +287,7 @@ impl MetricsCollector {
         conn: &Connection,
         from_event: &str,
         to_event: &str,
-    ) -> Result<f64, MetricsError> {
+    ) -> Result<f64, InfrastructureError> {
         let result: f64 = conn
             .query_row(
                 "SELECT COALESCE(AVG(CAST(e2.timestamp AS FLOAT) - CAST(e1.timestamp AS FLOAT)), 0.0)
@@ -341,13 +306,19 @@ impl MetricsCollector {
                 rusqlite::params![from_event, to_event],
                 |row| row.get(0),
             )
-            .map_err(|e| {
-                MetricsError::DatabaseError(format!(
+            .map_err(|e| InfrastructureError::DatabaseError {
+                reason: format!(
                     "Failed to query step duration {} -> {}: {}",
                     from_event, to_event, e
-                ))
+                ),
             })?;
         Ok(result)
+    }
+}
+
+impl MetricsProvider for MetricsCollector {
+    fn collect(&self) -> Result<MetricsSnapshot, InfrastructureError> {
+        self.collect_metrics()
     }
 }
 
@@ -368,10 +339,9 @@ fn percentile(sorted_values: &[f64], p: f64) -> f64 {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::domain::models::PrintJob;
-    use crate::infrastructure::persistence::sqlite::migrations::run_migrations;
-    use crate::infrastructure::persistence::task_queue::QueueError;
-    use crate::domain::models::JobId;
+    use crate::application::ports::QueueError;
+    use crate::domain::print_job::{PrintJob, PrintJobId};
+    use crate::infrastructure::configs::db::run_migrations;
 
     struct MockQueueManager {
         depth: usize,
@@ -384,13 +354,13 @@ mod tests {
     }
 
     impl QueueManager for MockQueueManager {
-        fn push(&self, _job_id: &JobId) -> Result<(), QueueError> {
+        fn push(&self, _job_id: &PrintJobId) -> Result<(), QueueError> {
             Ok(())
         }
         fn pop(&self) -> Result<Option<PrintJob>, QueueError> {
             Ok(None)
         }
-        fn requeue(&self, _job_id: &JobId, _delay_secs: u64) -> Result<(), QueueError> {
+        fn requeue(&self, _job_id: &PrintJobId, _delay_secs: u64) -> Result<(), QueueError> {
             Ok(())
         }
         fn queue_depth(&self) -> Result<usize, QueueError> {
@@ -398,12 +368,21 @@ mod tests {
         }
     }
 
-    fn setup() -> (Arc<Mutex<Connection>>, Arc<MockQueueManager>) {
-        let mut conn = Connection::open_in_memory().unwrap();
-        run_migrations(&mut conn).unwrap();
-        let conn = Arc::new(Mutex::new(conn));
+    fn setup() -> (DbPool, Arc<MockQueueManager>) {
+        let nanos = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let thread_id = std::thread::current().id();
+        let path = std::env::temp_dir()
+            .join(format!("sapo_metrics_test_{nanos}_{thread_id:?}.db"));
+        let pool = DbPool::new(path.to_str().unwrap()).unwrap();
+        {
+            let mut conn = pool.get().unwrap();
+            run_migrations(&mut *conn).unwrap();
+        }
         let qm = Arc::new(MockQueueManager::new(5));
-        (conn, qm)
+        (pool, qm)
     }
 
     fn insert_job_with_status(
@@ -439,9 +418,9 @@ mod tests {
 
     #[test]
     fn test_job_metrics_counting() {
-        let (conn, qm) = setup();
+        let (pool, qm) = setup();
         {
-            let c = conn.lock().unwrap();
+            let c = pool.get().unwrap();
             insert_job_with_status(&c, "00000000-0000-0000-0000-000000000001", "HP", "PENDING", 1000, None);
             insert_job_with_status(&c, "00000000-0000-0000-0000-000000000002", "HP", "QUEUED", 1000, None);
             insert_job_with_status(&c, "00000000-0000-0000-0000-000000000003", "HP", "DOWNLOADED", 1000, None);
@@ -453,7 +432,7 @@ mod tests {
             insert_job_with_status(&c, "00000000-0000-0000-0000-000000000009", "HP", "CANCELLED", 1000, None);
         }
 
-        let collector = MetricsCollector::new(conn, qm);
+        let collector = MetricsCollector::new(pool.clone(), qm);
         let snapshot = collector.collect_metrics().unwrap();
 
         assert_eq!(snapshot.job_metrics.total_jobs, 9);
@@ -469,9 +448,9 @@ mod tests {
 
     #[test]
     fn test_success_rate_calculation() {
-        let (conn, qm) = setup();
+        let (pool, qm) = setup();
         {
-            let c = conn.lock().unwrap();
+            let c = pool.get().unwrap();
             for i in 0..8 {
                 let id = format!("00000000-0000-0000-0000-{:012}", i + 1);
                 insert_job_with_status(&c, &id, "HP", "COMPLETED", 1000, Some(2000));
@@ -482,7 +461,7 @@ mod tests {
             }
         }
 
-        let collector = MetricsCollector::new(conn, qm);
+        let collector = MetricsCollector::new(pool.clone(), qm);
         let snapshot = collector.collect_metrics().unwrap();
 
         assert_eq!(snapshot.job_metrics.completed, 8);
@@ -492,14 +471,14 @@ mod tests {
 
     #[test]
     fn test_success_rate_zero_terminal_jobs() {
-        let (conn, qm) = setup();
+        let (pool, qm) = setup();
         {
-            let c = conn.lock().unwrap();
+            let c = pool.get().unwrap();
             insert_job_with_status(&c, "00000000-0000-0000-0000-000000000001", "HP", "PENDING", 1000, None);
             insert_job_with_status(&c, "00000000-0000-0000-0000-000000000002", "HP", "QUEUED", 1000, None);
         }
 
-        let collector = MetricsCollector::new(conn, qm);
+        let collector = MetricsCollector::new(pool.clone(), qm);
         let snapshot = collector.collect_metrics().unwrap();
 
         assert!((snapshot.job_metrics.success_rate - 0.0).abs() < f64::EPSILON);
@@ -507,9 +486,9 @@ mod tests {
 
     #[test]
     fn test_queue_depth_from_mock() {
-        let (conn, qm) = setup();
+        let (pool, qm) = setup();
 
-        let collector = MetricsCollector::new(conn, qm);
+        let collector = MetricsCollector::new(pool.clone(), qm);
         let snapshot = collector.collect_metrics().unwrap();
 
         assert_eq!(snapshot.queue_metrics.current_depth, 5);
@@ -541,9 +520,9 @@ mod tests {
 
     #[test]
     fn test_printer_utilization() {
-        let (conn, qm) = setup();
+        let (pool, qm) = setup();
         {
-            let c = conn.lock().unwrap();
+            let c = pool.get().unwrap();
             insert_job_with_status(&c, "00000000-0000-0000-0000-000000000001", "PrinterA", "COMPLETED", 1000, Some(2000));
             insert_job_with_status(&c, "00000000-0000-0000-0000-000000000002", "PrinterA", "COMPLETED", 1000, Some(2000));
             insert_job_with_status(&c, "00000000-0000-0000-0000-000000000003", "PrinterA", "FAILED", 1000, None);
@@ -551,7 +530,7 @@ mod tests {
             insert_job_with_status(&c, "00000000-0000-0000-0000-000000000005", "PrinterB", "COMPLETED", 1000, Some(2000));
         }
 
-        let collector = MetricsCollector::new(conn, qm);
+        let collector = MetricsCollector::new(pool.clone(), qm);
         let snapshot = collector.collect_metrics().unwrap();
 
         let printers = &snapshot.printer_metrics.printers;
@@ -570,9 +549,9 @@ mod tests {
 
     #[test]
     fn test_step_duration_from_events() {
-        let (conn, qm) = setup();
+        let (pool, qm) = setup();
         {
-            let c = conn.lock().unwrap();
+            let c = pool.get().unwrap();
             let job_id = "00000000-0000-0000-0000-000000000001";
             insert_job_with_status(&c, job_id, "HP", "COMPLETED", 1000, Some(2000));
             insert_event(&c, job_id, 1, "PrintJobCreated", 1000);
@@ -583,7 +562,7 @@ mod tests {
             insert_event(&c, job_id, 6, "PrintJobCompleted", 1100);
         }
 
-        let collector = MetricsCollector::new(conn, qm);
+        let collector = MetricsCollector::new(pool.clone(), qm);
         let snapshot = collector.collect_metrics().unwrap();
 
         assert!((snapshot.performance_metrics.avg_download_time_secs - 20.0).abs() < f64::EPSILON);
@@ -593,9 +572,9 @@ mod tests {
 
     #[test]
     fn test_empty_database() {
-        let (conn, qm) = setup();
+        let (pool, qm) = setup();
 
-        let collector = MetricsCollector::new(conn, qm);
+        let collector = MetricsCollector::new(pool.clone(), qm);
         let snapshot = collector.collect_metrics().unwrap();
 
         assert_eq!(snapshot.job_metrics.total_jobs, 0);

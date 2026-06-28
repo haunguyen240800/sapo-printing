@@ -4,9 +4,10 @@ pub mod registry;
 use std::io::{self, BufReader, BufWriter, Write};
 use std::sync::Arc;
 
-use crate::application::ports::EventStore;
-use crate::domain::repository::PrintJobRepository;
-use crate::infrastructure::telemetry::metrics::MetricsCollector;
+use crate::application::ports::{
+    ConfigProvider, EventStore, MetricsProvider, PrinterManager, TempFileManager,
+};
+use crate::domain::print_job::PrintJobRepository;
 
 use crate::shared::event_bus::EventBus;
 
@@ -16,7 +17,10 @@ pub fn run_native_messaging(
     job_repo: Arc<dyn PrintJobRepository>,
     event_store: Arc<dyn EventStore>,
     event_bus: Arc<dyn EventBus>,
-    metrics_collector: Arc<MetricsCollector>,
+    metrics_provider: Arc<dyn MetricsProvider>,
+    config_provider: Arc<dyn ConfigProvider>,
+    printer_manager: Arc<dyn PrinterManager>,
+    temp_files: Arc<dyn TempFileManager>,
 ) -> Result<(), String> {
     protocol::set_binary_mode();
 
@@ -31,7 +35,10 @@ pub fn run_native_messaging(
         job_repo,
         event_store,
         event_bus,
-        metrics_collector,
+        metrics_provider,
+        config_provider,
+        printer_manager,
+        temp_files,
     );
 
     let stdin = io::stdin();

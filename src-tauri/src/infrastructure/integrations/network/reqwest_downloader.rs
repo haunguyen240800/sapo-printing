@@ -1,6 +1,6 @@
 ﻿//! Reqwest-based Document Downloader Implementation
 //!
-//! Concrete implementation of `DocumentDownloader` using `reqwest::blocking::Client`
+//! Concrete implementation of `DocumentDownloadService` using `reqwest::blocking::Client`
 //! with a 30-second timeout, circuit breaker integration, and atomic download pattern.
 //!
 //! ## Download Flow
@@ -20,9 +20,9 @@ use std::sync::Mutex;
 
 use reqwest::blocking::Client;
 
-use crate::domain::models::JobId;
+use crate::domain::print_job::PrintJobId;
+use crate::application::ports::DocumentDownloadService;
 use crate::infrastructure::integrations::network::circuit_breaker::CircuitBreaker;
-use crate::infrastructure::integrations::network::document_downloader::DocumentDownloader;
 use crate::shared::errors::InfrastructureError;
 
 /// Minimum bytes to read for PDF header validation.
@@ -71,7 +71,7 @@ impl ReqwestDownloader {
     ///
     /// Delegates to `do_download` and ensures the `.tmp` file is cleaned up
     /// on **any** error path (network, I/O, validation, rename).
-    fn download_internal(&self, url: &str, job_id: &JobId) -> Result<PathBuf, InfrastructureError> {
+    fn download_internal(&self, url: &str, job_id: &PrintJobId) -> Result<PathBuf, InfrastructureError> {
         let temp_path = temp_file_path(job_id, "tmp")?;
         let final_path = temp_file_path(job_id, "pdf")?;
 
@@ -157,8 +157,8 @@ impl Default for ReqwestDownloader {
     }
 }
 
-impl DocumentDownloader for ReqwestDownloader {
-    fn download(&self, url: &str, job_id: &JobId) -> Result<PathBuf, InfrastructureError> {
+impl DocumentDownloadService for ReqwestDownloader {
+    fn download(&self, url: &str, job_id: &PrintJobId) -> Result<PathBuf, InfrastructureError> {
         // F7: Validate URL scheme before entering circuit breaker
         validate_url(url)?;
 
@@ -226,7 +226,7 @@ fn validate_url(url: &str) -> Result<(), InfrastructureError> {
 /// # Errors
 /// Returns `InfrastructureError::ValidationError` if the home directory
 /// cannot be resolved.
-fn temp_file_path(job_id: &JobId, ext: &str) -> Result<PathBuf, InfrastructureError> {
+fn temp_file_path(job_id: &PrintJobId, ext: &str) -> Result<PathBuf, InfrastructureError> {
     let home = home::home_dir().ok_or_else(|| {
         InfrastructureError::ValidationError("Cannot resolve home directory".into())
     })?;
@@ -327,8 +327,8 @@ mod tests {
 
     #[test]
     fn test_reqwest_downloader_trait_object() {
-        // Verify ReqwestDownloader can be used as Arc<dyn DocumentDownloader>
-        let _downloader: std::sync::Arc<dyn DocumentDownloader> =
+        // Verify ReqwestDownloader can be used as Arc<dyn DocumentDownloadService>
+        let _downloader: std::sync::Arc<dyn DocumentDownloadService> =
             std::sync::Arc::new(ReqwestDownloader::new());
     }
 

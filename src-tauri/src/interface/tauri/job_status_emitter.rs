@@ -1,0 +1,156 @@
+//! UI presenter that forwards `PrintJob*` domain events to the Tauri frontend.
+//!
+//! Subscribes to the event bus via the [`EventHandler`] port and emits a
+//! single `job_status_changed` Tauri event with a UI-shaped payload
+//! (`job_id`, `status`, `progress`, `error_message`).
+//!
+//! Lives in the interface layer because the mapping `domain event →
+//! presentation payload` is presentation concern, not infrastructure.
+
+use std::sync::Arc;
+
+use serde_json::Value;
+use tauri::{AppHandle, Emitter};
+
+use crate::shared::event_bus::{EventBus, EventHandler};
+
+/// All domain events this presenter cares about, in the order they fire.
+const JOB_STATUS_EVENTS: &[&str] = &[
+    "PrintJobCreated",
+    "PrintJobQueued",
+    "PrintJobDownloaded",
+    "PrintJobSubmitted",
+    "PrintJobPrinting",
+    "PrintJobCompleted",
+    "PrintJobFailed",
+    "PrintJobCancelled",
+];
+
+const TAURI_EVENT_NAME: &str = "job_status_changed";
+
+pub struct JobStatusEmitter {
+    app_handle: AppHandle,
+}
+
+impl JobStatusEmitter {
+    pub fn new(app_handle: AppHandle) -> Self {
+        Self { app_handle }
+    }
+
+    /// Subscribe `self` to every job-status event on the given bus.
+    /// Returns the `Arc` so callers can keep a handle if needed.
+    pub fn register(self, bus: &Arc<dyn EventBus>) -> Arc<Self> {
+        let me = Arc::new(self);
+        for event_type in JOB_STATUS_EVENTS {
+            bus.subscribe(event_type, me.clone() as Arc<dyn EventHandler>);
+        }
+        me
+    }
+}
+
+impl EventHandler for JobStatusEmitter {
+    fn handle(&self, event_type: &str, payload: &str) {
+        let parsed: Value = match serde_json::from_str(payload) {
+            Ok(v) => v,
+            Err(e) => {
+                tracing::warn!(
+                    target = "sapo_printer::ui_presenter",
+                    event_type,
+                    error = %e,
+                    "JobStatusEmitter: invalid JSON payload, skipping emit"
+                );
+                return;
+            }
+        };
+
+        let job_id = parsed.get("job_id").and_then(|v| v.as_str()).unwrap_or("");
+        if job_id.is_empty() {
+            tracing::warn!(
+                target = "sapo_printer::ui_presenter",
+                event_type,
+                "JobStatusEmitter: missing job_id in payload, skipping emit"
+            );
+            return;
+        }
+
+        let status = event_type_to_status(event_type);
+        let progress = status_to_progress(status);
+        let error_message = parsed.get("reason").and_then(|v| v.as_str());
+
+        let ui_payload = serde_json::json!({
+            "job_id": job_id,
+            "status": status,
+            "progress": progress,
+            "error_message": error_message,
+        });
+
+        if let Err(e) = self.app_handle.emit(TAURI_EVENT_NAME, ui_payload) {
+            tracing::warn!(
+                target = "sapo_printer::ui_presenter",
+                event_type,
+                error = %e,
+                "JobStatusEmitter: Tauri emit failed"
+            );
+        }
+    }
+}
+
+fn event_type_to_status(event_type: &str) -> &'static str {
+    match event_type {
+        "PrintJobCreated" => "PENDING",
+        "PrintJobQueued" => "QUEUED",
+        "PrintJobDownloaded" => "DOWNLOADED",
+        "PrintJobSubmitted" => "SUBMITTED_TO_QUEUE",
+        "PrintJobPrinting" => "PRINTING",
+        "PrintJobCompleted" => "COMPLETED",
+        "PrintJobFailed" => "FAILED",
+        "PrintJobCancelled" => "CANCELLED",
+        _ => "UNKNOWN",
+    }
+}
+
+fn status_to_progress(status: &str) -> u8 {
+    match status {
+        "PENDING" => 0,
+        "QUEUED" => 10,
+        "DOWNLOADED" => 40,
+        "SUBMITTED_TO_QUEUE" => 60,
+        "PRINTING" => 80,
+        "COMPLETED" => 100,
+        _ => 0,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_event_type_to_status_mapping() {
+        assert_eq!(event_type_to_status("PrintJobCreated"), "PENDING");
+        assert_eq!(event_type_to_status("PrintJobQueued"), "QUEUED");
+        assert_eq!(event_type_to_status("PrintJobDownloaded"), "DOWNLOADED");
+        assert_eq!(
+            event_type_to_status("PrintJobSubmitted"),
+            "SUBMITTED_TO_QUEUE"
+        );
+        assert_eq!(event_type_to_status("PrintJobPrinting"), "PRINTING");
+        assert_eq!(event_type_to_status("PrintJobCompleted"), "COMPLETED");
+        assert_eq!(event_type_to_status("PrintJobFailed"), "FAILED");
+        assert_eq!(event_type_to_status("PrintJobCancelled"), "CANCELLED");
+        assert_eq!(event_type_to_status("UnknownEvent"), "UNKNOWN");
+    }
+
+    #[test]
+    fn test_status_to_progress_mapping() {
+        assert_eq!(status_to_progress("PENDING"), 0);
+        assert_eq!(status_to_progress("QUEUED"), 10);
+        assert_eq!(status_to_progress("DOWNLOADED"), 40);
+        assert_eq!(status_to_progress("SUBMITTED_TO_QUEUE"), 60);
+        assert_eq!(status_to_progress("PRINTING"), 80);
+        assert_eq!(status_to_progress("COMPLETED"), 100);
+        assert_eq!(status_to_progress("FAILED"), 0);
+        assert_eq!(status_to_progress("CANCELLED"), 0);
+        assert_eq!(status_to_progress("UNKNOWN"), 0);
+    }
+}

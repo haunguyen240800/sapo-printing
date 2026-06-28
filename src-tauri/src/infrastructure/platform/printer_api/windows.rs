@@ -167,3 +167,18 @@ impl GraphicsBackend for WindowsGraphicsBackend {
         }
     }
 }
+
+/// RAII safety net: if the struct is dropped between `begin_document` and
+/// `end_document` (e.g. via panic or early return), release the HDC so the
+/// Windows GDI handle is not leaked. `EndDoc` is intentionally skipped here —
+/// we cannot guarantee the document is in a printable state on the abnormal
+/// path, so we only reclaim the device context.
+impl Drop for WindowsGraphicsBackend {
+    fn drop(&mut self) {
+        if let Some(hdc) = self.hdc.take() {
+            unsafe {
+                DeleteDC(hdc);
+            }
+        }
+    }
+}

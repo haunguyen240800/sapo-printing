@@ -4,22 +4,29 @@
 // Prevents additional console window on Windows in release builds
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
-use sapo_printer::infrastructure::persistence::sqlite::{
-    run_migrations, DbPool, SqliteEventStore, SqlitePrintJobRepository,
-};
+use sapo_printer::infrastructure::configs::db::{run_migrations, DbPool};
+use sapo_printer::infrastructure::persistence::sqlite::{SqliteEventStore, SqlitePrintJobRepository};
 use sapo_printer::infrastructure::integrations::network::ReqwestDownloader;
 use sapo_printer::infrastructure::integrations::pdf_engine::bitmap_strategy::BitmapRenderStrategy;
-use sapo_printer::infrastructure::bus::event_bus::tauri_event_bus::TauriEventBus;
+use sapo_printer::infrastructure::integrations::pdf_engine::pdfium_loader;
 use sapo_printer::infrastructure::telemetry::metrics::MetricsCollector;
-use sapo_printer::infrastructure::persistence::task_queue::{QueueWorker, SqliteQueueManager};
-use sapo_printer::infrastructure::platform::keychain::SecretManager;
-use sapo_printer::application::ports::EventStore;
+use sapo_printer::application::ports::{
+    ConfigProvider, EventStore, MetricsProvider, PrinterManager, QueueManager, SecretManager,
+    TempFileManager,
+};
+use sapo_printer::infrastructure::configs::app::JsonFileConfigProvider;
+use sapo_printer::infrastructure::persistence::sqlite::SqliteQueueManager;
+use sapo_printer::infrastructure::platform::printer_api::SystemPrinterManager;
+use sapo_printer::infrastructure::platform::printing::DefaultPrintService;
+use sapo_printer::infrastructure::temp_file::{self, FilesystemTempFileManager};
+use sapo_printer::infrastructure::worker::QueueWorker;
+use sapo_printer::interface::tauri::job_status_emitter::JobStatusEmitter;
 use sapo_printer::interface::tauri::dtos::printer_dto::{
     PrinterConfigDto, PrinterDto, PrinterStatusDto,
 };
-use sapo_printer::application::dto::create_job_request::CreateJobRequest;
+use sapo_printer::application::dto::create_print_job_request::CreatePrintJobRequest;
 use sapo_printer::application::use_cases::create_print_job::CreatePrintJobUseCase;
-use sapo_printer::application::use_cases::errors::ApplicationError;
+use sapo_printer::application::errors::ApplicationError;
 use sapo_printer::shared::event_bus::EventBus;
 use sapo_printer::shared::logger::init_logging;
 use sapo_printer::AppContextState;
@@ -42,6 +49,8 @@ async fn create_print_job(
     let job_repo = ctx.job_repo.clone();
     let event_store = ctx.event_store.clone();
     let event_bus = ctx.event_bus.clone();
+    let config_provider = ctx.config_provider.clone();
+    let printer_manager = ctx.printer_manager.clone();
 
     // Run in blocking task to avoid blocking async runtime
     let result = tokio::task::spawn_blocking(move || {
@@ -56,9 +65,11 @@ async fn create_print_job(
                 job_repo,
                 event_store,
                 event_bus,
+                config_provider,
+                printer_manager,
             };
 
-            let request = CreateJobRequest {
+            let request = CreatePrintJobRequest {
                 pdf_urls: payload.pdf_urls,
                 printer_name: payload.printer_name,
                 output_path: payload.output_path,
@@ -135,9 +146,9 @@ fn cancel_print_job(
 /// Tauri command: list print jobs with filtering.
 #[tauri::command]
 fn list_jobs(
-    filter: sapo_printer::application::dto::JobFilterDto,
+    filter: sapo_printer::application::dto::PrintJobFilterDto,
     ctx: tauri::State<'_, AppContextState>,
-) -> Result<Vec<sapo_printer::application::dto::JobDto>, String> {
+) -> Result<Vec<sapo_printer::application::dto::PrintJobDto>, String> {
     sapo_printer::interface::tauri::commands::print_job::execute_list_jobs(filter, ctx.inner())
 }
 
@@ -146,7 +157,7 @@ fn list_jobs(
 fn get_job_status(
     job_id: String,
     ctx: tauri::State<'_, AppContextState>,
-) -> Result<sapo_printer::application::dto::JobDto, String> {
+) -> Result<sapo_printer::application::dto::PrintJobDto, String> {
     sapo_printer::interface::tauri::commands::print_job::execute_get_job_status(job_id, ctx.inner())
 }
 
@@ -168,12 +179,12 @@ async fn get_metrics(
     ctx: tauri::State<'_, AppContextState>,
 ) -> Result<sapo_printer::interface::tauri::dtos::metrics::MetricsDto, String> {
     // Clone only what we need to avoid blocking
-    let collector = ctx.metrics_collector.clone();
+    let metrics_provider = ctx.metrics_provider.clone();
 
     // Run in blocking task to avoid blocking async runtime
     tokio::task::spawn_blocking(move || {
         use sapo_printer::application::use_cases::GetMetricsUseCase;
-        let use_case = GetMetricsUseCase::new(collector);
+        let use_case = GetMetricsUseCase::new(metrics_provider);
         let snapshot = use_case.execute().map_err(|e| format!("{}", e))?;
 
         use sapo_printer::interface::tauri::dtos::metrics::*;
@@ -262,24 +273,22 @@ use sapo_printer::infrastructure::platform::keychain::MacOSKeychain;
 use sapo_printer::infrastructure::platform::keychain::LinuxSecretService;
 
 #[tauri::command]
-fn list_printers() -> Result<Vec<PrinterDto>, String> {
-    use sapo_printer::infrastructure::platform::printer_api::discovery::SystemPrinterDiscovery;
+fn list_printers(ctx: tauri::State<'_, AppContextState>) -> Result<Vec<PrinterDto>, String> {
     use sapo_printer::application::use_cases::ListPrintersUseCase;
-    use std::sync::Arc;
 
-    let discovery = Arc::new(SystemPrinterDiscovery::new());
-    let use_case = ListPrintersUseCase::new(discovery);
-    
+    let use_case = ListPrintersUseCase::new(ctx.printer_manager.clone());
+
     match use_case.execute() {
-        Ok(domain_printers) => {
-            Ok(domain_printers.into_iter().map(|p| PrinterDto {
+        Ok(printers) => Ok(printers
+            .into_iter()
+            .map(|p| PrinterDto {
                 name: p.name,
-                device_id: p.device_id,
+                device_id: p.id,
                 status: p.status,
                 printer_type: p.printer_type,
-                is_default: p.is_default,
-            }).collect())
-        }
+                is_default: Some(p.is_default),
+            })
+            .collect()),
         Err(e) => Err(format!("{:?}", e)),
     }
 }
@@ -290,7 +299,7 @@ fn save_printer_config(
     config: PrinterConfigDto,
     _app_ctx: tauri::State<AppContextState>,
 ) -> Result<(), String> {
-    use sapo_printer::infrastructure::app_print_config;
+    use sapo_printer::infrastructure::configs::app::app_print_config;
 
     // 1. Validate config fields
     // Paper size validation
@@ -397,7 +406,7 @@ fn save_printer_config(
 fn get_printer_config(
     _app_ctx: tauri::State<AppContextState>,
 ) -> Result<PrinterConfigDto, String> {
-    use sapo_printer::infrastructure::app_print_config;
+    use sapo_printer::infrastructure::configs::app::app_print_config;
 
     let config = app_print_config::load_config()?;
 
@@ -535,12 +544,12 @@ fn run_native_messaging_mode() -> Result<(), String> {
         .map_err(|e| format!("Database init failed: {}", e))?;
 
     {
-        let mut conn = pool.get();
-        run_migrations(&mut conn)
+        let mut conn = pool.get().map_err(|e| format!("Database connection failed: {}", e))?;
+        run_migrations(&mut *conn)
             .map_err(|e| format!("Migration failed: {}", e))?;
     }
 
-    let job_repo = Arc::new(SqlitePrintJobRepository::new(pool.get_arc()));
+    let job_repo = Arc::new(SqlitePrintJobRepository::new(pool.clone()));
 
     #[cfg(target_os = "windows")]
     let secret_manager: Arc<dyn SecretManager> =
@@ -559,10 +568,10 @@ fn run_native_messaging_mode() -> Result<(), String> {
         },
     );
 
-    let event_store = Arc::new(SqliteEventStore::new(pool.get_arc(), secret_manager));
+    let event_store = Arc::new(SqliteEventStore::new(pool.clone(), secret_manager));
     let event_bus: Arc<dyn EventBus> = Arc::new(sapo_printer::shared::event_bus::InMemoryEventBus::new());
 
-    let queue_manager = Arc::new(SqliteQueueManager::new(pool.get_arc()));
+    let queue_manager = Arc::new(SqliteQueueManager::new(pool.clone()));
 
     // Register PushToQueueHandler to listen for PrintJobCreated events
     let push_handler = Arc::new(sapo_printer::application::handlers::push_to_queue_handler::PushToQueueHandler::new(
@@ -570,16 +579,25 @@ fn run_native_messaging_mode() -> Result<(), String> {
     ));
     event_bus.subscribe("PrintJobCreated", push_handler);
 
-    let metrics_collector = Arc::new(MetricsCollector::new(
-        pool.get_arc(),
+    let metrics_provider: Arc<dyn MetricsProvider> = Arc::new(MetricsCollector::new(
+        pool.clone(),
         queue_manager.clone(),
     ));
+
+    // ConfigProvider, PrinterManager, TempFileManager for native messaging mode
+    let config_provider: Arc<dyn ConfigProvider> = Arc::new(JsonFileConfigProvider::new());
+    let printer_manager: Arc<dyn PrinterManager> = Arc::new(SystemPrinterManager::new());
+    let temp_dir = data_dir.join("temp");
+    std::fs::create_dir_all(&temp_dir)
+        .map_err(|e| format!("Cannot create temp directory: {}", e))?;
+    let temp_files: Arc<dyn TempFileManager> =
+        Arc::new(FilesystemTempFileManager::new(temp_dir));
 
     // Cast to EventStore port for cleanup and messaging handler
     let event_store_port: Arc<dyn EventStore> = Arc::clone(&event_store) as Arc<dyn EventStore>;
 
     // Startup cleanup: purge events older than 30 days (best-effort)
-    match sapo_printer::infrastructure::persistence::sqlite::cleanup_old_events(&event_store_port, 30) {
+    match sapo_printer::application::services::audit_service::cleanup_old_events(&event_store_port, 30) {
         Ok(deleted) => {
             if deleted > 0 {
                 tracing::info!(
@@ -604,7 +622,10 @@ fn run_native_messaging_mode() -> Result<(), String> {
         job_repo,
         event_store_port,
         event_bus,
-        metrics_collector,
+        metrics_provider,
+        config_provider,
+        printer_manager,
+        temp_files,
     )
 }
 
@@ -674,9 +695,6 @@ fn main() {
         std::process::exit(1);
     });
 
-    // Startup cleanup: remove orphaned .tmp files and old .pdf files (>24h)
-    sapo_printer::infrastructure::temp_file::startup_cleanup(&temp_dir);
-
     let db_path = data_dir.join("config.db");
     let db_path_str = db_path.to_str().unwrap_or_else(|| {
         eprintln!("Database path contains non-UTF-8 characters");
@@ -689,6 +707,12 @@ fn main() {
         .setup(move |app| {
             let app_handle = app.handle().clone();
 
+            // Register the Tauri resource directory so PDFium can locate its
+            // bundled native library regardless of the current working dir.
+            if let Ok(resource_dir) = app.path().resource_dir() {
+                pdfium_loader::set_pdfium_resource_dir(resource_dir);
+            }
+
             // Initialize database connection
             let pool = DbPool::new(&db_path_str).unwrap_or_else(|e| {
                 eprintln!("Database init failed: {e}");
@@ -697,15 +721,24 @@ fn main() {
 
             // Run migrations
             {
-                let mut conn = pool.get();
-                run_migrations(&mut conn).unwrap_or_else(|e| {
+                let mut conn = pool.get().unwrap_or_else(|e| {
+                    eprintln!("Database connection failed: {e}");
+                    std::process::exit(1);
+                });
+                run_migrations(&mut *conn).unwrap_or_else(|e| {
                     eprintln!("Migration failed: {e}");
                     std::process::exit(1);
                 });
             }
 
+            // Startup cleanup: retention is sourced from app_settings (see
+            // migration 2 — `temp_file_retention_hours`), falling back to the
+            // hardcoded default on any read failure.
+            let retention = temp_file::load_retention(&pool);
+            temp_file::startup_cleanup(&temp_dir, retention);
+
             // Initialize AppContext dependencies
-            let job_repo = Arc::new(SqlitePrintJobRepository::new(pool.get_arc()));
+            let job_repo = Arc::new(SqlitePrintJobRepository::new(pool.clone()));
 
             // Initialize secret manager
             #[cfg(target_os = "windows")]
@@ -732,11 +765,19 @@ fn main() {
                 },
             );
 
-            let event_store = Arc::new(SqliteEventStore::new(pool.get_arc(), secret_manager.clone()));
+            let event_store = Arc::new(SqliteEventStore::new(pool.clone(), secret_manager.clone()));
+
+            // EventBus is just a pub/sub dispatcher (handlers run synchronously
+            // in the publisher thread). UI emission is a SEPARATE subscriber:
+            // `JobStatusEmitter` lives in the interface layer.
             let event_bus: Arc<dyn EventBus> =
-                Arc::new(TauriEventBus::new(app_handle.clone()));
-            let queue_manager: Arc<dyn sapo_printer::infrastructure::persistence::task_queue::QueueManager> =
-                Arc::new(SqliteQueueManager::new(pool.get_arc()));
+                Arc::new(sapo_printer::shared::event_bus::InMemoryEventBus::new());
+
+            // Forward `PrintJob*` events to the Tauri frontend.
+            JobStatusEmitter::new(app_handle.clone()).register(&event_bus);
+
+            let queue_manager: Arc<dyn QueueManager> =
+                Arc::new(SqliteQueueManager::new(pool.clone()));
 
             // Register PushToQueueHandler to listen for PrintJobCreated events
             let push_handler = Arc::new(sapo_printer::application::handlers::push_to_queue_handler::PushToQueueHandler::new(
@@ -750,34 +791,71 @@ fn main() {
 
 
             // Initialize QueueWorker dependencies
-            let downloader = Arc::new(ReqwestDownloader::new());
-            let render_strategy = Arc::new(BitmapRenderStrategy::new());
+            let downloader: Arc<dyn sapo_printer::application::ports::DocumentDownloadService> =
+                Arc::new(ReqwestDownloader::new());
+            let render_strategy: Arc<dyn sapo_printer::infrastructure::integrations::pdf_engine::renderer::RenderStrategy> =
+                Arc::new(BitmapRenderStrategy::new());
+            let print_service: Arc<dyn sapo_printer::application::ports::PrintService> =
+                Arc::new(DefaultPrintService::new(render_strategy));
+
+            // Filesystem temp file manager (owns the per-app temp directory)
+            let temp_files: Arc<dyn TempFileManager> =
+                Arc::new(FilesystemTempFileManager::new(temp_dir.clone()));
+
+            // OS-backed PrinterManager — used both for ONLINE availability checks
+            // and for the `list_printers` Tauri command.
+            let printer_manager: Arc<dyn PrinterManager> =
+                Arc::new(SystemPrinterManager::new());
+
+            // Config provider — JSON file backed
+            let config_provider: Arc<dyn ConfigProvider> =
+                Arc::new(JsonFileConfigProvider::new());
 
             // Cast event_store to the application port trait for DI
             let event_store_port: Arc<dyn EventStore> = Arc::clone(&event_store) as Arc<dyn EventStore>;
 
+            let job_repo_port: Arc<dyn sapo_printer::domain::print_job::PrintJobRepository> =
+                job_repo.clone();
+
+            let process_use_case = Arc::new(
+                sapo_printer::application::use_cases::ProcessPrintJobUseCase::new(
+                    Arc::clone(&job_repo_port),
+                    Arc::clone(&event_store_port),
+                    Arc::clone(&event_bus),
+                    Arc::clone(&downloader),
+                    Arc::clone(&print_service),
+                    Arc::clone(&temp_files),
+                ),
+            );
+
+            let failure_handler = Arc::new(
+                sapo_printer::application::handlers::job_failure_handler::JobFailureHandler::new(
+                    Arc::clone(&queue_manager),
+                    Arc::clone(&job_repo_port),
+                    Arc::clone(&event_store_port),
+                    Arc::clone(&event_bus),
+                ),
+            );
+
             // Create and start QueueWorker
             let worker = Arc::new(QueueWorker::new(
                 Arc::clone(&queue_manager),
-                job_repo.clone()
-                    as Arc<dyn sapo_printer::domain::repository::PrintJobRepository>,
-                Arc::clone(&event_store_port),
-                Arc::clone(&event_bus),
-                downloader,
-                render_strategy,
+                Arc::clone(&job_repo_port),
+                process_use_case,
+                failure_handler,
             ));
 
             worker.start().expect("Failed to start queue worker");
             println!("Queue worker started successfully");
 
-            // Create MetricsCollector
-            let metrics_collector = Arc::new(MetricsCollector::new(
-                pool.get_arc(),
+            // Create MetricsCollector (concrete) and cast to MetricsProvider port
+            let metrics_provider: Arc<dyn MetricsProvider> = Arc::new(MetricsCollector::new(
+                pool.clone(),
                 queue_manager.clone(),
             ));
 
             // Startup cleanup: purge events older than 30 days (best-effort)
-            match sapo_printer::infrastructure::persistence::sqlite::cleanup_old_events(&event_store_port, 30) {
+            match sapo_printer::application::services::audit_service::cleanup_old_events(&event_store_port, 30) {
                 Ok(deleted) => {
                     if deleted > 0 {
                         tracing::info!(
@@ -804,7 +882,10 @@ fn main() {
                 event_bus,
                 queue_manager,
                 queue_worker: worker,
-                metrics_collector,
+                metrics_provider,
+                config_provider,
+                printer_manager,
+                temp_files,
                 app_handle,
                 install_guard: sapo_printer::infrastructure::platform::updater::update_checker::InstallGuard::new(),
                 last_emitted_update_version: std::sync::Mutex::new(None),

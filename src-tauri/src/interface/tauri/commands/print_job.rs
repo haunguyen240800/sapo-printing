@@ -1,11 +1,11 @@
-﻿use crate::application::dto::cancel_job_request::CancelJobRequest;
-use crate::application::dto::create_job_request::CreateJobRequest;
-use crate::application::dto::{JobDto, JobFilterDto};
+﻿use crate::application::dto::cancel_print_job_request::CancelPrintJobRequest;
+use crate::application::dto::create_print_job_request::CreatePrintJobRequest;
+use crate::application::dto::{PrintJobDto, PrintJobFilterDto};
 use crate::application::use_cases::cancel_print_job::CancelPrintJobUseCase;
 use crate::application::use_cases::create_print_job::CreatePrintJobUseCase;
-use crate::application::use_cases::errors::ApplicationError;
-use crate::application::use_cases::list_jobs::ListJobsUseCase;
-use crate::domain::models::JobId;
+use crate::application::errors::ApplicationError;
+use crate::application::use_cases::list_print_jobs::ListPrintJobsUseCase;
+use crate::domain::print_job::PrintJobId;
 use crate::AppContextState;
 use std::str::FromStr;
 
@@ -35,9 +35,11 @@ pub fn execute_create_print_job(
         job_repo: ctx.job_repo.clone(),
         event_store: ctx.event_store.clone(),
         event_bus: ctx.event_bus.clone(),
+        config_provider: ctx.config_provider.clone(),
+        printer_manager: ctx.printer_manager.clone(),
     };
 
-    let request = CreateJobRequest {
+    let request = CreatePrintJobRequest {
         pdf_urls: payload.pdf_urls,
         printer_name: payload.printer_name,
         output_path: payload.output_path,
@@ -69,9 +71,10 @@ pub fn execute_cancel_print_job(
         ctx.job_repo.clone(),
         ctx.event_store.clone(),
         ctx.event_bus.clone(),
+        ctx.temp_files.clone(),
     );
 
-    let request = CancelJobRequest {
+    let request = CancelPrintJobRequest {
         job_id: payload.job_id,
     };
 
@@ -98,10 +101,10 @@ pub fn execute_cancel_print_job(
 /// Execute the list jobs use case with filtering.
 /// Called from the `list_jobs` Tauri command in `main.rs`.
 pub fn execute_list_jobs(
-    filter: JobFilterDto,
+    filter: PrintJobFilterDto,
     ctx: &AppContextState,
-) -> Result<Vec<JobDto>, String> {
-    let use_case = ListJobsUseCase::new(ctx.job_repo.clone());
+) -> Result<Vec<PrintJobDto>, String> {
+    let use_case = ListPrintJobsUseCase::new(ctx.job_repo.clone());
 
     use_case
         .execute(filter)
@@ -110,8 +113,8 @@ pub fn execute_list_jobs(
 
 /// Execute get job status by ID.
 /// Called from the `get_job_status` Tauri command in `main.rs`.
-pub fn execute_get_job_status(job_id: String, ctx: &AppContextState) -> Result<JobDto, String> {
-    let job_id = JobId::from_str(&job_id)
+pub fn execute_get_job_status(job_id: String, ctx: &AppContextState) -> Result<PrintJobDto, String> {
+    let job_id = PrintJobId::from_str(&job_id)
         .map_err(|_| format!("Job ID khĂ´ng há»£p lá»‡: {}", job_id))?;
 
     let job = ctx

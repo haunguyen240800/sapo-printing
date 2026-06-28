@@ -19,7 +19,8 @@
 #[cfg(target_os = "linux")]
 use secret_service::{Collection, EncryptionType, SecretService};
 
-use crate::infrastructure::platform::keychain::SecretManager;
+use crate::application::services::secret_key_service::{validate_key, MAX_SECRET_SIZE};
+use crate::application::ports::SecretManager;
 use crate::shared::errors::InfrastructureError;
 
 /// Linux Secret Service implementation using D-Bus API.
@@ -60,14 +61,14 @@ impl LinuxSecretService {
 impl SecretManager for LinuxSecretService {
     fn store(&self, key: &str, value: &str) -> Result<(), InfrastructureError> {
         // Validate key format
-        super::validate_key(key)?;
+        validate_key(key)?;
 
         // Validate size limit (apply Windows limit for consistency)
-        if value.len() > super::MAX_SECRET_SIZE {
+        if value.len() > MAX_SECRET_SIZE {
             return Err(InfrastructureError::SecretStoreError(format!(
                 "Secret value too large: {} bytes (max {} bytes)",
                 value.len(),
-                super::MAX_SECRET_SIZE
+                MAX_SECRET_SIZE
             )));
         }
 

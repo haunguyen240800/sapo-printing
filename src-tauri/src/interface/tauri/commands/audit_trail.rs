@@ -1,4 +1,4 @@
-use crate::application::use_cases::get_audit_trail::AuditTrailUseCase;
+use crate::application::use_cases::get_audit_trail::GetAuditTrailUseCase;
 use crate::interface::tauri::dtos::audit_trail::{AuditEventDto, AuditTrailResponse};
 use crate::AppContextState;
 
@@ -8,7 +8,7 @@ pub fn execute_get_job_audit_trail(
     job_id: String,
     ctx: &AppContextState,
 ) -> Result<AuditTrailResponse, String> {
-    let use_case = AuditTrailUseCase::new(ctx.event_store.clone(), ctx.secret_manager.clone());
+    let use_case = GetAuditTrailUseCase::new(ctx.event_store.clone(), ctx.secret_manager.clone());
 
     let result = use_case.execute(&job_id).map_err(|e| format!("{}", e))?;
 

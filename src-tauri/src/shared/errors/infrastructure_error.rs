@@ -1,4 +1,4 @@
-use crate::infrastructure::persistence::sqlite::DatabaseError;
+use crate::infrastructure::configs::db::DatabaseError;
 
 #[derive(Debug)]
 pub enum InfrastructureError {

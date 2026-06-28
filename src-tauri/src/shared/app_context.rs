@@ -1,19 +1,19 @@
 use std::sync::Arc;
 
-use crate::application::ports::EventStore;
-use crate::domain::repository::PrintJobRepository;
-use crate::infrastructure::persistence::sqlite::{
-    run_migrations, DbPool, SqliteEventStore, SqlitePrintJobRepository,
-};
+use crate::application::ports::{EventStore, SecretManager};
+use crate::domain::print_job::PrintJobRepository;
+use crate::infrastructure::configs::db::{run_migrations, DbPool};
+use crate::infrastructure::persistence::sqlite::{SqliteEventStore, SqlitePrintJobRepository};
 
-use crate::infrastructure::platform::keychain::SecretManager;
+
 use crate::shared::errors::InfrastructureError;
 use crate::shared::event_bus::EventBus;
 
-// TODO (Story 3.1): Add DocumentDownloader to AppContext
+// TODO (Story 3.1): Add DocumentDownloadService to AppContext
 // When Use Cases are created (Story 3.8+), inject:
-//   use crate::infrastructure::integrations::network::{DocumentDownloader, ReqwestDownloader};
-//   pub downloader: Arc<dyn DocumentDownloader>,
+//   use crate::application::ports::DocumentDownloadService;
+//   use crate::infrastructure::integrations::network::ReqwestDownloader;
+//   pub downloader: Arc<dyn DocumentDownloadService>,
 // Initialize in AppContext::new():
 //   downloader: Arc::new(ReqwestDownloader::new()),
 
@@ -46,10 +46,13 @@ impl AppContext {
     #[allow(unused_variables)]
     pub fn new(db_path: &str) -> Result<Self, InfrastructureError> {
         let pool = DbPool::new(db_path)?;
-        run_migrations(&mut pool.get()).map_err(|e| InfrastructureError::from(e))?;
+        {
+            let mut conn = pool.get().map_err(InfrastructureError::from)?;
+            run_migrations(&mut *conn).map_err(InfrastructureError::from)?;
+        }
 
         let job_repo: Arc<dyn PrintJobRepository> =
-            Arc::new(SqlitePrintJobRepository::new(pool.get_arc()));
+            Arc::new(SqlitePrintJobRepository::new(pool.clone()));
 
         // Platform-specific secret manager initialization
         #[cfg(target_os = "windows")]
@@ -61,7 +64,7 @@ impl AppContext {
         #[cfg(target_os = "linux")]
         let secret_manager: Arc<dyn SecretManager> = Arc::new(LinuxSecretService::new()?);
 
-        let event_store: Arc<dyn EventStore> = Arc::new(SqliteEventStore::new(pool.get_arc(), secret_manager.clone()));
+        let event_store: Arc<dyn EventStore> = Arc::new(SqliteEventStore::new(pool.clone(), secret_manager.clone()));
 
         // EventBus: in-memory for now (future: outbox pattern with persistent queue)
         let event_bus: Arc<dyn EventBus> =

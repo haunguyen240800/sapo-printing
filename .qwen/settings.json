@@ -42,7 +42,8 @@
       "Skill(bmad-retrospective)",
       "Bash(taskkill *)",
       "Bash(do *)",
-      "Bash(done)"
+      "Bash(done)",
+      "Skill(bmad-manual-agent-resolve)"
     ]
   },
   "$version": 4

@@ -1,14 +1,13 @@
 use std::sync::Arc;
 
-use crate::application::dto::job_status_dto::JobStatusDto;
-use crate::application::use_cases::errors::ApplicationError;
-use crate::domain::repository::PrintJobRepository;
-use crate::domain::models::JobId;
+use crate::application::dto::print_job_status_dto::PrintJobStatusDto;
+use crate::application::errors::ApplicationError;
+use crate::domain::print_job::{PrintJobId, PrintJobRepository};
 
 /// Use case: Get status of a print job.
 ///
 /// Read-only operation — no transaction, no event publishing.
-/// Returns JobStatusDto with progress calculation for web app polling.
+/// Returns PrintJobStatusDto with progress calculation for web app polling.
 pub struct GetJobStatusUseCase {
     job_repo: Arc<dyn PrintJobRepository>,
 }
@@ -21,19 +20,19 @@ impl GetJobStatusUseCase {
     /// Execute the use case: look up a job by ID and return its status DTO.
     ///
     /// Returns:
-    /// - `Ok(JobStatusDto)` if job exists
+    /// - `Ok(PrintJobStatusDto)` if job exists
     /// - `Err(ApplicationError::JobNotFound)` if job doesn't exist
     /// - `Err(ApplicationError::InvalidJobId)` if job_id is not a valid UUID
     /// - `Err(ApplicationError::RepositoryError)` on storage failure
-    pub fn execute(&self, job_id: &str) -> Result<JobStatusDto, ApplicationError> {
+    pub fn execute(&self, job_id: &str) -> Result<PrintJobStatusDto, ApplicationError> {
         tracing::info!(
-            target = "sapo_printer::use_case::get_job_status",
+            target = "sapo_printer::application::use_case::get_job_status",
             job_id = job_id,
             "GetJobStatusUseCase: starting"
         );
 
         // Parse JobId
-        let job_id_parsed = job_id.parse::<JobId>().map_err(|_| ApplicationError::InvalidJobId {
+        let job_id_parsed = job_id.parse::<PrintJobId>().map_err(|_| ApplicationError::InvalidJobId {
             job_id: job_id.to_string(),
         })?;
 
@@ -47,10 +46,10 @@ impl GetJobStatusUseCase {
             })?;
 
         // Convert to DTO
-        let dto = JobStatusDto::from(job);
+        let dto = PrintJobStatusDto::from(job);
 
         tracing::debug!(
-            target = "sapo_printer::use_case::get_job_status",
+            target = "sapo_printer::application::use_case::get_job_status",
             job_id = job_id,
             status = dto.status,
             "GetJobStatusUseCase: completed"

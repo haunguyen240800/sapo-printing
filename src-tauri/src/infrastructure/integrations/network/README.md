@@ -11,15 +11,15 @@ document processing pipeline in Epic 3.
 ### Trait-Based Design
 
 ```
-DocumentDownloader (trait)
+DocumentDownloadService (trait, application port)
     └── ReqwestDownloader (concrete implementation)
             └── CircuitBreaker (resilience pattern)
 ```
 
-The `DocumentDownloader` trait defines the service contract, enabling:
+The `DocumentDownloadService` trait defines the service contract, enabling:
 - Testability via mocking in unit tests
 - Future replacement of the HTTP client without changing callers
-- `Arc<dyn DocumentDownloader>` injection into use cases
+- `Arc<dyn DocumentDownloadService>` injection into use cases
 
 ### Circuit Breaker Rationale
 
@@ -47,8 +47,9 @@ On any error, the `.tmp` file is deleted to prevent partial file leaks.
 ## Usage
 
 ```rust
-use crate::infrastructure::integrations::network::{DocumentDownloader, ReqwestDownloader};
-use crate::domain::models::JobId;
+use crate::application::ports::DocumentDownloadService;
+use crate::infrastructure::integrations::network::ReqwestDownloader;
+use crate::domain::print_job::PrintJobId;
 
 let downloader = ReqwestDownloader::new();
 let job_id = JobId::new();

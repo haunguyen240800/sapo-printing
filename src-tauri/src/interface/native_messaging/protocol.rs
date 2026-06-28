@@ -3,14 +3,16 @@ use std::sync::Arc;
 
 use serde::{Deserialize, Serialize};
 
-use crate::application::dto::create_job_request::CreateJobRequest;
-use crate::application::dto::cancel_job_request::CancelJobRequest;
-use crate::application::ports::EventStore;
+use crate::application::dto::create_print_job_request::CreatePrintJobRequest;
+use crate::application::dto::cancel_print_job_request::CancelPrintJobRequest;
+use crate::application::ports::{
+    ConfigProvider, EventStore, MetricsProvider, PrinterManager, TempFileManager,
+};
 use crate::application::use_cases::cancel_print_job::CancelPrintJobUseCase;
 use crate::application::use_cases::create_print_job::CreatePrintJobUseCase;
-use crate::application::use_cases::errors::ApplicationError;
+use crate::application::errors::ApplicationError;
 use crate::application::use_cases::get_job_status::GetJobStatusUseCase;
-use crate::domain::repository::PrintJobRepository;
+use crate::domain::print_job::PrintJobRepository;
 
 use crate::interface::tauri::dtos::printer_dto::PrinterDto;
 use crate::shared::event_bus::EventBus;
@@ -181,7 +183,10 @@ pub struct NativeMessageHandler {
     pub job_repo: Arc<dyn PrintJobRepository>,
     pub event_store: Arc<dyn EventStore>,
     pub event_bus: Arc<dyn EventBus>,
-    pub metrics_collector: Arc<crate::infrastructure::telemetry::metrics::MetricsCollector>,
+    pub metrics_provider: Arc<dyn MetricsProvider>,
+    pub config_provider: Arc<dyn ConfigProvider>,
+    pub printer_manager: Arc<dyn PrinterManager>,
+    pub temp_files: Arc<dyn TempFileManager>,
 }
 
 impl NativeMessageHandler {
@@ -189,12 +194,19 @@ impl NativeMessageHandler {
         job_repo: Arc<dyn PrintJobRepository>,
         event_store: Arc<dyn EventStore>,
         event_bus: Arc<dyn EventBus>,
-        metrics_collector: Arc<crate::infrastructure::telemetry::metrics::MetricsCollector>,
+        metrics_provider: Arc<dyn MetricsProvider>,
+        config_provider: Arc<dyn ConfigProvider>,
+        printer_manager: Arc<dyn PrinterManager>,
+        temp_files: Arc<dyn TempFileManager>,
     ) -> Self {
         Self {
-            job_repo,            event_store,
+            job_repo,
+            event_store,
             event_bus,
-            metrics_collector,
+            metrics_provider,
+            config_provider,
+            printer_manager,
+            temp_files,
         }
     }
 
@@ -276,9 +288,11 @@ impl NativeMessageHandler {
             job_repo: self.job_repo.clone(),
             event_store: self.event_store.clone(),
             event_bus: self.event_bus.clone(),
+            config_provider: self.config_provider.clone(),
+            printer_manager: self.printer_manager.clone(),
         };
 
-        let request = CreateJobRequest {
+        let request = CreatePrintJobRequest {
             pdf_urls,
             printer_name,
             output_path: None,
@@ -329,9 +343,10 @@ impl NativeMessageHandler {
             self.job_repo.clone(),
             self.event_store.clone(),
             self.event_bus.clone(),
+            self.temp_files.clone(),
         );
 
-        let request = CancelJobRequest { job_id };
+        let request = CancelPrintJobRequest { job_id };
 
         match use_case.execute(request) {
             Ok(()) => {
@@ -399,7 +414,7 @@ impl NativeMessageHandler {
                 "VALIDATION_ERROR",
                 reason.clone(),
             ),
-            ApplicationError::DomainError(e) => (
+            ApplicationError::PrintJobError(e) => (
                 "VALIDATION_ERROR",
                 format!("Domain error: {}", e),
             ),
