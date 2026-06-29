@@ -22,6 +22,7 @@ impl RenderStrategy for NativePdfRenderStrategy {
     fn render(
         &self,
         pdf_path: &str,
+        _printer_name: &str,
         settings: &PrintJobSettings,
         backend: &mut dyn GraphicsBackend,
     ) -> Result<(), InfrastructureError> {

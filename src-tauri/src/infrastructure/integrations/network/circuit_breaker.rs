@@ -48,7 +48,7 @@ impl CircuitBreaker {
     ///
     /// # Defaults
     /// - `failure_threshold`: 5 consecutive failures to open circuit
-    /// - `timeout`: 60 seconds before transitioning Open → HalfOpen
+    /// - `timeout`: 15 seconds before transitioning Open → HalfOpen
     pub fn new() -> Self {
         Self {
             state: CircuitState::Closed,
@@ -56,8 +56,17 @@ impl CircuitBreaker {
             failure_threshold: 5,
             success_count: 0,
             open_until: None,
-            timeout: Duration::from_secs(60),
+            timeout: Duration::from_secs(15),
         }
+    }
+
+    /// Reset the circuit breaker to Closed state.
+    /// Used when the operator knows the underlying service has recovered.
+    pub fn reset(&mut self) {
+        self.state = CircuitState::Closed;
+        self.failure_count = 0;
+        self.success_count = 0;
+        self.open_until = None;
     }
 
     /// Execute a fallible operation through the circuit breaker.

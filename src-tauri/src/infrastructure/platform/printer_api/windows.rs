@@ -168,7 +168,7 @@ impl GraphicsBackend for WindowsGraphicsBackend {
             unsafe {
                 let log_x = GetDeviceCaps(hdc, LOGPIXELSX);
                 let log_y = GetDeviceCaps(hdc, LOGPIXELSY);
-                
+
                 let horz_res = GetDeviceCaps(hdc, HORZRES);
                 let vert_res = GetDeviceCaps(hdc, VERTRES);
                 let horz_size = GetDeviceCaps(hdc, HORZSIZE); // in mm
@@ -177,13 +177,28 @@ impl GraphicsBackend for WindowsGraphicsBackend {
                 let phys_dpi_x = if horz_size > 0 { (horz_res as f64 / (horz_size as f64 / 25.4)).round() as u32 } else { log_x as u32 };
                 let phys_dpi_y = if vert_size > 0 { (vert_res as f64 / (vert_size as f64 / 25.4)).round() as u32 } else { log_y as u32 };
 
-                tracing::info!("Printer DPI metrics: LOGPIXELS={}x{}, HORZRES={}x{}, SIZE={}x{}mm, PHYS_DPI={}x{}", 
-                    log_x, log_y, horz_res, vert_res, horz_size, vert_size, phys_dpi_x, phys_dpi_y);
+                tracing::info!(
+                    "Printer DC metrics: LOGPIXELS={}x{}, HORZRES={}x{}, SIZE={}x{}mm, PHYS_DPI={}x{}",
+                    log_x, log_y, horz_res, vert_res, horz_size, vert_size, phys_dpi_x, phys_dpi_y
+                );
 
                 (phys_dpi_x, phys_dpi_y)
             }
         } else {
             (300, 300)
+        }
+    }
+
+    fn get_page_pixels(&self) -> (u32, u32) {
+        if let Some(hdc) = self.hdc {
+            unsafe {
+                let w = GetDeviceCaps(hdc, HORZRES) as u32;
+                let h = GetDeviceCaps(hdc, VERTRES) as u32;
+                tracing::info!("Printer DC printable area: {}x{} px", w, h);
+                (w, h)
+            }
+        } else {
+            (0, 0)
         }
     }
 

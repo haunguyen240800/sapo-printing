@@ -108,15 +108,26 @@ impl ReqwestDownloader {
         let response = self.client.get(url).send()?;
 
         if !response.status().is_success() {
+            let status = response.status();
             tracing::warn!(
                 target = "sapo_printer::downloader",
                 url = url,
-                status = %response.status(),
+                status = %status,
                 "ReqwestDownloader: download failed"
             );
+            // 4xx errors are client-side problems (bad URL, auth, missing file).
+            // Return ValidationError so the circuit breaker does NOT count them —
+            // these are not service outages and should not open the circuit.
+            // 5xx errors ARE server problems and should count toward the threshold.
+            if status.is_client_error() {
+                return Err(InfrastructureError::ValidationError(format!(
+                    "HTTP {} — check PDF URL or permissions",
+                    status
+                )));
+            }
             return Err(InfrastructureError::NetworkError(format!(
-                "HTTP {}",
-                response.status()
+                "HTTP {} — server error",
+                status
             )));
         }
 
@@ -148,6 +159,21 @@ impl ReqwestDownloader {
         );
 
         Ok(final_path.to_path_buf())
+    }
+}
+
+impl ReqwestDownloader {
+    /// Reset the circuit breaker to Closed state.
+    /// Call this when the operator knows the network has recovered and wants
+    /// to unblock queued jobs without waiting for the automatic timeout.
+    pub fn reset_circuit_breaker(&self) {
+        if let Ok(mut cb) = self.circuit_breaker.lock() {
+            cb.reset();
+            tracing::info!(
+                target = "sapo_printer::downloader",
+                "Circuit breaker manually reset to Closed"
+            );
+        }
     }
 }
 

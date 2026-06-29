@@ -81,6 +81,13 @@ impl GraphicsBackend for MacOsGraphicsBackend {
         (300, 300)
     }
 
+    fn get_page_pixels(&self) -> (u32, u32) {
+        let (dpi_x, dpi_y) = self.get_dpi();
+        let w = (self.paper_width_mm * dpi_x as f32 / 25.4) as u32;
+        let h = (self.paper_height_mm * dpi_y as f32 / 25.4) as u32;
+        (w.max(1), h.max(1))
+    }
+
     fn native_context(&mut self) -> NativeGraphicsContext {
         NativeGraphicsContext::Mac(0)
     }
