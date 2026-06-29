@@ -35,8 +35,9 @@ impl PrintService for DefaultPrintService {
         settings: &PrintJobSettings,
     ) -> Result<(), InfrastructureError> {
         let mut backend = GraphicsBackendFactory::create();
+        let (paper_w_mm, paper_h_mm) = settings.paper_size.dimensions_mm();
         backend
-            .begin_document(printer_name, "Sapo Print Job", None)
+            .begin_document(printer_name, "Sapo Print Job", None, paper_w_mm, paper_h_mm)
             .map_err(InfrastructureError::RenderError)?;
 
         let render_result = self.render_strategy.render(pdf_path, settings, &mut *backend);

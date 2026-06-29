@@ -73,75 +73,112 @@ impl PrinterManager for SystemPrinterManager {
 }
 
 #[cfg(target_os = "windows")]
+fn win32_status_to_str(status: u32) -> &'static str {
+    // Win32 PRINTER_STATUS_* bit flags from winspool.h
+    const PRINTER_STATUS_OFFLINE: u32 = 0x00000080;
+    const PRINTER_STATUS_NOT_AVAILABLE: u32 = 0x00001000;
+    const PRINTER_STATUS_ERROR: u32 = 0x00000002;
+
+    if status & (PRINTER_STATUS_OFFLINE | PRINTER_STATUS_NOT_AVAILABLE) != 0 {
+        "Offline"
+    } else if status & PRINTER_STATUS_ERROR != 0 {
+        "Error"
+    } else {
+        // 0 = Normal/Ready; all other non-fatal flags (Busy, Printing, WarmingUp…) = still usable
+        "Online"
+    }
+}
+
+#[cfg(target_os = "windows")]
+fn get_default_printer_name() -> String {
+    use windows::Win32::Graphics::Printing::GetDefaultPrinterW;
+    use windows::core::PWSTR;
+
+    unsafe {
+        let mut size: u32 = 0;
+        // First call returns false and sets `size` to the required buffer length (chars).
+        GetDefaultPrinterW(PWSTR::null(), &mut size);
+        if size == 0 {
+            return String::new();
+        }
+        let mut buf = vec![0u16; size as usize];
+        if GetDefaultPrinterW(PWSTR(buf.as_mut_ptr()), &mut size).as_bool() {
+            let len = buf.iter().position(|&c| c == 0).unwrap_or(buf.len());
+            String::from_utf16_lossy(&buf[..len])
+        } else {
+            String::new()
+        }
+    }
+}
+
+#[cfg(target_os = "windows")]
 fn list_os_printers() -> Result<Vec<PrinterDto>, InfrastructureError> {
-    use serde_json::Value;
-    use std::process::Command;
+    use windows::Win32::Graphics::Printing::{EnumPrintersW, PRINTER_INFO_2W};
+    use windows::core::PCWSTR;
 
-    let output = Command::new("powershell")
-        .args([
-            "-NoProfile",
-            "-NonInteractive",
-            "-Command",
-            r#"
-$default = (Get-WmiObject -Class Win32_Printer | Where-Object { $_.Default -eq $true }).Name
-Get-Printer | Select-Object Name, PrinterStatus, @{Name='IsDefault';Expression={ $_.Name -eq $default }} | ConvertTo-Json -Depth 2
-"#,
-        ])
-        .output()
-        .map_err(|e| InfrastructureError::PrinterError {
-            reason: format!("Failed to execute powershell: {}", e),
-        })?;
+    // PRINTER_ENUM_LOCAL(2) | PRINTER_ENUM_CONNECTIONS(4)
+    const FLAGS: u32 = 2 | 4;
 
-    if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        return Err(InfrastructureError::PrinterError {
-            reason: format!("PowerShell command failed: {}", stderr),
-        });
+    let default_printer = get_default_printer_name();
+    let mut bytes_needed: u32 = 0;
+    let mut count: u32 = 0;
+
+    // First call — always returns false with ERROR_INSUFFICIENT_BUFFER; used only to get size.
+    unsafe {
+        EnumPrintersW(FLAGS, PCWSTR::null(), 2, None, &mut bytes_needed, &mut count);
     }
 
-    let json_str = String::from_utf8_lossy(&output.stdout);
-    if json_str.trim().is_empty() {
+    if bytes_needed == 0 {
         return Ok(vec![]);
     }
 
-    let parsed: Value = serde_json::from_str(&json_str).map_err(|e| {
-        InfrastructureError::PrinterError {
-            reason: format!("Failed to parse printer JSON: {}", e),
-        }
-    })?;
+    let mut buffer = vec![0u8; bytes_needed as usize];
 
-    let items = match parsed {
-        Value::Array(arr) => arr,
-        Value::Object(_) => vec![parsed.clone()],
-        _ => return Ok(vec![]),
-    };
+    unsafe {
+        EnumPrintersW(
+            FLAGS,
+            PCWSTR::null(),
+            2,
+            Some(&mut buffer),
+            &mut bytes_needed,
+            &mut count,
+        )
+        .map_err(|e| InfrastructureError::PrinterError {
+            reason: format!("EnumPrintersW failed: {}", e),
+        })?;
+    }
 
     let mut printers = Vec::new();
-    for item in items {
-        if let Some(name) = item.get("Name").and_then(|v| v.as_str()) {
-            // PrinterStatus values from Win32:
-            // 1=Other, 2=Unknown, 3=Idle(Online), 4=Printing, 5=WarmUp
-            // 6=StoppedPrinting(Error), 7=Offline
-            let status = match item.get("PrinterStatus").and_then(|v| v.as_u64()) {
-                Some(3) | Some(4) | Some(5) => "Online",
-                Some(7) => "Offline",
-                Some(6) => "Error",
-                _ => "Unknown",
-            };
-            let is_default = item
-                .get("IsDefault")
-                .and_then(|v| v.as_bool())
-                .unwrap_or(false);
 
-            printers.push(PrinterDto {
-                id: name.to_string(),
-                name: name.to_string(),
-                status: status.to_string(),
-                printer_type: "Local".to_string(),
-                is_default,
-            });
+    for i in 0..count as usize {
+        // SAFETY: EnumPrintersW packed `count` PRINTER_INFO_2W structs at the start of `buffer`;
+        // string pointers inside each struct point into the tail of the same buffer.
+        let info = unsafe {
+            &*(buffer
+                .as_ptr()
+                .add(i * std::mem::size_of::<PRINTER_INFO_2W>())
+                as *const PRINTER_INFO_2W)
+        };
+
+        if info.pPrinterName.is_null() {
+            continue;
         }
+
+        let name = unsafe { info.pPrinterName.to_string().unwrap_or_default() };
+        if name.is_empty() {
+            continue;
+        }
+
+        let is_default = name == default_printer;
+        printers.push(PrinterDto {
+            id: name.clone(),
+            name,
+            status: win32_status_to_str(info.Status).to_string(),
+            printer_type: "Local".to_string(),
+            is_default,
+        });
     }
+
     Ok(printers)
 }
 

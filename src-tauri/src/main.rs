@@ -794,7 +794,7 @@ fn main() {
             let downloader: Arc<dyn sapo_printer::application::ports::DocumentDownloadService> =
                 Arc::new(ReqwestDownloader::new());
             let render_strategy: Arc<dyn sapo_printer::infrastructure::integrations::pdf_engine::renderer::RenderStrategy> =
-                Arc::new(BitmapRenderStrategy::new());
+                Arc::new(BitmapRenderStrategy::new().map_err(|e| e.to_string())?);
             let print_service: Arc<dyn sapo_printer::application::ports::PrintService> =
                 Arc::new(DefaultPrintService::new(render_strategy));
 
@@ -825,6 +825,7 @@ fn main() {
                     Arc::clone(&downloader),
                     Arc::clone(&print_service),
                     Arc::clone(&temp_files),
+                    Arc::clone(&config_provider),
                 ),
             );
 

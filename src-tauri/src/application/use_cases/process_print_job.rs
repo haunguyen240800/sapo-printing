@@ -13,9 +13,9 @@
 
 use std::sync::Arc;
 
-use crate::application::ports::{DocumentDownloadService, EventStore, PrintService, TempFileManager};
+use crate::application::ports::{ConfigProvider, DocumentDownloadService, EventStore, PrintService, TempFileManager};
 use crate::application::errors::PipelineError;
-use crate::domain::print_job::{PrintJob, PrintJobRepository};
+use crate::domain::print_job::{PrintJob, PrintJobRepository, PrintJobSettings};
 use crate::shared::errors::InfrastructureError;
 use crate::shared::event_bus::EventBus;
 
@@ -27,6 +27,7 @@ pub struct ProcessPrintJobUseCase {
     downloader: Arc<dyn DocumentDownloadService>,
     print_service: Arc<dyn PrintService>,
     temp_files: Arc<dyn TempFileManager>,
+    config_provider: Arc<dyn ConfigProvider>,
 }
 
 impl ProcessPrintJobUseCase {
@@ -37,6 +38,7 @@ impl ProcessPrintJobUseCase {
         downloader: Arc<dyn DocumentDownloadService>,
         print_service: Arc<dyn PrintService>,
         temp_files: Arc<dyn TempFileManager>,
+        config_provider: Arc<dyn ConfigProvider>,
     ) -> Self {
         Self {
             job_repo,
@@ -45,6 +47,7 @@ impl ProcessPrintJobUseCase {
             downloader,
             print_service,
             temp_files,
+            config_provider,
         }
     }
 
@@ -124,8 +127,23 @@ impl ProcessPrintJobUseCase {
                     "Temp PDF path is not valid UTF-8".to_string(),
                 ))
             })?;
+
+            // Load the current print config from file so settings (paper size, margins…)
+            // always reflect what the user last saved — the DB does not persist settings.
+            let settings: PrintJobSettings = self
+                .config_provider
+                .load_print_config()
+                .map_err(|e| {
+                    PipelineError::Infrastructure(InfrastructureError::ValidationError(
+                        format!("Failed to load print config: {}", e),
+                    ))
+                })?
+                .as_ref()
+                .map(PrintJobSettings::from)
+                .unwrap_or_default();
+
             self.print_service
-                .print(pdf_path_str, job.printer_id().as_str(), &job.settings)?;
+                .print(pdf_path_str, job.printer_id().as_str(), &settings)?;
             Ok(())
         }
     }

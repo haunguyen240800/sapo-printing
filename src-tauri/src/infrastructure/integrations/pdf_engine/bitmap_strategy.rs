@@ -6,11 +6,19 @@ use crate::infrastructure::platform::printer_api::backend::GraphicsBackend;
 use crate::shared::errors::InfrastructureError;
 use super::renderer::RenderStrategy;
 
-pub struct BitmapRenderStrategy;
+/// Holds the PDFium instance for the lifetime of the application.
+///
+/// PDFium's library bindings are a process-wide singleton — calling
+/// `bind_to_library` more than once returns `AlreadyInitialized`. Storing
+/// `Pdfium` here ensures it is initialised exactly once (when this struct is
+/// constructed) and never dropped while jobs are still being processed.
+pub struct BitmapRenderStrategy {
+    pdfium: Pdfium,
+}
 
 impl BitmapRenderStrategy {
-    pub fn new() -> Self {
-        Self
+    pub fn new() -> Result<Self, InfrastructureError> {
+        Ok(Self { pdfium: load_pdfium()? })
     }
 }
 
@@ -21,8 +29,7 @@ impl RenderStrategy for BitmapRenderStrategy {
         settings: &PrintJobSettings,
         backend: &mut dyn GraphicsBackend,
     ) -> Result<(), InfrastructureError> {
-        let pdfium = load_pdfium()?;
-        let document = pdfium
+        let document = self.pdfium
             .load_pdf_from_file(pdf_path, None)
             .map_err(InfrastructureError::from)?;
 
@@ -47,14 +54,33 @@ impl RenderStrategy for BitmapRenderStrategy {
             let pos_x = (transform.translate_x * dpi_x_f / 72.0) as i32;
             let pos_y = (transform.translate_y * dpi_y_f / 72.0) as i32;
 
-            let render_config = PdfRenderConfig::new().set_fixed_size(render_w, render_h);
+            let rotation_angle = {
+                let r = transform.rotation.round() as i32;
+                ((r % 360) + 360) % 360
+            };
+            let pdfium_rotation = match rotation_angle {
+                90 => PdfPageRenderRotation::Degrees90,
+                180 => PdfPageRenderRotation::Degrees180,
+                270 => PdfPageRenderRotation::Degrees270,
+                _ => PdfPageRenderRotation::None,
+            };
+            // 90°/270° swaps width and height in the output bitmap.
+            let (out_w, out_h) = if rotation_angle == 90 || rotation_angle == 270 {
+                (render_h, render_w)
+            } else {
+                (render_w, render_h)
+            };
+
+            let render_config = PdfRenderConfig::new()
+                .set_fixed_size(out_w, out_h)
+                .rotate(pdfium_rotation, true);
 
             let bitmap = page
                 .render_with_config(&render_config)
                 .map_err(InfrastructureError::from)?;
             let raw = bitmap.as_raw_bytes();
             // PDFium returns BGRx (4 bytes per pixel). Bpp = 32.
-            backend.draw_bitmap(&raw, pos_x, pos_y, render_w as u32, render_h as u32, 32);
+            backend.draw_bitmap(&raw, pos_x, pos_y, out_w as u32, out_h as u32, 32);
 
             backend.end_page();
         }
