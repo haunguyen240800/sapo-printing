@@ -4,6 +4,7 @@ version = "0.1.0"
 description = "SAPO Printer - Clean Architecture Desktop Application"
 authors = ["SAPO Team"]
 edition = "2021"
+default-run = "sapo-printer"
 
 [build-dependencies]
 tauri-build = { version = "2.0", features = [] }
@@ -49,6 +50,22 @@ sha2 = "0.10"
 rand = "0.8"
 hex = "0.4"
 
+# TLS + HTTPS local server
+rcgen = { version = "0.13", features = ["x509-parser"] }
+rustls = "0.23"
+rustls-pemfile = "2"
+axum = { version = "0.7", features = ["macros"] }
+axum-server = { version = "0.7", features = ["tls-rustls"] }
+tokio-stream = { version = "0.1", features = ["sync"] }
+tower-http = { version = "0.5", features = ["cors", "trace"] }
+tower_governor = "0.4"
+subtle = "2.5"
+notify = "6"
+time = { version = "0.3", features = ["formatting", "parsing"] }
+x509-parser = "0.16"
+dashmap = "6"
+futures = "0.3"
+
 # PDF rendering
 pdfium-render = { version = "0.9", features = ["thread_safe"] }
 
@@ -76,3 +93,8 @@ cups-sys = "0.1"
 [dev-dependencies]
 mockito = "1.0"
 filetime = "0.2"
+tempfile = "3"
+
+[[bin]]
+name = "sapo-printer-agent"
+path = "src/bin/sapo_printer_agent.rs"

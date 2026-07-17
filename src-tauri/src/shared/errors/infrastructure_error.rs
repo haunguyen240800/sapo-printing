@@ -23,6 +23,12 @@ pub enum InfrastructureError {
     DatabaseError {
         reason: String,
     },
+    /// TLS certificate generation, load, or install failure
+    TlsError(String),
+    /// TLS certificate is missing or expired and cannot be used
+    TlsCertUnavailable(String),
+    /// IPC to helper service failed
+    IpcError(String),
 }
 
 impl std::fmt::Display for InfrastructureError {
@@ -43,6 +49,9 @@ impl std::fmt::Display for InfrastructureError {
             }
             Self::RenderError(msg) => write!(f, "Render error: {}", msg),
             Self::DatabaseError { reason } => write!(f, "Database error: {}", reason),
+            Self::TlsError(msg) => write!(f, "TLS error: {}", msg),
+            Self::TlsCertUnavailable(msg) => write!(f, "TLS cert unavailable: {}", msg),
+            Self::IpcError(msg) => write!(f, "IPC error: {}", msg),
         }
     }
 }

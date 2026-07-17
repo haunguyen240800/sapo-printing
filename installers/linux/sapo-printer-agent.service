@@ -1,0 +1,22 @@
+[Unit]
+Description=Sapo Printer Agent — local HTTPS + cert lifecycle
+After=network.target
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/sapo-printer-agent
+Restart=on-failure
+RestartSec=10
+User=root
+Environment=SAPO_AGENT_DATA_DIR=/var/lib/sapo-printer
+Environment=SAPO_AGENT_LOG=info
+StandardOutput=journal
+StandardError=journal
+
+# Sandboxing (best-effort — sao vẫn cần root cho trust store + port bind)
+NoNewPrivileges=false
+ProtectSystem=full
+ProtectHome=true
+
+[Install]
+WantedBy=multi-user.target

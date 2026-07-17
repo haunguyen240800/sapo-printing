@@ -23,7 +23,10 @@ pub fn is_retryable(error: &InfrastructureError) -> bool {
         | InfrastructureError::SecretStoreError(_)
         | InfrastructureError::SecretRetrieveError(_)
         | InfrastructureError::SecretDeleteError(_)
-        | InfrastructureError::SecretServiceUnavailable(_) => false,
+        | InfrastructureError::SecretServiceUnavailable(_)
+        | InfrastructureError::TlsError(_)
+        | InfrastructureError::TlsCertUnavailable(_)
+        | InfrastructureError::IpcError(_) => false,
     }
 }
 

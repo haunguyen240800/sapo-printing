@@ -892,6 +892,55 @@ fn main() {
                 last_emitted_update_version: std::sync::Mutex::new(None),
             });
 
+            // ==================== HTTPS local server bootstrap ====================
+            // Requires helper service `sapo-printer-agent` đã sinh cert vào data_dir/tls/.
+            {
+                use sapo_printer::interface::http_server;
+                use sapo_printer::interface::tauri::commands::agent::AgentState;
+
+                let bootstrap_data_dir = data_dir.clone();
+                let bootstrap_pool = pool.clone();
+                let bootstrap_event_bus = app.state::<AppContextState>().event_bus.clone();
+                let app_handle_for_agent = app.handle().clone();
+
+                tauri::async_runtime::spawn(async move {
+                    match http_server::start_bootstrap(
+                        &bootstrap_data_dir,
+                        bootstrap_pool,
+                        bootstrap_event_bus,
+                        env!("CARGO_PKG_VERSION"),
+                        "1.0.0",
+                    )
+                    .await
+                    {
+                        Ok(result) => {
+                            tracing::info!(port = result.port, "HTTPS agent started");
+                            // Wire pair request → Tauri emit → front-end toast.
+                            let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
+                            result.token_manager.set_ui_sink(tx).await;
+                            let emit_handle = app_handle_for_agent.clone();
+                            tauri::async_runtime::spawn(async move {
+                                use tauri::Emitter;
+                                while let Some(req) = rx.recv().await {
+                                    let payload = serde_json::json!({
+                                        "request_id": req.request_id.to_string(),
+                                        "origin": req.origin,
+                                    });
+                                    let _ = emit_handle.emit("agent-pair-request", payload);
+                                }
+                            });
+                            app_handle_for_agent.manage(AgentState {
+                                token_manager: result.token_manager,
+                                agent_port: result.port,
+                            });
+                        }
+                        Err(e) => {
+                            tracing::error!(error = %e, "HTTPS agent bootstrap failed — webapp integration disabled");
+                        }
+                    }
+                });
+            }
+
             // Register updater plugin
             #[cfg(desktop)]
             app.handle().plugin(
@@ -1007,6 +1056,12 @@ fn main() {
             check_for_updates,
             install_update,
             restart_app,
+            sapo_printer::interface::tauri::commands::agent::get_agent_port,
+            sapo_printer::interface::tauri::commands::agent::get_paired_origins,
+            sapo_printer::interface::tauri::commands::agent::revoke_token,
+            sapo_printer::interface::tauri::commands::agent::resolve_pair,
+            sapo_printer::interface::tauri::commands::agent::renew_cert_now,
+            sapo_printer::interface::tauri::commands::agent::get_agent_status,
         ])
         .on_window_event(|window, event| {
             if let tauri::WindowEvent::CloseRequested { .. } = event {

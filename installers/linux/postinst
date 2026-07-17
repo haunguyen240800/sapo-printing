@@ -1,0 +1,34 @@
+#!/bin/bash
+# deb postinst — chạy root.
+set -e
+
+AGENT=/usr/bin/sapo-printer-agent
+DATA_DIR=/var/lib/sapo-printer
+GROUP=sapo-printer
+UNIT_SRC=/usr/share/sapo-printer/sapo-printer-agent.service
+UNIT_DST=/etc/systemd/system/sapo-printer-agent.service
+
+# 1. Create group + add invoking user.
+getent group "$GROUP" >/dev/null || groupadd -r "$GROUP"
+if [ -n "${SUDO_USER:-}" ] && [ "$SUDO_USER" != "root" ]; then
+    usermod -a -G "$GROUP" "$SUDO_USER" || true
+fi
+
+# 2. Data dir + permissions.
+mkdir -p "$DATA_DIR/tls"
+chown -R root:"$GROUP" "$DATA_DIR"
+chmod 750 "$DATA_DIR"
+chmod 750 "$DATA_DIR/tls"
+
+# 3. Install CA into system trust.
+"$AGENT" --data-dir="$DATA_DIR" --install-ca
+
+# 4. Install systemd unit + enable.
+if [ -f "$UNIT_SRC" ]; then
+    cp "$UNIT_SRC" "$UNIT_DST"
+    chmod 644 "$UNIT_DST"
+fi
+systemctl daemon-reload
+systemctl enable --now sapo-printer-agent.service
+
+exit 0

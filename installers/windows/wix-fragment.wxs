@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Wix fragment — include vào Tauri MSI builder via tauri.conf.json:
+    "bundle": { "windows": { "wix": { "fragmentPaths": ["installers/windows/wix-fragment.wxs"] } } }
+
+  Chạy register-service.ps1 sau khi files được install, unregister trước khi remove.
+-->
+<Wix xmlns="http://schemas.microsoft.com/wix/2006/wi">
+  <Fragment>
+    <CustomAction Id="InstallAgentService"
+                  ExeCommand='powershell.exe -ExecutionPolicy Bypass -File "[INSTALLDIR]register-service.ps1"'
+                  Directory="INSTALLDIR"
+                  Execute="deferred"
+                  Impersonate="no"
+                  Return="check" />
+
+    <CustomAction Id="UninstallAgentService"
+                  ExeCommand='powershell.exe -ExecutionPolicy Bypass -File "[INSTALLDIR]unregister-service.ps1"'
+                  Directory="INSTALLDIR"
+                  Execute="deferred"
+                  Impersonate="no"
+                  Return="ignore" />
+
+    <InstallExecuteSequence>
+      <Custom Action="InstallAgentService" After="InstallFiles">NOT Installed</Custom>
+      <Custom Action="UninstallAgentService" Before="RemoveFiles">Installed AND (REMOVE="ALL")</Custom>
+    </InstallExecuteSequence>
+  </Fragment>
+</Wix>

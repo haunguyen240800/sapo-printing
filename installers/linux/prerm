@@ -1,0 +1,23 @@
+#!/bin/bash
+# deb prerm — chạy root khi uninstall.
+set +e
+
+AGENT=/usr/bin/sapo-printer-agent
+DATA_DIR=/var/lib/sapo-printer
+UNIT_DST=/etc/systemd/system/sapo-printer-agent.service
+
+# 1. Stop + disable service.
+systemctl stop sapo-printer-agent.service 2>/dev/null
+systemctl disable sapo-printer-agent.service 2>/dev/null
+rm -f "$UNIT_DST"
+systemctl daemon-reload 2>/dev/null
+
+# 2. Uninstall CA.
+if [ -x "$AGENT" ]; then
+    "$AGENT" --data-dir="$DATA_DIR" --uninstall-ca
+fi
+
+# Note: keep DATA_DIR + tls keys — cho phép reinstall giữ cert.
+# Full purge: dpkg -P sẽ chạy postrm để xóa.
+
+exit 0

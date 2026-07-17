@@ -92,6 +92,20 @@ const MIGRATION_7: &str = "
 ALTER TABLE print_jobs ADD COLUMN output_path TEXT;
 ";
 
+const MIGRATION_8: &str = "
+CREATE TABLE api_tokens (
+    token_hash TEXT PRIMARY KEY,
+    token_salt TEXT NOT NULL,
+    origin TEXT NOT NULL,
+    created_at INTEGER NOT NULL,
+    last_used_at INTEGER,
+    expires_at INTEGER NOT NULL,
+    is_active INTEGER NOT NULL DEFAULT 1
+);
+CREATE INDEX idx_tokens_origin ON api_tokens(origin);
+CREATE INDEX idx_tokens_expires ON api_tokens(expires_at);
+";
+
 pub fn run_migrations(conn: &mut Connection) -> Result<(), DatabaseError> {
     let migrations = Migrations::new(vec![
         M::up(MIGRATION_1),
@@ -101,6 +115,7 @@ pub fn run_migrations(conn: &mut Connection) -> Result<(), DatabaseError> {
         M::up(MIGRATION_5),
         M::up(MIGRATION_6),
         M::up(MIGRATION_7),
+        M::up(MIGRATION_8),
     ]);
     migrations
         .to_latest(conn)
