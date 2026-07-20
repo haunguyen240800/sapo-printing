@@ -9,7 +9,7 @@
 use std::collections::VecDeque;
 use std::convert::Infallible;
 use std::sync::atomic::{AtomicU64, Ordering};
-use std::sync::{Arc, RwLock};
+use std::sync::{Arc, OnceLock, RwLock};
 use std::time::Duration;
 
 use axum::extract::{Query, State};
@@ -153,7 +153,8 @@ fn sse_event_from(ev: SseJobEvent) -> Event {
 
 pub fn scrub_token_query(uri: &str) -> String {
     // Replace token=... với token=*** để log không lộ.
-    let re = regex::Regex::new(r"([?&]token=)[^&]+").unwrap();
+    static RE: OnceLock<regex::Regex> = OnceLock::new();
+    let re = RE.get_or_init(|| regex::Regex::new(r"([?&]token=)[^&]+").unwrap());
     re.replace_all(uri, "$1***").to_string()
 }
 

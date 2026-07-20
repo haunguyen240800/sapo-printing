@@ -512,172 +512,14 @@ fn detect_printer_category(printer_name: String) -> Result<PrinterCategoryResult
     }
 }
 
-/// Tauri command: register this app as a Chrome Native Messaging host.
-/// Accepts a comma-separated list of allowed extension IDs.
-#[tauri::command]
-fn register_native_host(allowed_origins: Option<String>) -> Result<(), String> {
-    let origins: Vec<String> = allowed_origins
-        .map(|s| s.split(',').map(|s| s.trim().to_string()).filter(|s| !s.is_empty()).collect())
-        .unwrap_or_default();
-    sapo_printer::interface::native_messaging::registry::register_native_host(origins)
-}
 
-/// Native Messaging mode: initialize deps without Tauri, run stdin/stdout loop.
-fn run_native_messaging_mode() -> Result<(), String> {
-    // Initialize logging early for native messaging mode
-    init_logging();
-
-    let home = std::env::var("USERPROFILE")
-        .or_else(|_| std::env::var("HOME"))
-        .unwrap_or_else(|_| ".".to_string());
-    let data_dir = std::path::PathBuf::from(&home).join(".sapo-printer");
-    std::fs::create_dir_all(&data_dir)
-        .map_err(|e| format!("Cannot create data directory: {}", e))?;
-
-    let db_path = data_dir.join("config.db");
-    let db_path_str = db_path
-        .to_str()
-        .ok_or_else(|| "Database path contains non-UTF-8".to_string())?
-        .to_string();
-
-    let pool = DbPool::new(&db_path_str)
-        .map_err(|e| format!("Database init failed: {}", e))?;
-
-    {
-        let mut conn = pool.get().map_err(|e| format!("Database connection failed: {}", e))?;
-        run_migrations(&mut *conn)
-            .map_err(|e| format!("Migration failed: {}", e))?;
-    }
-
-    let job_repo = Arc::new(SqlitePrintJobRepository::new(pool.clone()));
-
-    #[cfg(target_os = "windows")]
-    let secret_manager: Arc<dyn SecretManager> =
-        Arc::new(WindowsCredentialManager::new());
-
-    #[cfg(target_os = "macos")]
-    let secret_manager: Arc<dyn SecretManager> = Arc::new(MacOSKeychain::new());
-
-    #[cfg(target_os = "linux")]
-    let secret_manager: Arc<dyn SecretManager> = Arc::new(
-        match LinuxSecretService::new() {
-            Ok(service) => service,
-            Err(e) => {
-                return Err(format!("Secret Service unavailable: {}", e));
-            }
-        },
-    );
-
-    let event_store = Arc::new(SqliteEventStore::new(pool.clone(), secret_manager));
-    let event_bus: Arc<dyn EventBus> = Arc::new(sapo_printer::shared::event_bus::InMemoryEventBus::new());
-
-    let queue_manager = Arc::new(SqliteQueueManager::new(pool.clone()));
-
-    // Register PushToQueueHandler to listen for PrintJobCreated events
-    let push_handler = Arc::new(sapo_printer::application::handlers::push_to_queue_handler::PushToQueueHandler::new(
-        queue_manager.clone(),
-    ));
-    event_bus.subscribe("PrintJobCreated", push_handler);
-
-    let metrics_provider: Arc<dyn MetricsProvider> = Arc::new(MetricsCollector::new(
-        pool.clone(),
-        queue_manager.clone(),
-    ));
-
-    // ConfigProvider, PrinterManager, TempFileManager for native messaging mode
-    let config_provider: Arc<dyn ConfigProvider> = Arc::new(JsonFileConfigProvider::new());
-    let printer_manager: Arc<dyn PrinterManager> = Arc::new(SystemPrinterManager::new());
-    let temp_dir = data_dir.join("temp");
-    std::fs::create_dir_all(&temp_dir)
-        .map_err(|e| format!("Cannot create temp directory: {}", e))?;
-    let temp_files: Arc<dyn TempFileManager> =
-        Arc::new(FilesystemTempFileManager::new(temp_dir));
-
-    // Cast to EventStore port for cleanup and messaging handler
-    let event_store_port: Arc<dyn EventStore> = Arc::clone(&event_store) as Arc<dyn EventStore>;
-
-    // Startup cleanup: purge events older than 30 days (best-effort)
-    match sapo_printer::application::services::audit_service::cleanup_old_events(&event_store_port, 30) {
-        Ok(deleted) => {
-            if deleted > 0 {
-                tracing::info!(
-                    target = "sapo_printer::startup",
-                    deleted_events = deleted,
-                    "Audit cleanup: deleted old events"
-                );
-            }
-        }
-        Err(e) => {
-            tracing::warn!(
-                target = "sapo_printer::startup",
-                error = %e,
-                "Audit cleanup failed (non-fatal)"
-            );
-        }
-    }
-
-    let event_store_port: Arc<dyn EventStore> = event_store_port;
-
-    sapo_printer::interface::native_messaging::run_native_messaging(
-        job_repo,
-        event_store_port,
-        event_bus,
-        metrics_provider,
-        config_provider,
-        printer_manager,
-        temp_files,
-    )
-}
 
 fn main() {
     // Initialize structured logging FIRST, before any other operations
     init_logging();
 
-    let args: Vec<String> = std::env::args().collect();
 
-    // Check for --register-native-host CLI flag (headless registration)
-    // Supports: --register-native-host extId1,extId2
-    if let Some(pos) = args.iter().position(|a| a == "--register-native-host") {
-        let origins: Vec<String> = args
-            .get(pos + 1)
-            .map(|s| s.split(',').map(|s| s.trim().to_string()).filter(|s| !s.is_empty()).collect())
-            .unwrap_or_default();
-        match sapo_printer::interface::native_messaging::registry::register_native_host(origins) {
-            Ok(()) => std::process::exit(0),
-            Err(e) => {
-                eprintln!("Failed to register native host: {}", e);
-                std::process::exit(1);
-            }
-        }
-    }
 
-    // Check for --native-messaging flag (Chrome Native Messaging mode)
-    if args.iter().any(|a| a == "--native-messaging") {
-        let result = run_native_messaging_mode();
-        if let Err(e) = &result {
-            // Log to file, not stderr (would corrupt protocol)
-            let home = std::env::var("USERPROFILE")
-                .or_else(|_| std::env::var("HOME"))
-                .unwrap_or_else(|_| ".".to_string());
-            let log_path = std::path::PathBuf::from(&home)
-                .join(".sapo-printer")
-                .join("native-messaging.log");
-            let _ = std::fs::OpenOptions::new()
-                .create(true)
-                .append(true)
-                .open(&log_path)
-                .and_then(|mut f| {
-                    use std::io::Write;
-                    writeln!(f, "[FATAL] {}", e)
-                });
-        }
-        // Exit code 0 on success, 1 on fatal startup error.
-        // Chrome uses the exit code to determine if the native host is healthy.
-        match result {
-            Ok(()) => std::process::exit(0),
-            Err(_) => std::process::exit(1),
-        }
-    }
 
     // 1. Ensure ~/.sapo-printer/ data directory exists
     let home = std::env::var("USERPROFILE")
@@ -900,7 +742,22 @@ fn main() {
 
                 let bootstrap_data_dir = data_dir.clone();
                 let bootstrap_pool = pool.clone();
-                let bootstrap_event_bus = app.state::<AppContextState>().event_bus.clone();
+                let bootstrap_ctx = app.state::<AppContextState>();
+                let bootstrap_event_bus = bootstrap_ctx.event_bus.clone();
+                let bootstrap_job_repo = bootstrap_ctx.job_repo.clone()
+                    as Arc<dyn sapo_printer::domain::print_job::PrintJobRepository>;
+                let bootstrap_event_store = bootstrap_ctx.event_store.clone();
+                let bootstrap_config_provider = bootstrap_ctx.config_provider.clone();
+                let bootstrap_printer_manager = bootstrap_ctx.printer_manager.clone();
+                let bootstrap_use_cases = Arc::new(
+                    sapo_printer::application::services::UseCaseFactory::new(
+                        bootstrap_job_repo,
+                        bootstrap_event_store,
+                        bootstrap_event_bus.clone(),
+                        bootstrap_config_provider,
+                        bootstrap_printer_manager,
+                    ),
+                );
                 let app_handle_for_agent = app.handle().clone();
 
                 tauri::async_runtime::spawn(async move {
@@ -908,6 +765,7 @@ fn main() {
                         &bootstrap_data_dir,
                         bootstrap_pool,
                         bootstrap_event_bus,
+                        bootstrap_use_cases,
                         env!("CARGO_PKG_VERSION"),
                         "1.0.0",
                     )
@@ -1052,7 +910,6 @@ fn main() {
             get_job_status,
             get_job_audit_trail,
             get_metrics,
-            register_native_host,
             check_for_updates,
             install_update,
             restart_app,

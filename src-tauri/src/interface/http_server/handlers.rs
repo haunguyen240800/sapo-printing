@@ -3,15 +3,48 @@
 use axum::{
     extract::{Path, State},
     http::{HeaderMap, StatusCode},
-    response::IntoResponse,
+    response::{IntoResponse, Response},
     Json,
 };
 use serde::{Deserialize, Serialize};
 
+use crate::application::dto::create_print_job_request::CreatePrintJobRequest;
+use crate::application::errors::ApplicationError;
 use crate::application::services::PairError;
 
 use super::cors;
 use super::state::HttpServerState;
+
+// ==================== Error envelope ====================
+
+#[derive(Debug, Serialize)]
+pub struct ApiError {
+    pub code: &'static str,
+    pub message: String,
+}
+
+impl ApiError {
+    pub fn new(status: StatusCode, code: &'static str, message: impl Into<String>) -> ApiErrorResponse {
+        ApiErrorResponse {
+            status,
+            body: ApiError {
+                code,
+                message: message.into(),
+            },
+        }
+    }
+}
+
+pub struct ApiErrorResponse {
+    status: StatusCode,
+    body: ApiError,
+}
+
+impl IntoResponse for ApiErrorResponse {
+    fn into_response(self) -> Response {
+        (self.status, Json(self.body)).into_response()
+    }
+}
 
 // ==================== /api/v1/ping ====================
 
@@ -51,20 +84,20 @@ pub async fn pair(
     State(state): State<HttpServerState>,
     headers: HeaderMap,
     Json(body): Json<PairRequest>,
-) -> Result<Json<PairResponseBody>, (StatusCode, String)> {
-    // Origin header trong request phải khớp body.origin.
+) -> Result<Json<PairResponseBody>, ApiErrorResponse> {
     let origin_hdr = headers
         .get("origin")
         .and_then(|v| v.to_str().ok())
-        .ok_or((StatusCode::BAD_REQUEST, "missing Origin header".into()))?;
+        .ok_or_else(|| ApiError::new(StatusCode::BAD_REQUEST, "missing_origin", "missing Origin header"))?;
     if origin_hdr != body.origin {
-        return Err((
+        return Err(ApiError::new(
             StatusCode::BAD_REQUEST,
-            "Origin header mismatch with body".into(),
+            "origin_mismatch",
+            "Origin header mismatch with body",
         ));
     }
     if !cors::check(&body.origin) {
-        return Err((StatusCode::FORBIDDEN, "origin not allowed".into()));
+        return Err(ApiError::new(StatusCode::FORBIDDEN, "origin_not_allowed", "origin not allowed"));
     }
 
     match state.token_manager.request_pair(&body.origin).await {
@@ -72,22 +105,29 @@ pub async fn pair(
             api_token: resp.api_token,
             expires_at: resp.expires_at,
         })),
-        Err(PairError::RateLimited) => {
-            Err((StatusCode::TOO_MANY_REQUESTS, "rate limited".into()))
-        }
-        Err(PairError::UserDenied) => Err((StatusCode::FORBIDDEN, "user denied".into())),
-        Err(PairError::Timeout) => Err((StatusCode::REQUEST_TIMEOUT, "user did not respond".into())),
-        Err(e) => Err((StatusCode::INTERNAL_SERVER_ERROR, e.to_string())),
+        Err(PairError::UserDenied) => Err(ApiError::new(StatusCode::FORBIDDEN, "user_denied", "user denied")),
+        Err(PairError::Timeout) => Err(ApiError::new(
+            StatusCode::REQUEST_TIMEOUT,
+            "pair_timeout",
+            "user did not respond",
+        )),
+        Err(PairError::NoUiSubscriber) => Err(ApiError::new(
+            StatusCode::SERVICE_UNAVAILABLE,
+            "no_ui_subscriber",
+            "no ui subscriber to receive pair request",
+        )),
+        Err(e) => Err(ApiError::new(StatusCode::INTERNAL_SERVER_ERROR, "internal", e.to_string())),
     }
 }
 
-// ==================== /api/v1/jobs (stub) ====================
-// Sprint 6 sẽ wire vào CreatePrintJobUseCase.
+// ==================== /api/v1/jobs ====================
 
 #[derive(Deserialize)]
 pub struct CreateJobsRequest {
     pub printer_name: String,
     pub document_urls: Vec<String>,
+    #[serde(default)]
+    pub output_path: Option<String>,
 }
 
 #[derive(Serialize)]
@@ -96,30 +136,77 @@ pub struct CreateJobsResponse {
 }
 
 pub async fn create_jobs(
-    State(_state): State<HttpServerState>,
-    Json(_body): Json<CreateJobsRequest>,
-) -> Result<Json<CreateJobsResponse>, (StatusCode, String)> {
-    Err((
-        StatusCode::NOT_IMPLEMENTED,
-        "job creation wired in Sprint 6".into(),
-    ))
+    State(state): State<HttpServerState>,
+    Json(body): Json<CreateJobsRequest>,
+) -> Result<Json<CreateJobsResponse>, ApiErrorResponse> {
+    let use_case = state.use_cases.create_print_job();
+    let request = CreatePrintJobRequest {
+        pdf_urls: body.document_urls,
+        printer_name: body.printer_name,
+        output_path: body.output_path,
+    };
+
+    let result = tokio::task::spawn_blocking(move || use_case.execute(request))
+        .await
+        .map_err(|e| ApiError::new(StatusCode::INTERNAL_SERVER_ERROR, "task_join", e.to_string()))?;
+
+    result
+        .map(|ids| {
+            Json(CreateJobsResponse {
+                job_ids: ids.into_iter().map(|id| id.to_string()).collect(),
+            })
+        })
+        .map_err(map_app_error)
 }
 
 pub async fn get_job(
-    State(_state): State<HttpServerState>,
-    Path(_id): Path<String>,
-) -> Result<Json<serde_json::Value>, (StatusCode, String)> {
-    Err((
-        StatusCode::NOT_IMPLEMENTED,
-        "job status wired in Sprint 6".into(),
-    ))
+    State(state): State<HttpServerState>,
+    Path(id): Path<String>,
+) -> Result<Json<serde_json::Value>, ApiErrorResponse> {
+    let use_case = state.use_cases.get_job_status();
+    let result = tokio::task::spawn_blocking(move || use_case.execute(&id))
+        .await
+        .map_err(|e| ApiError::new(StatusCode::INTERNAL_SERVER_ERROR, "task_join", e.to_string()))?;
+
+    let dto = result.map_err(map_app_error)?;
+    serde_json::to_value(dto)
+        .map(Json)
+        .map_err(|e| ApiError::new(StatusCode::INTERNAL_SERVER_ERROR, "serialize_error", e.to_string()))
 }
 
 pub async fn list_printers(
-    State(_state): State<HttpServerState>,
-) -> Result<Json<serde_json::Value>, (StatusCode, String)> {
-    Err((
-        StatusCode::NOT_IMPLEMENTED,
-        "printers wired in Sprint 6".into(),
-    ))
+    State(state): State<HttpServerState>,
+) -> Result<Json<serde_json::Value>, ApiErrorResponse> {
+    let use_case = state.use_cases.list_printers();
+    let result = tokio::task::spawn_blocking(move || use_case.execute())
+        .await
+        .map_err(|e| ApiError::new(StatusCode::INTERNAL_SERVER_ERROR, "task_join", e.to_string()))?;
+
+    let list = result.map_err(map_app_error)?;
+    serde_json::to_value(list)
+        .map(Json)
+        .map_err(|e| ApiError::new(StatusCode::INTERNAL_SERVER_ERROR, "serialize_error", e.to_string()))
+}
+
+fn map_app_error(e: ApplicationError) -> ApiErrorResponse {
+    let (status, code) = match &e {
+        ApplicationError::EmptyJobList => (StatusCode::BAD_REQUEST, "empty_job_list"),
+        ApplicationError::TooManyJobs { .. } => (StatusCode::BAD_REQUEST, "too_many_jobs"),
+        ApplicationError::InvalidJobId { .. } => (StatusCode::BAD_REQUEST, "invalid_job_id"),
+        ApplicationError::ValidationError { .. } => (StatusCode::BAD_REQUEST, "validation_error"),
+        ApplicationError::JobNotFound { .. } => (StatusCode::NOT_FOUND, "not_found"),
+        ApplicationError::PrinterNotAvailable { .. } => {
+            (StatusCode::BAD_REQUEST, "printer_not_available")
+        }
+        ApplicationError::CannotCancelCompleted { .. } => (StatusCode::CONFLICT, "cannot_cancel_completed"),
+        ApplicationError::CannotCancelFailed { .. } => (StatusCode::CONFLICT, "cannot_cancel_failed"),
+        ApplicationError::CannotCancelCancelled { .. } => (StatusCode::CONFLICT, "cannot_cancel_cancelled"),
+        ApplicationError::DomainRuleViolation { .. } => (StatusCode::UNPROCESSABLE_ENTITY, "domain_rule_violation"),
+        ApplicationError::RepositoryError(_) => (StatusCode::INTERNAL_SERVER_ERROR, "repository_error"),
+        ApplicationError::EventStoreError { .. } => (StatusCode::INTERNAL_SERVER_ERROR, "event_store_error"),
+        ApplicationError::EventBusError { .. } => (StatusCode::INTERNAL_SERVER_ERROR, "event_bus_error"),
+        ApplicationError::MetricsError { .. } => (StatusCode::INTERNAL_SERVER_ERROR, "metrics_error"),
+        ApplicationError::PrintJobError(_) => (StatusCode::INTERNAL_SERVER_ERROR, "print_job_error"),
+    };
+    ApiError::new(status, code, e.to_string())
 }

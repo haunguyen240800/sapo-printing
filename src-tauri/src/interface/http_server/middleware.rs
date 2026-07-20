@@ -7,6 +7,7 @@ use axum::{
     response::Response,
 };
 
+use super::handlers::{ApiError, ApiErrorResponse};
 use super::state::HttpServerState;
 
 /// Extract Bearer token → verify via ApiTokenManager. Inject origin vào extensions.
@@ -14,7 +15,7 @@ pub async fn require_auth(
     State(state): State<HttpServerState>,
     mut req: Request,
     next: Next,
-) -> Result<Response, StatusCode> {
+) -> Result<Response, ApiErrorResponse> {
     let token = req
         .headers()
         .get(AUTHORIZATION)
@@ -23,7 +24,11 @@ pub async fn require_auth(
         .map(|s| s.to_string());
 
     let Some(token) = token else {
-        return Err(StatusCode::UNAUTHORIZED);
+        return Err(ApiError::new(
+            StatusCode::UNAUTHORIZED,
+            "missing_token",
+            "missing Bearer token",
+        ));
     };
 
     match state.token_manager.verify_token(&token) {
@@ -31,7 +36,11 @@ pub async fn require_auth(
             req.extensions_mut().insert(AuthenticatedOrigin(origin));
             Ok(next.run(req).await)
         }
-        None => Err(StatusCode::UNAUTHORIZED),
+        None => Err(ApiError::new(
+            StatusCode::UNAUTHORIZED,
+            "invalid_token",
+            "invalid or expired token",
+        )),
     }
 }
 

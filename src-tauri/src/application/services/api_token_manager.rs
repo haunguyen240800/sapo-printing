@@ -12,14 +12,11 @@
 //! 3. UI hiện toast. User Allow → gọi `resolve_pair(request_id, true)`.
 //! 4. Manager sinh token, insert DB, trả `TokenResponse` cho request future.
 //! 5. Timeout 60s → auto-deny.
-//!
-//! Rate limit per-origin: max 3 pending pair/giờ.
 
 use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
-use dashmap::DashMap;
 use rand::RngCore;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
@@ -32,7 +29,6 @@ use crate::shared::errors::InfrastructureError;
 
 pub const TOKEN_LIFETIME_SECS: i64 = 90 * 86400;
 pub const PAIR_TIMEOUT_SECS: u64 = 60;
-pub const PAIR_RATE_LIMIT_PER_HOUR: usize = 3;
 
 #[derive(Debug, Clone, Serialize)]
 pub struct TokenResponse {
@@ -58,7 +54,6 @@ pub struct PendingPairRequest {
 
 #[derive(Debug)]
 pub enum PairError {
-    RateLimited,
     UserDenied,
     Timeout,
     Db(InfrastructureError),
@@ -68,7 +63,6 @@ pub enum PairError {
 impl std::fmt::Display for PairError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::RateLimited => write!(f, "rate limited"),
             Self::UserDenied => write!(f, "user denied"),
             Self::Timeout => write!(f, "user did not respond"),
             Self::Db(e) => write!(f, "db: {}", e),
@@ -82,7 +76,6 @@ pub struct ApiTokenManager {
     db: DbPool,
     pending: Mutex<HashMap<Uuid, oneshot::Sender<bool>>>,
     ui_sink: Mutex<Option<tokio::sync::mpsc::UnboundedSender<PendingPairRequest>>>,
-    rate: DashMap<String, Vec<u64>>,
 }
 
 impl ApiTokenManager {
@@ -91,7 +84,6 @@ impl ApiTokenManager {
             db,
             pending: Mutex::new(HashMap::new()),
             ui_sink: Mutex::new(None),
-            rate: DashMap::new(),
         })
     }
 
@@ -105,9 +97,6 @@ impl ApiTokenManager {
 
     /// Request pairing. Blocks tới khi user approve/deny hoặc timeout.
     pub async fn request_pair(&self, origin: &str) -> Result<TokenResponse, PairError> {
-        if !self.check_rate(origin) {
-            return Err(PairError::RateLimited);
-        }
         let request_id = Uuid::new_v4();
         let req = PendingPairRequest {
             request_id,
@@ -295,17 +284,6 @@ impl ApiTokenManager {
         Ok(rows)
     }
 
-    fn check_rate(&self, origin: &str) -> bool {
-        let now = unix_now() as u64;
-        let hour_ago = now.saturating_sub(3600);
-        let mut entry = self.rate.entry(origin.to_string()).or_default();
-        entry.retain(|t| *t >= hour_ago);
-        if entry.len() >= PAIR_RATE_LIMIT_PER_HOUR {
-            return false;
-        }
-        entry.push(now);
-        true
-    }
 }
 
 fn hash_token(token: &str, salt: &str) -> String {
@@ -383,16 +361,6 @@ mod tests {
                 .unwrap();
         }
         assert!(mgr.verify_token(&resp.api_token).is_none());
-    }
-
-    #[tokio::test]
-    async fn rate_limit_blocks_after_3_per_hour() {
-        let pool = setup();
-        let mgr = ApiTokenManager::new(pool);
-        assert!(mgr.check_rate("https://a.mysapo.net"));
-        assert!(mgr.check_rate("https://a.mysapo.net"));
-        assert!(mgr.check_rate("https://a.mysapo.net"));
-        assert!(!mgr.check_rate("https://a.mysapo.net"));
     }
 
     #[tokio::test]

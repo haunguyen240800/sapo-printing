@@ -6,7 +6,7 @@ import {
   checkForUpdates,
   installUpdate,
   restartApp,
-} from '../../services/update-service';
+} from '../services/update-service.ts';
 
 interface Props {
   isOpen: boolean;

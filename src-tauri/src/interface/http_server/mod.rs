@@ -1,6 +1,6 @@
 //! HTTPS local server — Axum + rustls.
 //!
-//! Sprint 4: REST endpoints (ping, pair, jobs, printers) + auth middleware + CORS + rate limit.
+//! Sprint 4: REST endpoints (ping, pair, jobs, printers) + auth middleware + CORS.
 //! Sprint 5: SSE endpoint /events.
 //!
 //! Bind với port fallback range 18901-18910. TLS load từ `server.pem` / `server.key`

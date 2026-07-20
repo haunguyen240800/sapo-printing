@@ -1,8 +1,11 @@
 //! Shared application state cho Axum handlers.
+//!
+//! Interface layer chỉ giữ Application-layer refs (UseCaseFactory + services)
+//! — không import Domain repos trực tiếp.
 
 use std::sync::Arc;
 
-use crate::application::services::ApiTokenManager;
+use crate::application::services::{ApiTokenManager, UseCaseFactory};
 
 use super::sse::SseBroadcaster;
 
@@ -13,5 +16,5 @@ pub struct HttpServerState {
     pub min_webapp_version: &'static str,
     pub agent_port: u16,
     pub sse_broadcaster: Option<Arc<SseBroadcaster>>,
-    // Sprint 6: job_repo, printer_manager, event_bus
+    pub use_cases: Arc<UseCaseFactory>,
 }

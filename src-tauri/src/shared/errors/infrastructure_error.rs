@@ -29,6 +29,12 @@ pub enum InfrastructureError {
     TlsCertUnavailable(String),
     /// IPC to helper service failed
     IpcError(String),
+    /// Socket bind / listener setup failed (port in use, permission denied, etc.)
+    BindError(String),
+    /// Generic IO failure not covered by more specific variants
+    IoError(String),
+    /// Serialization / deserialization failed (JSON, etc.)
+    SerializationError(String),
 }
 
 impl std::fmt::Display for InfrastructureError {
@@ -52,6 +58,9 @@ impl std::fmt::Display for InfrastructureError {
             Self::TlsError(msg) => write!(f, "TLS error: {}", msg),
             Self::TlsCertUnavailable(msg) => write!(f, "TLS cert unavailable: {}", msg),
             Self::IpcError(msg) => write!(f, "IPC error: {}", msg),
+            Self::BindError(msg) => write!(f, "Bind error: {}", msg),
+            Self::IoError(msg) => write!(f, "IO error: {}", msg),
+            Self::SerializationError(msg) => write!(f, "Serialization error: {}", msg),
         }
     }
 }

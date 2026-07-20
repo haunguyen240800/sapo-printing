@@ -1,5 +1,6 @@
 import { Outlet } from "react-router-dom";
-import { UpdatePopup } from "../update/UpdatePopup";
+import { UpdatePopup } from "../UpdatePopup.tsx";
+import { PairRequestDialog } from "../PairRequestDialog";
 import { useEffect, useState } from "react";
 import { UnlistenFn } from "@tauri-apps/api/event";
 import {
@@ -56,6 +57,7 @@ export function AppLayout() {
             updateInfo={updateInfo}
             readyToApply={updateReady}
         />
+        <PairRequestDialog />
       </ToastProvider>
 
     </Frame>
