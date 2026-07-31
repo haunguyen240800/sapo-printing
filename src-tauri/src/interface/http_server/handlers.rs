@@ -52,18 +52,12 @@ impl IntoResponse for ApiErrorResponse {
 pub struct PingResponse {
     pub status: &'static str,
     pub version: &'static str,
-    pub min_webapp_version: &'static str,
-    pub features: Vec<&'static str>,
-    pub port: u16,
 }
 
 pub async fn ping(State(state): State<HttpServerState>) -> impl IntoResponse {
     Json(PingResponse {
         status: "ok",
         version: state.app_version,
-        min_webapp_version: state.min_webapp_version,
-        features: vec!["sse", "pair"],
-        port: state.agent_port,
     })
 }
 
@@ -124,7 +118,6 @@ pub async fn pair(
 
 #[derive(Deserialize)]
 pub struct CreateJobsRequest {
-    pub printer_name: String,
     pub document_urls: Vec<String>,
     #[serde(default)]
     pub output_path: Option<String>,
@@ -142,7 +135,6 @@ pub async fn create_jobs(
     let use_case = state.use_cases.create_print_job();
     let request = CreatePrintJobRequest {
         pdf_urls: body.document_urls,
-        printer_name: body.printer_name,
         output_path: body.output_path,
     };
 

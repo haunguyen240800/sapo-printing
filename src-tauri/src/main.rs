@@ -71,7 +71,6 @@ async fn create_print_job(
 
             let request = CreatePrintJobRequest {
                 pdf_urls: payload.pdf_urls,
-                printer_name: payload.printer_name,
                 output_path: payload.output_path,
             };
 

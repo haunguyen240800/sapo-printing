@@ -37,7 +37,6 @@ impl CreatePrintJobUseCase {
         tracing::info!(
             target = "sapo_printer::application::use_case::create_print_job",
             url_count = request.pdf_urls.len(),
-            printer = request.printer_name,
             "CreatePrintJobUseCase: starting"
         );
 
@@ -60,11 +59,7 @@ impl CreatePrintJobUseCase {
             })?
             .unwrap_or_default();
 
-        let active_printer = if !config.printer_id.is_empty() {
-            config.printer_id.clone()
-        } else {
-            request.printer_name.clone()
-        };
+        let active_printer = config.printer_id.clone();
 
         if active_printer.is_empty() {
             return Err(ApplicationError::PrinterNotAvailable {

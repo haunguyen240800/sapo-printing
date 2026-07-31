@@ -13,7 +13,6 @@ use std::str::FromStr;
 #[derive(serde::Deserialize)]
 pub struct CreateJobPayload {
     pub pdf_urls: Vec<String>,
-    pub printer_name: String,
     /// Optional output path for "Print to PDF" printers.
     /// If provided, file will be saved to this path instead of auto-generated name.
     pub output_path: Option<String>,
@@ -41,7 +40,6 @@ pub fn execute_create_print_job(
 
     let request = CreatePrintJobRequest {
         pdf_urls: payload.pdf_urls,
-        printer_name: payload.printer_name,
         output_path: payload.output_path,
     };
 
@@ -133,12 +131,10 @@ mod tests {
     #[test]
     fn test_create_job_payload_deserializes() {
         let json = r#"{
-            "pdf_urls": ["https://s3.example.com/doc.pdf"],
-            "printer_name": "HP_Test"
+            "pdf_urls": ["https://s3.example.com/doc.pdf"]
         }"#;
         let payload: CreateJobPayload = serde_json::from_str(json).unwrap();
         assert_eq!(payload.pdf_urls.len(), 1);
-        assert_eq!(payload.printer_name, "HP_Test");
     }
 
     #[test]
