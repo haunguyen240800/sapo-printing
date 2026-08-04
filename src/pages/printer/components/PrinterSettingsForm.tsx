@@ -79,14 +79,14 @@ const validationSchema = yup.object().shape({
     }),
 });
 
-type PrintConfigFormData = yup.InferType<typeof validationSchema>;
+type PrinterSettingsFormData = yup.InferType<typeof validationSchema>;
 
-interface PrintConfigFormProps {
+interface PrinterSettingsFormProps {
   onSaved?: () => void;
   onCancel?: () => void;
 }
 
-const PrintConfigForm = ({onSaved, onCancel}: PrintConfigFormProps) => {
+const PrinterSettingsForm = ({onSaved, onCancel}: PrinterSettingsFormProps) => {
   const [printers, setPrinters] = useState<PrinterDto[]>([]);
   const [loadingPrinters, setLoadingPrinters] = useState(true);
   const [modalName, setModalName] = useState<'cancel' | 'restore'>();
@@ -99,7 +99,7 @@ const PrintConfigForm = ({onSaved, onCancel}: PrintConfigFormProps) => {
     setValue,
     reset,
     formState: {errors},
-  } = useForm<PrintConfigFormData>({
+  } = useForm<PrinterSettingsFormData>({
     resolver: yupResolver(validationSchema) as any,
     defaultValues: DefaultPrintConfig,
   });
@@ -174,7 +174,7 @@ const PrintConfigForm = ({onSaved, onCancel}: PrintConfigFormProps) => {
     }
   };
 
-  const onSubmit = async (data: PrintConfigFormData) => {
+  const onSubmit = async (data: PrinterSettingsFormData) => {
     try {
       const config: PrinterConfigDto = {
         printer_name: data.printerName,
@@ -443,4 +443,4 @@ const ButtonGroupStyled = styled.div`
   background-color: #f2f9ff;
 `;
 
-export default PrintConfigForm;
+export default PrinterSettingsForm;

@@ -10,7 +10,7 @@ type Props = {
     printProgress: number;
 }
 
-export function PrintProgress({
+export function PrintJobStats({
     total,
     successful,
     failed,

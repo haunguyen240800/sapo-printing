@@ -15,12 +15,12 @@ import {useAppUpdate} from '../hooks/useAppUpdate';
 // Component
 // ============================================================================
 
-interface AppInfoTabProps {
+interface AppInfoModalProps {
     open: boolean;
     onClose: () => void;
 }
 
-const AppInfoTab = ({open, onClose}: AppInfoTabProps) => {
+const AppInfoModal = ({open, onClose}: AppInfoModalProps) => {
     const { state, checkUpdate, installUpdate, isChecking, isInstalling, isBusy } = useAppUpdate();
 
     const renderBanner = () => {
@@ -154,4 +154,4 @@ const AppInfoTab = ({open, onClose}: AppInfoTabProps) => {
     );
 };
 
-export default AppInfoTab;
+export default AppInfoModal;

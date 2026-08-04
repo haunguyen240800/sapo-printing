@@ -10,20 +10,18 @@ use crate::domain::print_job::{
 };
 use crate::shared::event_bus::EventBus;
 
-const MAX_URLS: usize = 5000;
-
-/// Use case: create one PrintJob per URL via Outbox Pattern.
+/// Use case: create one PrintJob for a single PDF URL via Outbox Pattern.
 ///
 /// Flow:
 /// 1. Validate request (Application layer)
 /// 2. Resolve effective config + printer name via `ConfigProvider`
 /// 3. Verify printer ONLINE via `PrinterManager`
-/// 4. Create one PrintJob aggregate per URL
-/// 5. drain_events() from each job
-/// 6. job_repo.save() + event_store.save_all() — per-URL persistence
+/// 4. Create PrintJob aggregate
+/// 5. drain_events() from job
+/// 6. job_repo.save() + event_store.save_all() — persistence
 /// 7. event_bus.publish() EACH event — ONLY AFTER save succeeds
 /// 8. PushToQueueHandler (subscribed to PrintJobCreated) pushes job to queue
-/// 9. Return Vec<PrintJobId>
+/// 9. Return PrintJobId
 pub struct CreatePrintJobUseCase {
     pub job_repo: Arc<dyn PrintJobRepository>,
     pub event_store: Arc<dyn EventStore>,
@@ -33,20 +31,17 @@ pub struct CreatePrintJobUseCase {
 }
 
 impl CreatePrintJobUseCase {
-    pub fn execute(&self, request: CreatePrintJobRequest) -> Result<Vec<PrintJobId>, ApplicationError> {
+    pub fn execute(&self, request: CreatePrintJobRequest) -> Result<PrintJobId, ApplicationError> {
         tracing::info!(
             target = "sapo_printer::application::use_case::create_print_job",
-            url_count = request.pdf_urls.len(),
+            url = request.pdf_url,
             "CreatePrintJobUseCase: starting"
         );
 
         // 1. Validate request
-        if request.pdf_urls.is_empty() {
-            return Err(ApplicationError::EmptyJobList);
-        }
-        if request.pdf_urls.len() > MAX_URLS {
-            return Err(ApplicationError::TooManyJobs {
-                count: request.pdf_urls.len(),
+        if request.pdf_url.is_empty() {
+            return Err(ApplicationError::ValidationError {
+                reason: "document_url must not be empty".to_string(),
             });
         }
 
@@ -90,71 +85,61 @@ impl CreatePrintJobUseCase {
 
         let settings: PrintJobSettings = (&config).into();
 
-        // 4. Create jobs + collect events
-        let mut all_job_ids = Vec::new();
-        let mut all_events: Vec<(String, String)> = Vec::new();
+        // 4. Create job + collect events
+        tracing::info!(
+            target = "sapo_printer::application::use_case::create_print_job",
+            url = request.pdf_url,
+            "Creating job for URL"
+        );
 
-        for url in &request.pdf_urls {
-            tracing::info!(
+        let mut job = PrintJob::new_with_output_path(
+            request.pdf_url.clone(),
+            printer_id,
+            settings,
+            None,
+        );
+        let events = job.drain_events();
+
+        self.job_repo.save(&job).map_err(|e| {
+            tracing::error!(
                 target = "sapo_printer::application::use_case::create_print_job",
-                url = url,
-                "Creating job for URL"
+                error = %e,
+                "Failed to save job"
             );
+            ApplicationError::RepositoryError(e.to_string())
+        })?;
 
-            let mut job = PrintJob::new_with_output_path(
-                url.clone(),
-                printer_id.clone(),
-                settings.clone(),
-                request.output_path.clone(),
-            );
-            let events = job.drain_events();
-
-            self.job_repo.save(&job).map_err(|e| {
+        self.event_store
+            .save_all(job.id().to_string().as_str(), &events)
+            .map_err(|e| {
                 tracing::error!(
                     target = "sapo_printer::application::use_case::create_print_job",
                     error = %e,
-                    "Failed to save job"
+                    "Failed to save events"
                 );
                 ApplicationError::RepositoryError(e.to_string())
             })?;
 
-            self.event_store
-                .save_all(job.id().to_string().as_str(), &events)
-                .map_err(|e| {
-                    tracing::error!(
-                        target = "sapo_printer::application::use_case::create_print_job",
-                        error = %e,
-                        "Failed to save events"
-                    );
-                    ApplicationError::RepositoryError(e.to_string())
-                })?;
-
-            for event in &events {
-                all_events.push((event.event_name().to_string(), event.serialize_payload()));
-            }
-
-            all_job_ids.push(job.id().clone());
-        }
-
-        // 5. Publish AFTER all saves succeed
-        for (event_type, payload) in &all_events {
-            if let Err(e) = self.event_bus.publish(event_type, payload) {
+        // 5. Publish AFTER save succeeds
+        for event in &events {
+            if let Err(e) = self.event_bus.publish(event.event_name(), &event.serialize_payload()) {
                 tracing::warn!(
                     target = "sapo_printer::application::use_case::create_print_job",
-                    event_type = %event_type,
+                    event_type = %event.event_name(),
                     error = %e,
                     "Event bus publish failed (non-fatal)"
                 );
             }
         }
 
+        let job_id = job.id().clone();
         tracing::info!(
             target = "sapo_printer::application::use_case::create_print_job",
-            job_count = all_job_ids.len(),
+            job_id = %job_id,
             "CreatePrintJobUseCase: completed"
         );
 
-        Ok(all_job_ids)
+        Ok(job_id)
     }
 }
 

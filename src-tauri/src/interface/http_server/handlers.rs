@@ -117,25 +117,22 @@ pub async fn pair(
 // ==================== /api/v1/jobs ====================
 
 #[derive(Deserialize)]
-pub struct CreateJobsRequest {
-    pub document_urls: Vec<String>,
-    #[serde(default)]
-    pub output_path: Option<String>,
+pub struct CreateJobRequest {
+    pub document_url: String,
 }
 
 #[derive(Serialize)]
-pub struct CreateJobsResponse {
-    pub job_ids: Vec<String>,
+pub struct CreateJobResponse {
+    pub job_id: String,
 }
 
-pub async fn create_jobs(
+pub async fn create_job(
     State(state): State<HttpServerState>,
-    Json(body): Json<CreateJobsRequest>,
-) -> Result<Json<CreateJobsResponse>, ApiErrorResponse> {
+    Json(body): Json<CreateJobRequest>,
+) -> Result<Json<CreateJobResponse>, ApiErrorResponse> {
     let use_case = state.use_cases.create_print_job();
     let request = CreatePrintJobRequest {
-        pdf_urls: body.document_urls,
-        output_path: body.output_path,
+        pdf_url: body.document_url,
     };
 
     let result = tokio::task::spawn_blocking(move || use_case.execute(request))
@@ -143,11 +140,7 @@ pub async fn create_jobs(
         .map_err(|e| ApiError::new(StatusCode::INTERNAL_SERVER_ERROR, "task_join", e.to_string()))?;
 
     result
-        .map(|ids| {
-            Json(CreateJobsResponse {
-                job_ids: ids.into_iter().map(|id| id.to_string()).collect(),
-            })
-        })
+        .map(|id| Json(CreateJobResponse { job_id: id.to_string() }))
         .map_err(map_app_error)
 }
 

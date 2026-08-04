@@ -20,7 +20,7 @@ pub fn build(state: HttpServerState) -> Router {
         .route("/api/v1/events", get(sse::sse_stream));
 
     let protected = Router::new()
-        .route("/api/v1/jobs", post(handlers::create_jobs))
+        .route("/api/v1/jobs", post(handlers::create_job))
         .route("/api/v1/jobs/:id", get(handlers::get_job))
         .route("/api/v1/printers", get(handlers::list_printers))
         .layer(middleware::from_fn_with_state(

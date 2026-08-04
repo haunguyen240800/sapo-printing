@@ -3,10 +3,10 @@ import styled from '@emotion/styled';
 import {ActionListButton} from '../../components/ActionListButton';
 import {useState, useEffect, useCallback, useRef} from 'react';
 import {ConfirmModal} from '../../components/ConfirmModal';
-import SystemConfigModal from './components/SystemConfigModal.tsx';
-import AppInfoTab from './components/AppInfoTab.tsx';
-import PrintConfigForm from './components/PrintConfigForm.tsx';
-import {PrintProgress} from './components/PrintProgress.tsx';
+import ConnectionConfigModal from './components/ConnectionConfigModal.tsx';
+import AppInfoModal from './components/AppInfoModal.tsx';
+import PrinterSettingsForm from './components/PrinterSettingsForm.tsx';
+import {PrintJobStats} from './components/PrintJobStats.tsx';
 import {
   listPrinters,
   createPrintJob,
@@ -196,15 +196,15 @@ export default function PrinterPage() {
     />
   );
 
-  const systemConfigModal = modalName === 'config' && <SystemConfigModal open onClose={() => setModalName(undefined)} />;
+  const systemConfigModal = modalName === 'config' && <ConnectionConfigModal open onClose={() => setModalName(undefined)} />;
 
-  const appInfoMarkup = modalName === 'app-info' && <AppInfoTab open onClose={() => setModalName(undefined)} />;
+  const appInfoMarkup = modalName === 'app-info' && <AppInfoModal open onClose={() => setModalName(undefined)} />;
 
   const renderTabContent = () => {
     switch (activeTab) {
       case 'print-config':
         return (
-          <PrintConfigForm
+          <PrinterSettingsForm
             onSaved={() => {
               setActiveTab('overview');
               loadPrinters();
@@ -275,7 +275,7 @@ export default function PrinterPage() {
                   {testPrintStatus?.error && <Text as="p" color="critical">{testPrintStatus.error}</Text>}
                 </BlockStack>
                 <Divider borderWidth="05" borderColor="border-subdued"/>
-                <PrintProgress
+                <PrintJobStats
                     total={stats.total}
                     failed={stats.failed}
                     lastPrintTime={stats.printTime}

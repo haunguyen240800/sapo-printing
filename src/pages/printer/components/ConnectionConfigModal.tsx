@@ -1,12 +1,12 @@
 import { Modal, Select2 } from '@sapo/ui-components';
 import { useState } from 'react';
 
-interface SystemConfigModalProps {
+interface ConnectionConfigModalProps {
     open: boolean;
     onClose: () => void;
 }
 
-const SystemConfigModal = ({ open, onClose }: SystemConfigModalProps) => {
+const ConnectionConfigModal = ({ open, onClose }: ConnectionConfigModalProps) => {
     const [endpoint, setEndpoint] = useState('sapo-api');
 
     const handleSave = () => {
@@ -54,4 +54,4 @@ const SystemConfigModal = ({ open, onClose }: SystemConfigModalProps) => {
     );
 };
 
-export default SystemConfigModal;
+export default ConnectionConfigModal;

@@ -61,6 +61,16 @@ async fn create_print_job(
                 "Inside blocking task, creating use case"
             );
 
+            if payload.pdf_urls.is_empty() {
+                return Err("Danh sách URLs không được rỗng".to_string());
+            }
+            if payload.pdf_urls.len() > 5000 {
+                return Err(format!(
+                    "Số lượng URLs vượt quá giới hạn 5000 (nhận được: {})",
+                    payload.pdf_urls.len()
+                ));
+            }
+
             let use_case = CreatePrintJobUseCase {
                 job_repo,
                 event_store,
@@ -69,30 +79,23 @@ async fn create_print_job(
                 printer_manager,
             };
 
-            let request = CreatePrintJobRequest {
-                pdf_urls: payload.pdf_urls,
-                output_path: payload.output_path,
-            };
-
             tracing::info!(
                 target = "sapo_printer::tauri_command",
                 "Executing use case"
             );
 
-            let result = use_case
-                .execute(request)
-                .map(|ids| ids.iter().map(|id| id.to_string()).collect())
-                .map_err(|e| match &e {
-                    ApplicationError::EmptyJobList => "Danh sách URLs không được rỗng".to_string(),
-                    ApplicationError::TooManyJobs { count } => format!(
-                        "Số lượng URLs vượt quá giới hạn 5000 (nhận được: {})",
-                        count
-                    ),
+            let mut job_ids: Vec<String> = Vec::with_capacity(payload.pdf_urls.len());
+            for url in payload.pdf_urls {
+                let request = CreatePrintJobRequest { pdf_url: url };
+                let id = use_case.execute(request).map_err(|e| match &e {
                     ApplicationError::PrinterNotAvailable { name } => {
                         format!("Máy in '{}' không khả dụng hoặc đang offline", name)
                     }
                     _ => format!("{}", e),
-                });
+                })?;
+                job_ids.push(id.to_string());
+            }
+            let result: Result<Vec<String>, String> = Ok(job_ids);
 
             tracing::info!(
                 target = "sapo_printer::tauri_command",
