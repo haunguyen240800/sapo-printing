@@ -1,11 +1,3 @@
-//! HTTPS local server — Axum + rustls.
-//!
-//! Sprint 4: REST endpoints (ping, pair, jobs, printers) + auth middleware + CORS.
-//! Sprint 5: SSE endpoint /events.
-//!
-//! Bind với port fallback range 18901-18910. TLS load từ `server.pem` / `server.key`
-//! do helper service ghi ra.
-
 pub mod bootstrap;
 pub mod cors;
 pub mod handlers;

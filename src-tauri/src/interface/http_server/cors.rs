@@ -1,7 +1,3 @@
-//! CORS predicate — chỉ allow `https://*.mysapo.net`.
-//!
-//! Parse Origin qua `url::Url` (không so byte thô) — check scheme + host chính xác.
-
 use axum::http::{HeaderName, HeaderValue, Method};
 use std::time::Duration;
 use tower_http::cors::{AllowOrigin, CorsLayer};

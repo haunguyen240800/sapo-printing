@@ -1,8 +1,3 @@
-//! Shared application state cho Axum handlers.
-//!
-//! Interface layer chỉ giữ Application-layer refs (UseCaseFactory + services)
-//! — không import Domain repos trực tiếp.
-
 use std::sync::Arc;
 
 use crate::application::services::{ApiTokenManager, UseCaseFactory};

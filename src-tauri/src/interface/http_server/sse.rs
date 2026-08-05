@@ -1,11 +1,3 @@
-//! SSE broadcaster + handler.
-//!
-//! - `SseBroadcaster` implements `EventHandler` → nhận domain events từ EventBus.
-//! - Ring buffer giữ 100 events gần nhất (SSE `Last-Event-ID` replay).
-//! - Ping keepalive 15s (detect dead connection).
-//! - Auth qua query `?token=xxx` (EventSource API không set custom header).
-//! - Log token bị mask trước khi ghi.
-
 use std::collections::VecDeque;
 use std::convert::Infallible;
 use std::sync::atomic::{AtomicU64, Ordering};

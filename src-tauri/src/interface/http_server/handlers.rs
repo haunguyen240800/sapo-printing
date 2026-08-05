@@ -63,11 +63,6 @@ pub async fn ping(State(state): State<HttpServerState>) -> impl IntoResponse {
 
 // ==================== /api/v1/pair ====================
 
-#[derive(Deserialize)]
-pub struct PairRequest {
-    pub origin: String,
-}
-
 #[derive(Serialize)]
 pub struct PairResponseBody {
     pub api_token: String,
@@ -77,24 +72,16 @@ pub struct PairResponseBody {
 pub async fn pair(
     State(state): State<HttpServerState>,
     headers: HeaderMap,
-    Json(body): Json<PairRequest>,
 ) -> Result<Json<PairResponseBody>, ApiErrorResponse> {
-    let origin_hdr = headers
+    let origin = headers
         .get("origin")
         .and_then(|v| v.to_str().ok())
         .ok_or_else(|| ApiError::new(StatusCode::BAD_REQUEST, "missing_origin", "missing Origin header"))?;
-    if origin_hdr != body.origin {
-        return Err(ApiError::new(
-            StatusCode::BAD_REQUEST,
-            "origin_mismatch",
-            "Origin header mismatch with body",
-        ));
-    }
-    if !cors::check(&body.origin) {
+    if !cors::check(origin) {
         return Err(ApiError::new(StatusCode::FORBIDDEN, "origin_not_allowed", "origin not allowed"));
     }
 
-    match state.token_manager.request_pair(&body.origin).await {
+    match state.token_manager.request_pair(origin).await {
         Ok(resp) => Ok(Json(PairResponseBody {
             api_token: resp.api_token,
             expires_at: resp.expires_at,
@@ -155,20 +142,6 @@ pub async fn get_job(
 
     let dto = result.map_err(map_app_error)?;
     serde_json::to_value(dto)
-        .map(Json)
-        .map_err(|e| ApiError::new(StatusCode::INTERNAL_SERVER_ERROR, "serialize_error", e.to_string()))
-}
-
-pub async fn list_printers(
-    State(state): State<HttpServerState>,
-) -> Result<Json<serde_json::Value>, ApiErrorResponse> {
-    let use_case = state.use_cases.list_printers();
-    let result = tokio::task::spawn_blocking(move || use_case.execute())
-        .await
-        .map_err(|e| ApiError::new(StatusCode::INTERNAL_SERVER_ERROR, "task_join", e.to_string()))?;
-
-    let list = result.map_err(map_app_error)?;
-    serde_json::to_value(list)
         .map(Json)
         .map_err(|e| ApiError::new(StatusCode::INTERNAL_SERVER_ERROR, "serialize_error", e.to_string()))
 }

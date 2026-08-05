@@ -1,5 +1,3 @@
-//! HTTPS server bootstrap — bind + load TLS cert + spawn axum-server.
-
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 

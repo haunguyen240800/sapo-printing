@@ -22,7 +22,6 @@ pub fn build(state: HttpServerState) -> Router {
     let protected = Router::new()
         .route("/api/v1/jobs", post(handlers::create_job))
         .route("/api/v1/jobs/:id", get(handlers::get_job))
-        .route("/api/v1/printers", get(handlers::list_printers))
         .layer(middleware::from_fn_with_state(
             state.clone(),
             auth_mw::require_auth,

@@ -1,5 +1,3 @@
-//! Auth middleware — verify Bearer token.
-
 use axum::{
     extract::{Request, State},
     http::{header::AUTHORIZATION, StatusCode},
