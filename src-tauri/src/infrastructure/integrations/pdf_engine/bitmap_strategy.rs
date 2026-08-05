@@ -120,8 +120,6 @@ impl RenderStrategy for BitmapRenderStrategy {
                 .rotate(pdfium_rotation, true);
 
             // Render the PDFium bitmap first (no GDI dependency), then blit.
-            // Always call end_page + end_document regardless of render outcome
-            // so the spooler document is properly closed and the HDC is released.
             // PDFium returns BGRx (4 bytes per pixel). Bpp = 32.
             let render_result = page
                 .render_with_config(&render_config)
@@ -131,8 +129,18 @@ impl RenderStrategy for BitmapRenderStrategy {
                 });
 
             backend.end_page();
-            backend.end_document();
-            render_result?;
+
+            match render_result {
+                // Page rendered: close the document and block until the spooler
+                // confirms it actually printed. A spooler failure fails the job.
+                Ok(()) => backend.end_document().map_err(InfrastructureError::RenderError)?,
+                // Render failed: discard the spooler document (no point printing a
+                // blank page) and propagate the original error.
+                Err(e) => {
+                    backend.abort_document();
+                    return Err(e);
+                }
+            }
         }
 
         Ok(())

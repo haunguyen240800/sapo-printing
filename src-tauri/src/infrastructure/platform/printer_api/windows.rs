@@ -7,21 +7,134 @@ use windows::Win32::Graphics::Gdi::{
     LOGPIXELSX, LOGPIXELSY, HORZRES, VERTRES, HORZSIZE, VERTSIZE,
     DEVMODEW, DEVMODE_FIELD_FLAGS,
 };
-use windows::Win32::Graphics::Printing::{ClosePrinter, DocumentPropertiesW, OpenPrinterW};
+use windows::Win32::Graphics::Printing::{ClosePrinter, DocumentPropertiesW, GetJobW, OpenPrinterW, JOB_INFO_2W};
 use windows::Win32::Storage::Xps::{
-    StartDocW, StartPage, EndPage, EndDoc, DOCINFOW,
+    StartDocW, StartPage, EndPage, EndDoc, AbortDoc, DOCINFOW,
 };
 use windows::core::{PCWSTR, HSTRING};
 
 use super::backend::{GraphicsBackend, NativeGraphicsContext};
 
+/// Spooler `JOB_STATUS_*` bit flags (from winspool.h). Declared locally as `u32`
+/// so status checks are independent of the `windows` crate's newtype wrappers.
+const JS_ERROR: u32 = 0x0000_0002;
+const JS_OFFLINE: u32 = 0x0000_0020;
+const JS_PAPEROUT: u32 = 0x0000_0040;
+const JS_PRINTED: u32 = 0x0000_0080;
+const JS_DELETED: u32 = 0x0000_0100;
+const JS_BLOCKED_DEVQ: u32 = 0x0000_0200;
+const JS_USER_INTERVENTION: u32 = 0x0000_0400;
+
+/// Maximum time to wait for a single spooled document to reach the printer.
+const SPOOL_WAIT_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(30);
+/// Interval between spooler status polls.
+const SPOOL_POLL_INTERVAL: std::time::Duration = std::time::Duration::from_millis(200);
+
+/// Result of a single spooler status query.
+enum JobQuery {
+    /// Job is still tracked by the spooler; carries the raw `JOB_STATUS_*` bits.
+    Status(u32),
+    /// Job is no longer in the queue (printed and removed by the driver).
+    Gone,
+}
+
 pub struct WindowsGraphicsBackend {
     hdc: Option<HDC>,
+    /// Spooler job id returned by `StartDocW`, used to poll print completion.
+    spool_job_id: Option<u32>,
+    /// Printer name for the current document, needed to open the spooler queue.
+    printer_name: Option<String>,
 }
 
 impl WindowsGraphicsBackend {
     pub fn new() -> Self {
-        Self { hdc: None }
+        Self { hdc: None, spool_job_id: None, printer_name: None }
+    }
+
+    /// Poll the print spooler until the given job reaches `JOB_STATUS_PRINTED`,
+    /// disappears from the queue (driver removed it after printing), or a
+    /// failure/timeout occurs.
+    ///
+    /// Returns `Ok(())` on confirmed print (or benign disappearance) and `Err`
+    /// with a human-readable reason otherwise.
+    fn wait_for_printed(printer_name: &str, job_id: u32) -> Result<(), String> {
+        // job_id 0 is not a valid spooler job (StartDocW failed to allocate one);
+        // nothing to wait on.
+        if job_id == 0 {
+            return Ok(());
+        }
+
+        let printer_hstr = HSTRING::from(printer_name);
+        let printer_pcwstr = PCWSTR(printer_hstr.as_ptr());
+
+        let mut hprinter = HANDLE::default();
+        if unsafe { OpenPrinterW(printer_pcwstr, &mut hprinter, None) }.is_err() {
+            // Cannot query the spooler — treat as printed rather than failing a
+            // job that most likely succeeded (matches prior "spool == success").
+            tracing::warn!(
+                "wait_for_printed: OpenPrinterW failed for '{}', assuming job {} printed",
+                printer_name, job_id
+            );
+            return Ok(());
+        }
+
+        let deadline = std::time::Instant::now() + SPOOL_WAIT_TIMEOUT;
+        let result = loop {
+            match Self::query_job_status(hprinter, job_id) {
+                // Job no longer in queue → spooler finished and removed it.
+                JobQuery::Gone => break Ok(()),
+                JobQuery::Status(status) => {
+                    if status & JS_PRINTED != 0 {
+                        break Ok(());
+                    }
+                    if status & (JS_ERROR | JS_DELETED | JS_PAPEROUT | JS_OFFLINE | JS_BLOCKED_DEVQ) != 0 {
+                        break Err(format!(
+                            "spooler reported failure for job {} (status=0x{:08X})",
+                            job_id, status
+                        ));
+                    }
+                    if status & JS_USER_INTERVENTION != 0 {
+                        tracing::warn!(
+                            "wait_for_printed: job {} needs user intervention (status=0x{:08X})",
+                            job_id, status
+                        );
+                    }
+                }
+            }
+
+            if std::time::Instant::now() >= deadline {
+                break Err(format!(
+                    "timed out after {}s waiting for job {} to print",
+                    SPOOL_WAIT_TIMEOUT.as_secs(), job_id
+                ));
+            }
+            std::thread::sleep(SPOOL_POLL_INTERVAL);
+        };
+
+        unsafe { let _ = ClosePrinter(hprinter); }
+        result
+    }
+
+    /// Query a single spooler job's status via `GetJobW` (level 2).
+    fn query_job_status(hprinter: HANDLE, job_id: u32) -> JobQuery {
+        unsafe {
+            // First call: discover required buffer size.
+            let mut needed: u32 = 0;
+            let _ = GetJobW(hprinter, job_id, 2, None, &mut needed);
+            if needed == 0 {
+                // No buffer needed → job is not in the queue anymore.
+                return JobQuery::Gone;
+            }
+
+            let mut buf = vec![0u8; needed as usize];
+            if !GetJobW(hprinter, job_id, 2, Some(buf.as_mut_slice()), &mut needed).as_bool() {
+                // Job vanished between the two calls, or query failed → treat as gone.
+                return JobQuery::Gone;
+            }
+
+            let info = &*(buf.as_ptr() as *const JOB_INFO_2W);
+            JobQuery::Status(info.Status)
+        }
     }
 
     fn to_wstring(str: &str) -> Vec<u16> {
@@ -160,6 +273,12 @@ impl GraphicsBackend for WindowsGraphicsBackend {
             return Err("Failed to start document (StartDocW returned error)".to_string());
         }
 
+        // StartDocW's positive return value is the spooler job identifier. Keep
+        // it (with the printer name) so end_document can poll the job to
+        // completion instead of assuming spool == printed.
+        self.spool_job_id = Some(result as u32);
+        self.printer_name = Some(printer_name.to_string());
+
         Ok(())
     }
 
@@ -280,14 +399,39 @@ impl GraphicsBackend for WindowsGraphicsBackend {
         }
     }
 
-    fn end_document(&mut self) {
-        if let Some(hdc) = self.hdc {
+    fn end_document(&mut self) -> Result<(), String> {
+        let Some(hdc) = self.hdc.take() else {
+            return Ok(());
+        };
+
+        let end_result = unsafe { EndDoc(hdc) };
+        unsafe { DeleteDC(hdc) };
+
+        let job_id = self.spool_job_id.take();
+        let printer_name = self.printer_name.take();
+
+        // EndDoc returns > 0 on success; anything else means the document was
+        // not committed to the spooler.
+        if end_result <= 0 {
+            return Err("Failed to finish document (EndDoc returned error)".to_string());
+        }
+
+        // Block until the spooler confirms the job actually printed.
+        match (printer_name, job_id) {
+            (Some(name), Some(id)) => Self::wait_for_printed(&name, id),
+            _ => Ok(()),
+        }
+    }
+
+    fn abort_document(&mut self) {
+        if let Some(hdc) = self.hdc.take() {
             unsafe {
-                EndDoc(hdc);
+                AbortDoc(hdc);
                 DeleteDC(hdc);
             }
-            self.hdc = None;
         }
+        self.spool_job_id = None;
+        self.printer_name = None;
     }
 }
 

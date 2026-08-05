@@ -114,9 +114,10 @@ impl GraphicsBackend for LinuxGraphicsBackend {
 
     fn end_page(&mut self) {}
 
-    fn end_document(&mut self) {
+    fn end_document(&mut self) -> Result<(), String> {
         if self.page_files.is_empty() {
-            return;
+            self.cleanup_temp();
+            return Ok(());
         }
 
         // Send all pages as a single print job. CUPS accepts multiple files on one
@@ -138,10 +139,23 @@ impl GraphicsBackend for LinuxGraphicsBackend {
             cmd.arg(page_file);
         }
 
-        if let Err(e) = cmd.status() {
-            eprintln!("Failed to execute lp command on Linux: {}", e);
-        }
+        let result = match cmd.status() {
+            Ok(status) if status.success() => Ok(()),
+            Ok(status) => Err(format!("lp exited with status {}", status)),
+            Err(e) => Err(format!("Failed to execute lp command on Linux: {}", e)),
+        };
 
+        self.cleanup_temp();
+        result
+    }
+
+    fn abort_document(&mut self) {
+        self.cleanup_temp();
+    }
+}
+
+impl LinuxGraphicsBackend {
+    fn cleanup_temp(&mut self) {
         if let Some(temp_dir) = &self.temp_dir {
             let _ = fs::remove_dir_all(temp_dir);
         }

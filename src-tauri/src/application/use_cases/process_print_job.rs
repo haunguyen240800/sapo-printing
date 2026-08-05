@@ -4,9 +4,14 @@
 //! 1. PENDING → QUEUED
 //! 2. Download document (wrapped in RAII temp file via `TempFileManager`)
 //! 3. QUEUED → DOWNLOADED
-//! 4. Render + send to printer (or copy file for virtual PDF printers)
+//! 4. Render + send to printer, blocking until the OS spooler confirms every
+//!    page actually printed (or copy file for virtual PDF printers)
 //! 5. DOWNLOADED → SUBMITTED_TO_QUEUE → PRINTING
 //! 6. PRINTING → COMPLETED
+//!
+//! The job is only marked COMPLETED after `PrintService::print` returns Ok,
+//! which now means the spooler reported the document as printed — a spooler
+//! failure propagates as an error and drives the job to FAILED (retryable).
 //!
 //! Each transition persists job state and publishes domain events using the
 //! Outbox Pattern (events saved before state update, bus publish is non-fatal).
@@ -82,7 +87,9 @@ impl ProcessPrintJobUseCase {
         job.mark_downloaded()?;
         self.persist_and_publish(&mut job)?;
 
-        // Step 3: Render + send to printer
+        // Step 3: Render + send to printer, blocking until the spooler confirms
+        // the document printed. A spooler/render failure returns Err here and the
+        // job never reaches COMPLETED.
         let render_start = std::time::Instant::now();
         self.render_or_save(&job, temp_file.as_ref())?;
         tracing::info!(

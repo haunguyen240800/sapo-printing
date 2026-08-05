@@ -15,9 +15,13 @@ use crate::shared::errors::InfrastructureError;
 pub trait PrintService: Send + Sync {
     /// Render `pdf_path` and submit it to `printer_name` using `settings`.
     ///
-    /// Returns `Ok(())` once the document has been fully spooled. Errors must
-    /// be surfaced through `InfrastructureError` so the worker can decide
-    /// whether to retry or fail the job permanently.
+    /// Returns `Ok(())` only once every page has been confirmed *printed* by the
+    /// OS spooler — not merely spooled. On Windows the implementation polls the
+    /// spooler for each page's job until it reports `JOB_STATUS_PRINTED` (or the
+    /// driver removes it from the queue after printing). If the spooler reports a
+    /// failure (error, paper out, offline, deleted) or the wait times out, this
+    /// returns `Err` so the worker fails the job instead of recording a false
+    /// success. All errors are surfaced through `InfrastructureError`.
     fn print(
         &self,
         pdf_path: &str,

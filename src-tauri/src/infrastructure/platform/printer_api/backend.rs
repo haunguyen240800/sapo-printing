@@ -19,7 +19,24 @@ pub trait GraphicsBackend {
     fn native_context(&mut self) -> NativeGraphicsContext;
     fn draw_bitmap(&mut self, data: &[u8], x: i32, y: i32, width: u32, height: u32, bpp: u16);
     fn end_page(&mut self);
-    fn end_document(&mut self);
+
+    /// Finish the current document and submit it to the spooler, then block
+    /// until the OS confirms the spooled job actually reached the printer.
+    ///
+    /// On Windows this polls the print spooler for the job created by
+    /// `begin_document` until it reports `JOB_STATUS_PRINTED` (or vanishes from
+    /// the queue, which the driver does once the job is fully printed). Returns
+    /// `Err` if the spooler reports a failure state (error, paper out, offline,
+    /// deleted) or the wait times out — so the caller can fail the job instead
+    /// of reporting a false success.
+    fn end_document(&mut self) -> Result<(), String>;
+
+    /// Abort the current document, discarding any spooled data without waiting.
+    ///
+    /// Used when rendering failed mid-document: there is no point spooling and
+    /// waiting on a blank/partial page. On Windows this calls `AbortDoc` so the
+    /// spooler job is cancelled rather than printed.
+    fn abort_document(&mut self);
 }
 
 pub struct GraphicsBackendFactory;
