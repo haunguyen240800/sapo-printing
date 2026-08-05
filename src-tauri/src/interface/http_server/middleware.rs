@@ -8,7 +8,6 @@ use axum::{
 use super::handlers::{ApiError, ApiErrorResponse};
 use super::state::HttpServerState;
 
-/// Extract Bearer token → verify via ApiTokenManager. Inject origin vào extensions.
 pub async fn require_auth(
     State(state): State<HttpServerState>,
     mut req: Request,

@@ -1,5 +1,3 @@
-//! Axum router — endpoints + CORS + auth middleware.
-
 use axum::{
     middleware,
     routing::{get, post},

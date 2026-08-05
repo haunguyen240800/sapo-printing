@@ -37,7 +37,17 @@ impl PrintService for DefaultPrintService {
         let mut backend = GraphicsBackendFactory::create();
         // Document lifecycle (begin_document / end_document) is managed inside
         // render() on a per-page basis so each label is a separate spooler job.
-        self.render_strategy.render(pdf_path, printer_name, settings, &mut *backend)
+        // render() only spools; it does not wait for physical printing.
+        self.render_strategy.render(pdf_path, printer_name, settings, &mut *backend)?;
+
+        // Block until the spooler confirms every spooled label actually printed.
+        // Batching the wait here (rather than per page inside render) keeps a
+        // stuck job from stalling the worker for pages × timeout, and lets a
+        // genuine spooler failure fail the whole job so it is not falsely
+        // reported as printed.
+        backend
+            .wait_all_printed()
+            .map_err(|reason| InfrastructureError::PrinterError { reason })
     }
 
     fn save_to_path(

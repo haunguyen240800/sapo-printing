@@ -1,5 +1,3 @@
-//! JSON-file backed implementation of `ConfigProvider`.
-
 use crate::application::ports::{ConfigProvider, PrintConfigSnapshot};
 use crate::infrastructure::configs::app::app_print_config;
 use crate::shared::errors::InfrastructureError;
@@ -22,8 +20,6 @@ impl ConfigProvider for JsonFileConfigProvider {
     fn load_print_config(&self) -> Result<Option<PrintConfigSnapshot>, InfrastructureError> {
         match app_print_config::load_config() {
             Ok(Some(cfg)) => Ok(Some(PrintConfigSnapshot {
-                // On-disk schema still uses `printer_name` for backward compatibility
-                // with existing saved configs; semantically this is the printer id.
                 printer_id: cfg.printer_name,
                 paper_size: cfg.paper_size,
                 paper_width: cfg.paper_width,

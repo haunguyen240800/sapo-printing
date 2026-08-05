@@ -1,18 +1,7 @@
-//! Helpers around secret key naming, validation, and platform constraints.
-//!
-//! Kept separate from the `SecretManager` port so the port contains only the
-//! trait. Consumed by both the port's preconditions and the infrastructure
-//! keychain adapters.
-
 use crate::shared::errors::InfrastructureError;
 
-/// Maximum secret size supported across all platforms (Windows limit).
 pub const MAX_SECRET_SIZE: usize = 2560;
 
-/// Format a key with the application namespace `com.sapo.printer/{key}`.
-///
-/// # Panics
-/// Panics if key contains '/' character (namespace separator).
 pub fn format_key(key: &str) -> String {
     if key.contains('/') {
         panic!("Key cannot contain '/' character: {}", key);
@@ -20,7 +9,6 @@ pub fn format_key(key: &str) -> String {
     format!("com.sapo.printer/{}", key)
 }
 
-/// Validate a key name for use with SecretManager.
 pub fn validate_key(key: &str) -> Result<(), InfrastructureError> {
     if key.is_empty() {
         return Err(InfrastructureError::SecretStoreError(

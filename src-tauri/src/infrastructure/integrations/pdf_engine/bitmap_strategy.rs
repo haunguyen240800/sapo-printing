@@ -5,12 +5,6 @@ use crate::infrastructure::platform::printer_api::backend::GraphicsBackend;
 use crate::shared::errors::InfrastructureError;
 use super::renderer::RenderStrategy;
 
-/// Holds the PDFium instance for the lifetime of the application.
-///
-/// PDFium's library bindings are a process-wide singleton — calling
-/// `bind_to_library` more than once returns `AlreadyInitialized`. Storing
-/// `Pdfium` here ensures it is initialised exactly once (when this struct is
-/// constructed) and never dropped while jobs are still being processed.
 pub struct BitmapRenderStrategy {
     pdfium: Pdfium,
 }
@@ -39,10 +33,10 @@ impl RenderStrategy for BitmapRenderStrategy {
             ((r % 360) + 360) % 360
         };
         let pdfium_rotation = match rotation_angle {
-            90  => PdfPageRenderRotation::Degrees90,
+            90 => PdfPageRenderRotation::Degrees90,
             180 => PdfPageRenderRotation::Degrees180,
             270 => PdfPageRenderRotation::Degrees270,
-            _   => PdfPageRenderRotation::None,
+            _ => PdfPageRenderRotation::None,
         };
 
         let (paper_w_mm, paper_h_mm) = settings.paper_size.dimensions_mm();
@@ -74,9 +68,9 @@ impl RenderStrategy for BitmapRenderStrategy {
             let (printable_w, printable_h, margin_l_px, margin_t_px) = if dc_w > 0 && dc_h > 0 {
                 let mm_to_px_x = dpi_x_f / 25.4;
                 let mm_to_px_y = dpi_y_f / 25.4;
-                let ml = (settings.margin_left  as f32 * mm_to_px_x) as i32;
+                let ml = (settings.margin_left as f32 * mm_to_px_x) as i32;
                 let mr = (settings.margin_right as f32 * mm_to_px_x) as i32;
-                let mt = (settings.margin_top   as f32 * mm_to_px_y) as i32;
+                let mt = (settings.margin_top as f32 * mm_to_px_y) as i32;
                 let mb = (settings.margin_bottom as f32 * mm_to_px_y) as i32;
                 ((dc_w as i32 - ml - mr).max(1), (dc_h as i32 - mt - mb).max(1), ml, mt)
             } else {
@@ -86,15 +80,15 @@ impl RenderStrategy for BitmapRenderStrategy {
                 let ph = (paper_h_mm * dpi_y_f / 25.4
                     - (settings.margin_top + settings.margin_bottom) as f32 * dpi_y_f / 25.4) as i32;
                 let ml = (settings.margin_left as f32 * dpi_x_f / 25.4) as i32;
-                let mt = (settings.margin_top  as f32 * dpi_y_f / 25.4) as i32;
+                let mt = (settings.margin_top as f32 * dpi_y_f / 25.4) as i32;
                 (pw.max(1), ph.max(1), ml, mt)
             };
 
-            let width_pts  = page.width().value;
+            let width_pts = page.width().value;
             let height_pts = page.height().value;
 
             // PDF points → DC pixels (1 pt = 1/72 inch)
-            let pdf_w_px = width_pts  * dpi_x_f / 72.0;
+            let pdf_w_px = width_pts * dpi_x_f / 72.0;
             let pdf_h_px = height_pts * dpi_y_f / 72.0;
 
             // Scale uniformly to fit inside the printable area

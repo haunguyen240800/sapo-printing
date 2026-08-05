@@ -1,15 +1,5 @@
-//! Retry policy — pure decision logic for retryability and backoff.
-//!
-//! This is **policy**, not persistence. It does not depend on SQLite, the
-//! queue, or any infrastructure adapter, so it lives in the application
-//! layer where it can be tested in isolation and reused by any driver.
-
 use crate::shared::errors::InfrastructureError;
 
-/// Classify an infrastructure error as retryable or terminal.
-///
-/// Retryable: transient network/render/printer failures that may succeed on retry.
-/// Non-retryable: validation, database schema, and secret-store failures.
 pub fn is_retryable(error: &InfrastructureError) -> bool {
     match error {
         InfrastructureError::NetworkError(_)

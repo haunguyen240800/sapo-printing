@@ -1,6 +1,6 @@
 use hmac::{Hmac, Mac};
-use rand::RngCore;
 use rand::rngs::OsRng;
+use rand::RngCore;
 use rusqlite::Connection;
 use serde::{Deserialize, Serialize};
 use sha2::Sha256;
@@ -8,16 +8,12 @@ use std::sync::{Arc, Mutex};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use crate::application::ports::{EventStore, SecretManager};
-use crate::domain::print_job::PrintJobError;
 use crate::domain::common::aggregate::DomainEvent;
+use crate::domain::print_job::PrintJobError;
 use crate::infrastructure::configs::db::{DbPool, SqliteConn};
 
 type HmacSha256 = Hmac<Sha256>;
 
-/// Compute HMAC-SHA256 over the canonical event string.
-///
-/// Formula: `HMAC-SHA256(key_bytes, aggregate_id|sequence_number|event_type|payload|timestamp)`
-/// Returns lowercase hex string (64 characters).
 pub fn compute_hmac(
     secret_key: &str,
     aggregate_id: &str,
@@ -38,7 +34,6 @@ pub fn compute_hmac(
     Ok(hex::encode(mac.finalize().into_bytes()))
 }
 
-/// A domain event as stored in the database.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct StoredEvent {
     pub id: i64,
@@ -50,11 +45,6 @@ pub struct StoredEvent {
     pub hmac: Option<String>,
 }
 
-/// SQLite implementation of an Event Store.
-///
-/// Persists domain events to the `events` table with sequencing per aggregate.
-/// Supports batch writes within a transaction for atomicity.
-/// Every event is signed with HMAC-SHA256 for tamper detection.
 pub struct SqliteEventStore {
     pool: DbPool,
     secret_manager: Arc<dyn SecretManager>,
@@ -62,7 +52,6 @@ pub struct SqliteEventStore {
 }
 
 impl SqliteEventStore {
-    /// Create a new event store with a shared connection pool and secret manager.
     pub fn new(pool: DbPool, secret_manager: Arc<dyn SecretManager>) -> Self {
         Self {
             pool,
@@ -77,8 +66,6 @@ impl SqliteEventStore {
         })
     }
 
-    /// Retrieve the HMAC signing key from SecretManager, or generate and store a new one.
-    /// The key is cached in memory after first retrieval to prevent TOCTOU races.
     pub fn get_or_create_signing_key(&self) -> Result<String, PrintJobError> {
         tracing::info!(
             target = "sapo_printer::repository::event_store",
@@ -174,17 +161,11 @@ impl SqliteEventStore {
         Ok(key_hex)
     }
 
-    /// Persist a single domain event atomically.
-    ///
-    /// Sequence-number allocation and the INSERT are bracketed in an
-    /// `IMMEDIATE` transaction so two concurrent writers cannot pick the
-    /// same `sequence_number` for the same aggregate.
     pub fn save_event(
         &self,
         aggregate_id: &str,
         event: &dyn DomainEvent,
     ) -> Result<(), PrintJobError> {
-        // Acquire signing key BEFORE locking the connection (consistent with save_all).
         let signing_key = self.get_or_create_signing_key()?;
 
         let mut conn = self.acquire()?;
@@ -207,8 +188,8 @@ impl SqliteEventStore {
              VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
             rusqlite::params![aggregate_id, seq, event.event_name(), payload, now, hmac_value],
         )
-        .map_err(|e| {
-            tracing::error!(
+            .map_err(|e| {
+                tracing::error!(
                 target = "sapo_printer::repository::event_store",
                 operation = "save_event",
                 aggregate_id = aggregate_id,
@@ -216,10 +197,10 @@ impl SqliteEventStore {
                 error = %e,
                 "Failed to save event"
             );
-            PrintJobError::RepositoryError {
-                reason: format!("Failed to save event: {}", e),
-            }
-        })?;
+                PrintJobError::RepositoryError {
+                    reason: format!("Failed to save event: {}", e),
+                }
+            })?;
 
         tx.commit().map_err(|e| PrintJobError::RepositoryError {
             reason: format!("Failed to commit save_event transaction: {}", e),
@@ -228,8 +209,6 @@ impl SqliteEventStore {
         Ok(())
     }
 
-    /// Persist multiple events in a single transaction (atomic batch).
-    /// Locks mutex BEFORE starting the transaction.
     pub fn save_all(
         &self,
         aggregate_id: &str,
@@ -317,7 +296,6 @@ impl SqliteEventStore {
         Ok(())
     }
 
-    /// Find all events for a given aggregate, ordered by sequence_number.
     pub fn find_by_aggregate(&self, aggregate_id: &str) -> Result<Vec<StoredEvent>, PrintJobError> {
         let conn = self.acquire()?;
 
@@ -381,13 +359,11 @@ impl SqliteEventStore {
         Ok(events)
     }
 
-    /// Get the next sequence number for an aggregate (MAX + 1, starts at 1).
     pub fn next_sequence_number(&self, aggregate_id: &str) -> Result<i64, PrintJobError> {
         let conn = self.acquire()?;
         self.next_sequence_number_inner(&*conn, aggregate_id)
     }
 
-    /// Inner: next sequence number given a locked connection reference.
     fn next_sequence_number_inner(
         &self,
         conn: &Connection,
@@ -408,8 +384,6 @@ impl SqliteEventStore {
         }
     }
 
-    /// Delete events with timestamp older than the given UNIX epoch seconds.
-    /// Returns the number of deleted rows.
     pub fn delete_events_before(&self, cutoff_timestamp: i64) -> Result<u64, PrintJobError> {
         let conn = self.acquire()?;
 
@@ -435,9 +409,6 @@ impl SqliteEventStore {
     }
 }
 
-/// Implement the application-layer `EventStore` port so that use cases and
-/// the `QueueWorker` can depend on `Arc<dyn EventStore>` instead of the
-/// concrete `SqliteEventStore`.
 impl EventStore for SqliteEventStore {
     fn save_all(
         &self,

@@ -1,15 +1,3 @@
-//! HTTPS server bootstrap — chuẩn bị state, subscribe SSE, spawn server, watch cert.
-//!
-//! Gọi từ `main.rs` sau khi core deps ready (DbPool, EventBus).
-//!
-//! # Trách nhiệm
-//! 1. Sinh ApiTokenManager từ DbPool.
-//! 2. Sinh SseBroadcaster, subscribe vào EventBus cho các job status events.
-//! 3. Load TLS cert từ `data_dir/tls/server.pem` (helper service ghi ra).
-//! 4. Bind port fallback, spawn axum-server.
-//! 5. Ghi `agent.json` cho webapp discovery.
-//! 6. Spawn cert watcher hot reload.
-
 use std::path::Path;
 use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -28,7 +16,6 @@ use super::server::{self, AgentMetadata};
 use super::sse::SseBroadcaster;
 use super::state::HttpServerState;
 
-/// Job status events SseBroadcaster subscribe. Chỉ terminal events cho FE.
 pub const JOB_STATUS_EVENTS: &[&str] = &[
     "PrintJobCompleted",
     "PrintJobFailed",
@@ -50,9 +37,6 @@ pub async fn start(
 ) -> Result<BootstrapResult, InfrastructureError> {
     let paths = CertPaths::under(data_dir);
 
-    // Fallback: nếu helper service chưa sinh cert → app tự sinh.
-    // Prod deployment nên chạy helper trước (installer script làm). Dev mode
-    // hoặc user không cài helper → app tự sinh + best-effort install CA.
     if !paths.server_pem.exists() || !paths.server_key.exists() {
         tracing::warn!(
             data_dir = %paths.tls_dir().display(),
@@ -93,7 +77,7 @@ pub async fn start(
             use_cases,
         },
     )
-    .await?;
+        .await?;
 
     AgentMetadata {
         port: handles.port,
@@ -103,7 +87,7 @@ pub async fn start(
             .map(|d| d.as_secs() as i64)
             .unwrap_or(0),
     }
-    .write(data_dir)?;
+        .write(data_dir)?;
 
     cert_watcher::spawn_watcher(
         paths.server_pem.clone(),

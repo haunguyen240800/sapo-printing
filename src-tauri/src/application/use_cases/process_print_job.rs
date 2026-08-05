@@ -1,30 +1,11 @@
-//! ProcessPrintJobUseCase — executes the full print pipeline for a single job.
-//!
-//! Pipeline:
-//! 1. PENDING → QUEUED
-//! 2. Download document (wrapped in RAII temp file via `TempFileManager`)
-//! 3. QUEUED → DOWNLOADED
-//! 4. Render + send to printer, blocking until the OS spooler confirms every
-//!    page actually printed (or copy file for virtual PDF printers)
-//! 5. DOWNLOADED → SUBMITTED_TO_QUEUE → PRINTING
-//! 6. PRINTING → COMPLETED
-//!
-//! The job is only marked COMPLETED after `PrintService::print` returns Ok,
-//! which now means the spooler reported the document as printed — a spooler
-//! failure propagates as an error and drives the job to FAILED (retryable).
-//!
-//! Each transition persists job state and publishes domain events using the
-//! Outbox Pattern (events saved before state update, bus publish is non-fatal).
-
 use std::sync::Arc;
 
-use crate::application::ports::{ConfigProvider, DocumentDownloadService, EventStore, PrintService, TempFileManager};
 use crate::application::errors::PipelineError;
+use crate::application::ports::{ConfigProvider, DocumentDownloadService, EventStore, PrintService, TempFileManager};
 use crate::domain::print_job::{PrintJob, PrintJobRepository, PrintJobSettings};
 use crate::shared::errors::InfrastructureError;
 use crate::shared::event_bus::EventBus;
 
-/// Orchestrates the end-to-end print pipeline for a single popped job.
 pub struct ProcessPrintJobUseCase {
     job_repo: Arc<dyn PrintJobRepository>,
     event_store: Arc<dyn EventStore>,
@@ -57,7 +38,6 @@ impl ProcessPrintJobUseCase {
     }
 
     pub fn execute(&self, mut job: PrintJob) -> Result<(), PipelineError> {
-        // Step 1: PENDING → QUEUED
         job.queue()?;
         if let Err(e) = self.persist_and_publish(&mut job) {
             tracing::error!(
@@ -71,7 +51,6 @@ impl ProcessPrintJobUseCase {
             return Err(e);
         }
 
-        // Step 2: Download
         let download_start = std::time::Instant::now();
         let pdf_path = self.downloader.download(job.pdf_url(), job.id())?;
         tracing::info!(
@@ -87,9 +66,6 @@ impl ProcessPrintJobUseCase {
         job.mark_downloaded()?;
         self.persist_and_publish(&mut job)?;
 
-        // Step 3: Render + send to printer, blocking until the spooler confirms
-        // the document printed. A spooler/render failure returns Err here and the
-        // job never reaches COMPLETED.
         let render_start = std::time::Instant::now();
         self.render_or_save(&job, temp_file.as_ref())?;
         tracing::info!(
@@ -100,7 +76,6 @@ impl ProcessPrintJobUseCase {
             "Pipeline step completed"
         );
 
-        // Step 4: SUBMITTED_TO_QUEUE → PRINTING → COMPLETED
         job.mark_submitted()?;
         self.persist_and_publish(&mut job)?;
 
@@ -110,7 +85,6 @@ impl ProcessPrintJobUseCase {
         job.complete()?;
         self.persist_and_publish(&mut job)?;
 
-        // temp_file dropped here → RAII cleanup
         Ok(())
     }
 
@@ -135,8 +109,6 @@ impl ProcessPrintJobUseCase {
                 ))
             })?;
 
-            // Load the current print config from file so settings (paper size, margins…)
-            // always reflect what the user last saved — the DB does not persist settings.
             let settings: PrintJobSettings = self
                 .config_provider
                 .load_print_config()
@@ -155,7 +127,6 @@ impl ProcessPrintJobUseCase {
         }
     }
 
-    /// Persist job state and publish drained events (Outbox Pattern).
     fn persist_and_publish(&self, job: &mut PrintJob) -> Result<(), PipelineError> {
         let events = job.drain_events();
 

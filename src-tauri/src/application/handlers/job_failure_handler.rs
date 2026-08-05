@@ -1,17 +1,11 @@
-//! JobFailureHandler — encapsulates the retry-vs-permanent-failure decision.
-//!
-//! Lives in the application layer because the policy (max attempts, retryable
-//! classification, backoff calculation, requeue semantics) is business logic.
-
 use std::sync::Arc;
 
-use crate::application::ports::{EventStore, QueueManager};
-use crate::application::policies::retry_policy::calculate_backoff_delay;
 use crate::application::errors::PipelineError;
+use crate::application::policies::retry_policy::calculate_backoff_delay;
+use crate::application::ports::{EventStore, QueueManager};
 use crate::domain::print_job::{PrintJob, PrintJobRepository, MAX_RETRY_COUNT};
 use crate::shared::event_bus::EventBus;
 
-/// Service that decides how to react to a failed print job.
 pub struct JobFailureHandler {
     queue_manager: Arc<dyn QueueManager>,
     job_repo: Arc<dyn PrintJobRepository>,

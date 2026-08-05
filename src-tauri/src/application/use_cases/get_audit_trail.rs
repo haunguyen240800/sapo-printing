@@ -1,20 +1,17 @@
 use std::sync::Arc;
 
-use crate::application::ports::{EventStore, SecretManager, StoredEventData};
 use crate::application::errors::ApplicationError;
+use crate::application::ports::{EventStore, SecretManager, StoredEventData};
 use crate::application::services::audit_service::{
     get_audit_trail, verify_audit_trail_integrity, verify_event_integrity, AuditIntegrityReport,
 };
 
-/// Result of an audit trail retrieval.
 pub struct AuditTrailResult {
     pub events: Vec<StoredEventData>,
     pub report: AuditIntegrityReport,
-    /// Per-event HMAC validity, aligned with `events` by index.
     pub event_hmac_valid: Vec<bool>,
 }
 
-/// Use case: Retrieve and verify the audit trail for a print job.
 pub struct GetAuditTrailUseCase {
     event_store: Arc<dyn EventStore>,
     secret_manager: Arc<dyn SecretManager>,
@@ -31,7 +28,6 @@ impl GetAuditTrailUseCase {
         }
     }
 
-    /// Execute the use case: retrieve audit trail for a job and verify integrity.
     pub fn execute(&self, job_id: &str) -> Result<AuditTrailResult, ApplicationError> {
         tracing::info!(
             target = "sapo_printer::application::use_case::get_audit_trail",

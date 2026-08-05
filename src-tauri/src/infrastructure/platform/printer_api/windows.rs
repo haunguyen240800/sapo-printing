@@ -25,8 +25,11 @@ const JS_DELETED: u32 = 0x0000_0100;
 const JS_BLOCKED_DEVQ: u32 = 0x0000_0200;
 const JS_USER_INTERVENTION: u32 = 0x0000_0400;
 
-/// Maximum time to wait for a single spooled document to reach the printer.
-const SPOOL_WAIT_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(30);
+/// Stall timeout: if no spooled document finishes printing within this window,
+/// the batch is considered stuck (printer offline/paused/jammed). Because labels
+/// print sequentially, this is measured from the *last completion*, not the start
+/// — so a large batch that keeps printing is never falsely failed.
+const SPOOL_STALL_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(30);
 /// Interval between spooler status polls.
 const SPOOL_POLL_INTERVAL: std::time::Duration = std::time::Duration::from_millis(200);
 
@@ -40,27 +43,31 @@ enum JobQuery {
 
 pub struct WindowsGraphicsBackend {
     hdc: Option<HDC>,
-    /// Spooler job id returned by `StartDocW`, used to poll print completion.
-    spool_job_id: Option<u32>,
-    /// Printer name for the current document, needed to open the spooler queue.
+    /// Spooler job id of the in-progress document (set by `StartDocW`).
+    current_job_id: Option<u32>,
+    /// Spooler job ids committed via `end_document`, awaiting print confirmation.
+    spooled_job_ids: Vec<u32>,
+    /// Printer name for the current batch, needed to open the spooler queue.
     printer_name: Option<String>,
 }
 
 impl WindowsGraphicsBackend {
     pub fn new() -> Self {
-        Self { hdc: None, spool_job_id: None, printer_name: None }
+        Self {
+            hdc: None,
+            current_job_id: None,
+            spooled_job_ids: Vec::new(),
+            printer_name: None,
+        }
     }
 
-    /// Poll the print spooler until the given job reaches `JOB_STATUS_PRINTED`,
-    /// disappears from the queue (driver removed it after printing), or a
-    /// failure/timeout occurs.
-    ///
-    /// Returns `Ok(())` on confirmed print (or benign disappearance) and `Err`
-    /// with a human-readable reason otherwise.
-    fn wait_for_printed(printer_name: &str, job_id: u32) -> Result<(), String> {
-        // job_id 0 is not a valid spooler job (StartDocW failed to allocate one);
-        // nothing to wait on.
-        if job_id == 0 {
+    /// Poll the spooler until every job in `job_ids` reaches `JOB_STATUS_PRINTED`
+    /// or vanishes from the queue. Fails fast on an explicit error state and
+    /// gives up if no job makes progress within `SPOOL_STALL_TIMEOUT`.
+    fn wait_for_all(printer_name: &str, mut job_ids: Vec<u32>) -> Result<(), String> {
+        // Drop invalid ids (StartDocW returned 0 → no spooler job to wait on).
+        job_ids.retain(|&id| id != 0);
+        if job_ids.is_empty() {
             return Ok(());
         }
 
@@ -72,42 +79,56 @@ impl WindowsGraphicsBackend {
             // Cannot query the spooler — treat as printed rather than failing a
             // job that most likely succeeded (matches prior "spool == success").
             tracing::warn!(
-                "wait_for_printed: OpenPrinterW failed for '{}', assuming job {} printed",
-                printer_name, job_id
+                "wait_for_all: OpenPrinterW failed for '{}', assuming {} job(s) printed",
+                printer_name, job_ids.len()
             );
             return Ok(());
         }
 
-        let deadline = std::time::Instant::now() + SPOOL_WAIT_TIMEOUT;
+        let mut last_progress = std::time::Instant::now();
         let result = loop {
-            match Self::query_job_status(hprinter, job_id) {
-                // Job no longer in queue → spooler finished and removed it.
-                JobQuery::Gone => break Ok(()),
+            let before = job_ids.len();
+            let mut failure: Option<String> = None;
+
+            job_ids.retain(|&job_id| match Self::query_job_status(hprinter, job_id) {
+                JobQuery::Gone => false, // printed and removed → done
                 JobQuery::Status(status) => {
                     if status & JS_PRINTED != 0 {
-                        break Ok(());
-                    }
-                    if status & (JS_ERROR | JS_DELETED | JS_PAPEROUT | JS_OFFLINE | JS_BLOCKED_DEVQ) != 0 {
-                        break Err(format!(
+                        false // confirmed printed → done
+                    } else if status & (JS_ERROR | JS_DELETED | JS_PAPEROUT | JS_OFFLINE | JS_BLOCKED_DEVQ) != 0 {
+                        failure.get_or_insert_with(|| format!(
                             "spooler reported failure for job {} (status=0x{:08X})",
                             job_id, status
                         ));
-                    }
-                    if status & JS_USER_INTERVENTION != 0 {
-                        tracing::warn!(
-                            "wait_for_printed: job {} needs user intervention (status=0x{:08X})",
-                            job_id, status
-                        );
+                        false
+                    } else {
+                        if status & JS_USER_INTERVENTION != 0 {
+                            tracing::warn!(
+                                "wait_for_all: job {} needs user intervention (status=0x{:08X})",
+                                job_id, status
+                            );
+                        }
+                        true // still printing
                     }
                 }
-            }
+            });
 
-            if std::time::Instant::now() >= deadline {
+            if let Some(reason) = failure {
+                break Err(reason);
+            }
+            if job_ids.is_empty() {
+                break Ok(());
+            }
+            if job_ids.len() < before {
+                // At least one job finished this round → reset the stall clock.
+                last_progress = std::time::Instant::now();
+            } else if last_progress.elapsed() >= SPOOL_STALL_TIMEOUT {
                 break Err(format!(
-                    "timed out after {}s waiting for job {} to print",
-                    SPOOL_WAIT_TIMEOUT.as_secs(), job_id
+                    "timed out: {} job(s) not printed after {}s of no progress",
+                    job_ids.len(), SPOOL_STALL_TIMEOUT.as_secs()
                 ));
             }
+
             std::thread::sleep(SPOOL_POLL_INTERVAL);
         };
 
@@ -274,9 +295,9 @@ impl GraphicsBackend for WindowsGraphicsBackend {
         }
 
         // StartDocW's positive return value is the spooler job identifier. Keep
-        // it (with the printer name) so end_document can poll the job to
-        // completion instead of assuming spool == printed.
-        self.spool_job_id = Some(result as u32);
+        // it (with the printer name) so wait_all_printed can later confirm the
+        // job actually printed instead of assuming spool == printed.
+        self.current_job_id = Some(result as u32);
         self.printer_name = Some(printer_name.to_string());
 
         Ok(())
@@ -407,8 +428,7 @@ impl GraphicsBackend for WindowsGraphicsBackend {
         let end_result = unsafe { EndDoc(hdc) };
         unsafe { DeleteDC(hdc) };
 
-        let job_id = self.spool_job_id.take();
-        let printer_name = self.printer_name.take();
+        let job_id = self.current_job_id.take();
 
         // EndDoc returns > 0 on success; anything else means the document was
         // not committed to the spooler.
@@ -416,11 +436,12 @@ impl GraphicsBackend for WindowsGraphicsBackend {
             return Err("Failed to finish document (EndDoc returned error)".to_string());
         }
 
-        // Block until the spooler confirms the job actually printed.
-        match (printer_name, job_id) {
-            (Some(name), Some(id)) => Self::wait_for_printed(&name, id),
-            _ => Ok(()),
+        // Record the job for a later batched wait instead of blocking here — see
+        // wait_all_printed. Waiting per document would serialize the worker.
+        if let Some(id) = job_id {
+            self.spooled_job_ids.push(id);
         }
+        Ok(())
     }
 
     fn abort_document(&mut self) {
@@ -430,8 +451,17 @@ impl GraphicsBackend for WindowsGraphicsBackend {
                 DeleteDC(hdc);
             }
         }
-        self.spool_job_id = None;
-        self.printer_name = None;
+        // Drop the in-progress job id; keep already-spooled ids so a partial
+        // batch can still be awaited if the caller chooses.
+        self.current_job_id = None;
+    }
+
+    fn wait_all_printed(&mut self) -> Result<(), String> {
+        let job_ids = std::mem::take(&mut self.spooled_job_ids);
+        match self.printer_name.take() {
+            Some(name) => Self::wait_for_all(&name, job_ids),
+            None => Ok(()),
+        }
     }
 }
 

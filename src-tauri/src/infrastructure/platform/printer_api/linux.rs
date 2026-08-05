@@ -152,6 +152,12 @@ impl GraphicsBackend for LinuxGraphicsBackend {
     fn abort_document(&mut self) {
         self.cleanup_temp();
     }
+
+    fn wait_all_printed(&mut self) -> Result<(), String> {
+        // CUPS `lp` submission in end_document is synchronous; there is no
+        // spooler job id to poll here.
+        Ok(())
+    }
 }
 
 impl LinuxGraphicsBackend {

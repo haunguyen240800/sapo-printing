@@ -1,17 +1,11 @@
 use std::sync::Arc;
 
 use crate::application::dto::cancel_print_job_request::CancelPrintJobRequest;
-use crate::application::ports::{EventStore, TempFileManager};
 use crate::application::errors::ApplicationError;
+use crate::application::ports::{EventStore, TempFileManager};
 use crate::domain::print_job::{PrintJobError, PrintJobId, PrintJobRepository};
 use crate::shared::event_bus::EventBus;
 
-/// Use case: Cancel a print job.
-///
-/// Business rules enforced:
-/// - Job must exist (ApplicationError::JobNotFound)
-/// - Job must be cancellable per domain rules
-/// - Temp file cleanup via TempFileManager (best-effort)
 pub struct CancelPrintJobUseCase {
     job_repo: Arc<dyn PrintJobRepository>,
     event_store: Arc<dyn EventStore>,

@@ -1,9 +1,3 @@
-//! Renewal status check.
-//!
-//! - `RenewSoon`: server cert < 30 ngày → helper service renew.
-//! - `CaRotationNeeded`: CA < 60 ngày → rotation flow (rare, 10y life).
-//! - `Expired`: cert đã hết hạn → block operations, force renew.
-
 use std::time::SystemTime;
 
 use super::cert_generator::CertBundle;

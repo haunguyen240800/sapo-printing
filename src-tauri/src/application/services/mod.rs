@@ -1,5 +1,3 @@
-//! Application services — coordination helpers used by multiple use cases.
-
 pub mod api_token_manager;
 pub mod audit_service;
 pub mod secret_key_service;

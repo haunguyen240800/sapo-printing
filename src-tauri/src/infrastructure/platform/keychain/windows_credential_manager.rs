@@ -1,18 +1,3 @@
-//! Windows Credential Manager Implementation
-//!
-//! Uses Win32 Credentials API (DPAPI-backed) for secure secret storage.
-//! Credentials are stored per-user and encrypted by Windows Data Protection API.
-//!
-//! # Limitations
-//! - Requires user to be logged in (doesn't work with service accounts)
-//! - Max credential size: 2560 bytes
-//! - View credentials: Control Panel → Credential Manager → Windows Credentials
-//!
-//! # API Reference
-//! - `CredWriteW()` — Store credential
-//! - `CredReadW()` — Retrieve credential
-//! - `CredDeleteW()` — Delete credential
-
 #[cfg(target_os = "windows")]
 use windows::core::{PCWSTR, PWSTR};
 #[cfg(target_os = "windows")]
@@ -23,11 +8,10 @@ use windows::Win32::Security::Credentials::{
     CRED_PERSIST_LOCAL_MACHINE, CRED_TYPE_GENERIC,
 };
 
-use crate::application::services::secret_key_service::{format_key, validate_key, MAX_SECRET_SIZE};
 use crate::application::ports::SecretManager;
+use crate::application::services::secret_key_service::{format_key, validate_key, MAX_SECRET_SIZE};
 use crate::shared::errors::InfrastructureError;
 
-/// Windows Credential Manager implementation using Win32 API.
 #[cfg(target_os = "windows")]
 pub struct WindowsCredentialManager;
 

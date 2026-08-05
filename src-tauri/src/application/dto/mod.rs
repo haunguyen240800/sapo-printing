@@ -1,4 +1,3 @@
-// Data Transfer Objects for API communication
 pub mod cancel_print_job_request;
 pub mod create_print_job_request;
 pub mod print_job_dto;

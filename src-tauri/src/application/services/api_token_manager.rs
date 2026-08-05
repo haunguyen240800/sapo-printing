@@ -1,18 +1,3 @@
-//! API Token Manager — pairing tokens cho webapp.
-//!
-//! # Security model
-//! - Sinh token 32 bytes random. Trả plaintext về webapp 1 lần lúc pair.
-//! - DB lưu `SHA-256(token || salt)` + salt riêng mỗi token.
-//! - Verify constant-time (`subtle::ConstantTimeEq`) chống timing attack.
-//! - Expires: sliding window 90 ngày. Mỗi lần verify pass → `expires_at = now + 90d`.
-//!
-//! # Pairing flow
-//! 1. Webapp POST /pair `{ origin }` → `request_pair(origin)`.
-//! 2. Manager push `PendingPairRequest` vào watch channel (Tauri UI subscribe).
-//! 3. UI hiện toast. User Allow → gọi `resolve_pair(request_id, true)`.
-//! 4. Manager sinh token, insert DB, trả `TokenResponse` cho request future.
-//! 5. Timeout 60s → auto-deny.
-
 use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
@@ -176,9 +161,9 @@ impl ApiTokenManager {
              VALUES (?1, ?2, ?3, ?4, ?5, 1)",
             rusqlite::params![hash, salt, origin, now, expires_at],
         )
-        .map_err(|e| InfrastructureError::DatabaseError {
-            reason: e.to_string(),
-        })?;
+            .map_err(|e| InfrastructureError::DatabaseError {
+                reason: e.to_string(),
+            })?;
 
         Ok((
             plaintext.clone(),
@@ -248,9 +233,9 @@ impl ApiTokenManager {
             "UPDATE api_tokens SET is_active = 0 WHERE token_hash = ?1",
             rusqlite::params![token_hash],
         )
-        .map_err(|e| InfrastructureError::DatabaseError {
-            reason: e.to_string(),
-        })?;
+            .map_err(|e| InfrastructureError::DatabaseError {
+                reason: e.to_string(),
+            })?;
         Ok(())
     }
 
@@ -283,7 +268,6 @@ impl ApiTokenManager {
             })?;
         Ok(rows)
     }
-
 }
 
 fn hash_token(token: &str, salt: &str) -> String {

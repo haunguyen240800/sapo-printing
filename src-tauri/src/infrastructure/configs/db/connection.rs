@@ -24,17 +24,12 @@ impl fmt::Display for DatabaseError {
 
 impl std::error::Error for DatabaseError {}
 
-/// Pooled SQLite connection (alias for downstream callers).
 pub type SqliteConn = PooledConnection<SqliteConnectionManager>;
 
-/// Connection pool backed by `r2d2`. Each `get()` returns an exclusive
-/// connection from the pool that derefs to `rusqlite::Connection`.
 #[derive(Clone)]
 pub struct DbPool(Pool<SqliteConnectionManager>);
 
 impl DbPool {
-    /// Open the database at `db_path` and build a connection pool.
-    /// All connections in the pool share WAL journal mode and a 30s busy timeout.
     pub fn new(db_path: &str) -> Result<Self, DatabaseError> {
         let manager = SqliteConnectionManager::file(db_path).with_init(|conn| {
             conn.busy_timeout(Duration::from_secs(30))?;
@@ -52,7 +47,6 @@ impl DbPool {
         Ok(Self(pool))
     }
 
-    /// Acquire a connection from the pool. Blocks until one is available.
     pub fn get(&self) -> Result<SqliteConn, DatabaseError> {
         self.0.get().map_err(|e| DatabaseError::ConnectionFailed {
             reason: e.to_string(),

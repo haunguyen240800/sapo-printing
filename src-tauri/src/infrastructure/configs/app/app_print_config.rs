@@ -1,13 +1,7 @@
-//! Configuration Store Module
-//!
-//! Handles reading and writing application print configuration to JSON file.
-//! File location: ~/.sapo-printer/print-config.json (or %APPDATA%/sapo-printer on Windows)
-
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::PathBuf;
 
-/// Print configuration stored in JSON file
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AppPrintConfig {
     pub printer_name: String,
@@ -48,7 +42,6 @@ impl Default for AppPrintConfig {
     }
 }
 
-/// Get the path to the config file
 fn get_config_file_path() -> Result<PathBuf, String> {
     let home = std::env::var("USERPROFILE")
         .or_else(|_| std::env::var("HOME"))
@@ -65,7 +58,6 @@ fn get_config_file_path() -> Result<PathBuf, String> {
     Ok(config_dir.join("print-config.json"))
 }
 
-/// Save print configuration to JSON file
 pub fn save_config(config: &AppPrintConfig) -> Result<(), String> {
     let config_path = get_config_file_path()?;
 
@@ -84,7 +76,6 @@ pub fn save_config(config: &AppPrintConfig) -> Result<(), String> {
     Ok(())
 }
 
-/// Load print configuration from JSON file
 pub fn load_config() -> Result<Option<AppPrintConfig>, String> {
     let config_path = get_config_file_path()?;
 

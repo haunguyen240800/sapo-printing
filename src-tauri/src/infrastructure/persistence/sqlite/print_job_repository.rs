@@ -5,17 +5,11 @@ use crate::domain::print_job::{
 };
 use crate::infrastructure::configs::db::DbPool;
 
-/// SQLite implementation of `PrintJobRepository`.
-///
-/// Persists `PrintJob` aggregates to the `print_jobs` table.
-/// Uses prepared statements for all queries. Acquires a pooled connection
-/// per operation.
 pub struct SqlitePrintJobRepository {
     pool: DbPool,
 }
 
 impl SqlitePrintJobRepository {
-    /// Create a new repository with a shared connection pool.
     pub fn new(pool: DbPool) -> Self {
         Self { pool }
     }
@@ -33,8 +27,6 @@ impl PrintJobRepository for SqlitePrintJobRepository {
         let conn = self.acquire()?;
         let acquire_duration = acquire_start.elapsed();
 
-        // Only emit a record at INFO when something is actually wrong;
-        // the happy path stays at TRACE so bulk inserts don't flood logs.
         if acquire_duration.as_secs() > 5 {
             tracing::warn!(
                 target = "sapo_printer::repository::print_job",
@@ -342,10 +334,6 @@ impl PrintJobRepository for SqlitePrintJobRepository {
     }
 }
 
-/// Helper: convert a row to a PrintJob via reconstruct().
-///
-/// Note: the on-disk column is still named `printer_name` for backward
-/// compatibility, but the stored value is semantically a `PrinterId`.
 fn row_to_print_job(row: &rusqlite::Row<'_>) -> Result<PrintJob, rusqlite::Error> {
     let id_str: String = row.get(0)?;
     let printer_id_raw: String = row.get(1)?;
@@ -387,7 +375,6 @@ fn row_to_print_job(row: &rusqlite::Row<'_>) -> Result<PrintJob, rusqlite::Error
     ))
 }
 
-/// Helper: determine completed_at based on status (uses the same timestamp as created_at/updated_at).
 fn completed_at_for_status(status: &PrintStatus, now: i64) -> Option<i64> {
     match status {
         PrintStatus::Completed | PrintStatus::Failed | PrintStatus::Cancelled => Some(now),

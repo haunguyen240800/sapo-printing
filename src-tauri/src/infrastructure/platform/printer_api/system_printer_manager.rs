@@ -1,13 +1,3 @@
-//! `SystemPrinterManager` — OS-backed adapter implementing the `PrinterManager` port.
-//!
-//! Single source of truth for OS printer enumeration and availability checks.
-//! Uses platform commands (PowerShell on Windows, `lpstat` on Unix) to query
-//! the spooler and maps the raw shape into the application's `PrinterDto`.
-//!
-//! Results are cached in-process for a short TTL ([`LIST_CACHE_TTL`]) because
-//! each list call spawns a subprocess (~300ms–1s) and the UI tends to refresh
-//! the list rapidly.
-
 use std::sync::Mutex;
 use std::time::{Duration, Instant};
 
@@ -15,7 +5,6 @@ use crate::application::dto::PrinterDto;
 use crate::application::ports::{PrinterAvailability, PrinterManager};
 use crate::shared::errors::InfrastructureError;
 
-/// How long a successful `list()` result is reused before re-querying the OS.
 const LIST_CACHE_TTL: Duration = Duration::from_secs(5);
 
 pub struct SystemPrinterManager {
@@ -29,8 +18,6 @@ impl SystemPrinterManager {
         }
     }
 
-    /// Return the cached printer list if it is still fresh, otherwise query
-    /// the OS and refresh the cache.
     fn list_cached(&self) -> Result<Vec<PrinterDto>, InfrastructureError> {
         {
             let cache = self.cache.lock().unwrap_or_else(|p| p.into_inner());
@@ -91,8 +78,8 @@ fn win32_status_to_str(status: u32) -> &'static str {
 
 #[cfg(target_os = "windows")]
 fn get_default_printer_name() -> String {
-    use windows::Win32::Graphics::Printing::GetDefaultPrinterW;
     use windows::core::PWSTR;
+    use windows::Win32::Graphics::Printing::GetDefaultPrinterW;
 
     unsafe {
         let mut size: u32 = 0;
@@ -113,8 +100,8 @@ fn get_default_printer_name() -> String {
 
 #[cfg(target_os = "windows")]
 fn list_os_printers() -> Result<Vec<PrinterDto>, InfrastructureError> {
-    use windows::Win32::Graphics::Printing::{EnumPrintersW, PRINTER_INFO_2W};
     use windows::core::PCWSTR;
+    use windows::Win32::Graphics::Printing::{EnumPrintersW, PRINTER_INFO_2W};
 
     // PRINTER_ENUM_LOCAL(2) | PRINTER_ENUM_CONNECTIONS(4)
     const FLAGS: u32 = 2 | 4;
@@ -143,9 +130,9 @@ fn list_os_printers() -> Result<Vec<PrinterDto>, InfrastructureError> {
             &mut bytes_needed,
             &mut count,
         )
-        .map_err(|e| InfrastructureError::PrinterError {
-            reason: format!("EnumPrintersW failed: {}", e),
-        })?;
+            .map_err(|e| InfrastructureError::PrinterError {
+                reason: format!("EnumPrintersW failed: {}", e),
+            })?;
     }
 
     let mut printers = Vec::new();

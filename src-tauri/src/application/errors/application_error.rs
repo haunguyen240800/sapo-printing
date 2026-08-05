@@ -1,9 +1,6 @@
 use crate::domain::print_job::PrintJobError;
 use std::fmt;
 
-/// Application-layer error enum for use case operations.
-///
-/// Implemented manually (no `thiserror`) to match existing `PrintJobError` pattern.
 #[derive(Debug)]
 pub enum ApplicationError {
     TooManyJobs { count: usize },

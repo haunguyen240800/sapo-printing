@@ -1,9 +1,3 @@
-//! Factory: build use cases from shared dependencies.
-//!
-//! Interface layer holds `Arc<UseCaseFactory>` instead of raw repo/port refs.
-//! Keeps Application internals out of Interface (Clean Arch — Interface calls
-//! Use Cases only, does not know their construction).
-
 use std::sync::Arc;
 
 use crate::application::ports::{ConfigProvider, EventStore, PrinterManager};

@@ -1,9 +1,3 @@
-//! Audit service — application-level queries over the EventStore port.
-//!
-//! These functions accept `Arc<dyn EventStore>`; they have no knowledge of
-//! SQLite (or any other adapter) and therefore belong in the application
-//! layer, not in `persistence/sqlite`.
-
 use hmac::{Hmac, Mac};
 use sha2::Sha256;
 use std::sync::Arc;
@@ -14,7 +8,6 @@ use crate::domain::print_job::PrintJobError;
 
 type HmacSha256 = Hmac<Sha256>;
 
-/// Report on the integrity of an aggregate's audit trail.
 #[derive(Clone, Debug)]
 pub struct AuditIntegrityReport {
     pub aggregate_id: String,
@@ -24,7 +17,6 @@ pub struct AuditIntegrityReport {
     pub chain_valid: bool,
 }
 
-/// Verify the HMAC integrity of a single stored event.
 pub fn verify_event_integrity(
     event: &StoredEventData,
     secret_key: &str,
@@ -57,7 +49,6 @@ pub fn verify_event_integrity(
     Ok(mac.verify_slice(&stored_bytes).is_ok())
 }
 
-/// Retrieve the audit trail for an aggregate, ordered by sequence_number ASC.
 pub fn get_audit_trail(
     store: &Arc<dyn EventStore>,
     aggregate_id: &str,
@@ -65,7 +56,6 @@ pub fn get_audit_trail(
     store.find_by_aggregate(aggregate_id)
 }
 
-/// Verify integrity of all events in an aggregate's audit trail.
 pub fn verify_audit_trail_integrity(
     store: &Arc<dyn EventStore>,
     aggregate_id: &str,
@@ -95,7 +85,6 @@ pub fn verify_audit_trail_integrity(
     })
 }
 
-/// Delete events older than `retention_days` from now. Returns count deleted.
 pub fn cleanup_old_events(
     store: &Arc<dyn EventStore>,
     retention_days: u32,

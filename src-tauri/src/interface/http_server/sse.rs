@@ -21,7 +21,6 @@ const RING_CAPACITY: usize = 100;
 const CHANNEL_CAPACITY: usize = 256;
 const KEEPALIVE_SECS: u64 = 15;
 
-/// SSE-shaped payload broadcast tới toàn bộ subscribers.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SseJobEvent {
     pub id: u64,

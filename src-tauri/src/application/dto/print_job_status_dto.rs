@@ -4,9 +4,6 @@ use crate::application::dto::print_job_dto::calculate_progress;
 use crate::domain::print_job::PrintJob;
 use crate::domain::print_job::PrintStatus;
 
-/// DTO cho status polling — dùng bởi web app polling qua native messaging.
-///
-/// Bao gồm đầy đủ timestamps và error_message để web app render UI chi tiết.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PrintJobStatusDto {
     pub job_id: String,
@@ -36,7 +33,6 @@ impl From<PrintJob> for PrintJobStatusDto {
     }
 }
 
-/// Helper: PrintStatus → String cho API response.
 pub fn status_to_string(status: &PrintStatus) -> String {
     match status {
         PrintStatus::Pending => "PENDING".to_string(),

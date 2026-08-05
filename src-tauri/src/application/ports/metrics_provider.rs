@@ -1,8 +1,3 @@
-//! MetricsProvider port — abstracts operational metrics collection.
-//!
-//! The use case depends on this trait; the SQLite-backed implementation lives
-//! in the infrastructure layer.
-
 use crate::shared::errors::InfrastructureError;
 
 #[derive(Debug, Clone)]

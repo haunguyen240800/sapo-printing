@@ -1,27 +1,15 @@
 use std::sync::Arc;
 
 use crate::application::dto::create_print_job_request::CreatePrintJobRequest;
+use crate::application::errors::ApplicationError;
 use crate::application::ports::{
     ConfigProvider, EventStore, PrinterAvailability, PrinterManager,
 };
-use crate::application::errors::ApplicationError;
 use crate::domain::print_job::{
     PrintJob, PrintJobId, PrintJobRepository, PrintJobSettings, PrinterId,
 };
 use crate::shared::event_bus::EventBus;
 
-/// Use case: create one PrintJob for a single PDF URL via Outbox Pattern.
-///
-/// Flow:
-/// 1. Validate request (Application layer)
-/// 2. Resolve effective config + printer name via `ConfigProvider`
-/// 3. Verify printer ONLINE via `PrinterManager`
-/// 4. Create PrintJob aggregate
-/// 5. drain_events() from job
-/// 6. job_repo.save() + event_store.save_all() — persistence
-/// 7. event_bus.publish() EACH event — ONLY AFTER save succeeds
-/// 8. PushToQueueHandler (subscribed to PrintJobCreated) pushes job to queue
-/// 9. Return PrintJobId
 pub struct CreatePrintJobUseCase {
     pub job_repo: Arc<dyn PrintJobRepository>,
     pub event_store: Arc<dyn EventStore>,
@@ -38,14 +26,12 @@ impl CreatePrintJobUseCase {
             "CreatePrintJobUseCase: starting"
         );
 
-        // 1. Validate request
         if request.pdf_url.is_empty() {
             return Err(ApplicationError::ValidationError {
                 reason: "document_url must not be empty".to_string(),
             });
         }
 
-        // 2. Resolve effective config (global override wins over request)
         let config = self
             .config_provider
             .load_print_config()
@@ -63,7 +49,6 @@ impl CreatePrintJobUseCase {
         }
         let printer_id = PrinterId::new(active_printer.clone());
 
-        // 3. Verify printer ONLINE
         tracing::info!(
             target = "sapo_printer::application::use_case::create_print_job",
             printer = active_printer,
@@ -85,7 +70,6 @@ impl CreatePrintJobUseCase {
 
         let settings: PrintJobSettings = (&config).into();
 
-        // 4. Create job + collect events
         tracing::info!(
             target = "sapo_printer::application::use_case::create_print_job",
             url = request.pdf_url,
@@ -120,7 +104,6 @@ impl CreatePrintJobUseCase {
                 ApplicationError::RepositoryError(e.to_string())
             })?;
 
-        // 5. Publish AFTER save succeeds
         for event in &events {
             if let Err(e) = self.event_bus.publish(event.event_name(), &event.serialize_payload()) {
                 tracing::warn!(

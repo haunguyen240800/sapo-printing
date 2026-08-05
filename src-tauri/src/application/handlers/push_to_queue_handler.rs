@@ -3,7 +3,6 @@ use crate::domain::print_job::events::PrintJobCreated;
 use crate::shared::event_bus::EventHandler;
 use std::sync::Arc;
 
-/// Handles `PrintJobCreated` by pushing the job to the durable queue.
 pub struct PushToQueueHandler {
     pub queue_manager: Arc<dyn QueueManager>,
 }

@@ -1,17 +1,6 @@
-//! ConfigProvider port — application abstraction over persisted print configuration.
-//!
-//! Use cases load the user's saved print configuration via this trait without
-//! coupling to the underlying storage representation (JSON file, registry, etc.).
-
 use crate::domain::print_job::{PaperSize, PrintJobSettings};
 use crate::shared::errors::InfrastructureError;
 
-/// Application-layer snapshot of the user's saved print configuration.
-///
-/// Mirrors the persisted shape (still flat strings + optional dimensions to
-/// match the on-disk format) so the domain/use cases never depend on
-/// infrastructure types. The conversion to the strongly-typed `PaperSize` VO
-/// happens at the application boundary via the `From` impl below.
 #[derive(Debug, Clone)]
 pub struct PrintConfigSnapshot {
     pub printer_id: String,
