@@ -2,8 +2,6 @@ use crate::application::use_cases::get_audit_trail::GetAuditTrailUseCase;
 use crate::interface::tauri::dtos::audit_trail::{AuditEventDto, AuditTrailResponse};
 use crate::AppContextState;
 
-/// Execute the audit trail use case and map results to Tauri-compatible types.
-/// Called from the `get_job_audit_trail` Tauri command in `main.rs`.
 pub fn execute_get_job_audit_trail(
     job_id: String,
     ctx: &AppContextState,

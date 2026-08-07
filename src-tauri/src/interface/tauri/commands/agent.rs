@@ -1,5 +1,3 @@
-//! Tauri commands cho quản lý HTTPS agent + pairing + cert renew.
-
 use std::sync::Arc;
 
 use serde::Serialize;
@@ -9,7 +7,6 @@ use uuid::Uuid;
 use crate::application::services::{ApiTokenManager, PairedOrigin};
 use crate::infrastructure::platform::tls::{ipc::IpcRequest, ipc_client};
 
-/// State object cho HTTPS agent. Register vào Tauri qua `.manage()`.
 pub struct AgentState {
     pub token_manager: Arc<ApiTokenManager>,
     pub agent_port: u16,

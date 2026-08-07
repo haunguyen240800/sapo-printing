@@ -1,31 +1,25 @@
 ﻿use crate::application::dto::cancel_print_job_request::CancelPrintJobRequest;
 use crate::application::dto::create_print_job_request::CreatePrintJobRequest;
 use crate::application::dto::{PrintJobDto, PrintJobFilterDto};
+use crate::application::errors::ApplicationError;
 use crate::application::use_cases::cancel_print_job::CancelPrintJobUseCase;
 use crate::application::use_cases::create_print_job::CreatePrintJobUseCase;
-use crate::application::errors::ApplicationError;
 use crate::application::use_cases::list_print_jobs::ListPrintJobsUseCase;
 use crate::domain::print_job::PrintJobId;
 use crate::AppContextState;
 use std::str::FromStr;
 
-/// Payload received from the UI for creating a print job.
 #[derive(serde::Deserialize)]
 pub struct CreateJobPayload {
     pub pdf_urls: Vec<String>,
-    /// Optional output path for "Print to PDF" printers.
-    /// If provided, file will be saved to this path instead of auto-generated name.
     pub output_path: Option<String>,
 }
 
-/// Payload received from the UI for cancelling a print job.
 #[derive(serde::Deserialize)]
 pub struct CancelJobPayload {
     pub job_id: String,
 }
 
-/// Execute the create print job use case and map results to Tauri-compatible types.
-/// Called from the `create_print_job` Tauri command in `main.rs`.
 pub fn execute_create_print_job(
     payload: CreateJobPayload,
     ctx: &AppContextState,
@@ -63,8 +57,6 @@ pub fn execute_create_print_job(
     Ok(job_ids)
 }
 
-/// Execute the cancel print job use case and map results to Tauri-compatible types.
-/// Called from the `cancel_print_job` Tauri command in `main.rs`.
 pub fn execute_cancel_print_job(
     payload: CancelJobPayload,
     ctx: &AppContextState,
@@ -100,8 +92,6 @@ pub fn execute_cancel_print_job(
     })
 }
 
-/// Execute the list jobs use case with filtering.
-/// Called from the `list_jobs` Tauri command in `main.rs`.
 pub fn execute_list_jobs(
     filter: PrintJobFilterDto,
     ctx: &AppContextState,
@@ -113,8 +103,6 @@ pub fn execute_list_jobs(
         .map_err(|e| format!("Láº¥y danh sĂ¡ch job tháº¥t báº¡i: {:?}", e))
 }
 
-/// Execute get job status by ID.
-/// Called from the `get_job_status` Tauri command in `main.rs`.
 pub fn execute_get_job_status(job_id: String, ctx: &AppContextState) -> Result<PrintJobDto, String> {
     let job_id = PrintJobId::from_str(&job_id)
         .map_err(|_| format!("Job ID khĂ´ng há»£p lá»‡: {}", job_id))?;

@@ -5,7 +5,7 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 use sapo_printer::infrastructure::configs::db::{run_migrations, DbPool};
-use sapo_printer::infrastructure::persistence::sqlite::{SqliteEventStore, SqlitePrintJobRepository};
+use sapo_printer::infrastructure::persistence::{SqliteEventStore, SqlitePrintJobRepository};
 use sapo_printer::infrastructure::integrations::network::ReqwestDownloader;
 use sapo_printer::infrastructure::integrations::pdf_engine::bitmap_strategy::BitmapRenderStrategy;
 use sapo_printer::infrastructure::integrations::pdf_engine::pdfium_loader;
@@ -15,7 +15,7 @@ use sapo_printer::application::ports::{
     TempFileManager,
 };
 use sapo_printer::infrastructure::configs::app::JsonFileConfigProvider;
-use sapo_printer::infrastructure::persistence::sqlite::SqliteQueueManager;
+use sapo_printer::infrastructure::persistence::SqliteQueueManager;
 use sapo_printer::infrastructure::platform::printer_api::SystemPrinterManager;
 use sapo_printer::infrastructure::platform::printing::DefaultPrintService;
 use sapo_printer::infrastructure::temp_file::{self, FilesystemTempFileManager};

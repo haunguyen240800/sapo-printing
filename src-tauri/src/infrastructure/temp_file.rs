@@ -1,17 +1,3 @@
-//! Temporary PDF file lifecycle.
-//!
-//! Three responsibilities live in this module because they share the same
-//! filesystem layout and are tightly coupled — splitting them across modules
-//! buys nothing:
-//!
-//! * [`TempPdfFile`] — RAII handle that deletes the file when dropped unless
-//!   marked with `keep()`.
-//! * [`FilesystemTempFileManager`] — port adapter that wraps downloaded files
-//!   in a `TempPdfFile` and cleans up per-job state.
-//! * [`startup_cleanup`] — purges orphan `.tmp` files and old `.pdf` files
-//!   from previous runs. Retention is supplied by the caller (read from
-//!   `app_settings.temp_file_retention_hours`).
-
 use std::path::{Path, PathBuf};
 use std::time::{Duration, SystemTime};
 
@@ -20,21 +6,8 @@ use crate::domain::print_job::PrintJobId;
 use crate::infrastructure::configs::db::DbPool;
 use crate::shared::errors::InfrastructureError;
 
-/// Fallback retention if `app_settings.temp_file_retention_hours` is unset or
-/// unreadable. Matches the seed value in the migration.
 pub const DEFAULT_RETENTION_HOURS: u32 = 24;
 
-// =============================================================================
-// TempPdfFile — RAII handle for one downloaded job artifact.
-// =============================================================================
-
-/// RAII wrapper for a temporary PDF file.
-///
-/// Automatically deletes the file when dropped unless `keep_on_drop` is true.
-///
-/// # Cleanup Tiers
-/// - Immediate (success): keep_on_drop = false → deleted on Drop
-/// - Deferred (failure): keep_on_drop = true → file survives Drop (startup cleanup handles it)
 pub struct TempPdfFile {
     path: PathBuf,
     keep_on_drop: bool,
@@ -48,10 +21,6 @@ impl TempPdfFile {
         }
     }
 
-    /// Creates a TempPdfFile with path validation.
-    ///
-    /// Returns an error if `path` is not inside `temp_dir`, preventing accidental
-    /// deletion of files outside the managed temp directory.
     pub fn try_new(path: PathBuf, temp_dir: &Path) -> Result<Self, InfrastructureError> {
         let canonical_temp = temp_dir
             .canonicalize()
@@ -96,10 +65,6 @@ impl Drop for TempPdfFile {
         }
     }
 }
-
-// =============================================================================
-// FilesystemTempFileManager — port adapter.
-// =============================================================================
 
 pub struct FilesystemTempFileManager {
     temp_dir: PathBuf,
@@ -155,15 +120,6 @@ impl TempFileManager for FilesystemTempFileManager {
     }
 }
 
-// =============================================================================
-// Startup cleanup + retention lookup.
-// =============================================================================
-
-/// Read `temp_file_retention_hours` from the `app_settings` table.
-///
-/// On any error (table missing, parse failure, etc.) falls back to
-/// [`DEFAULT_RETENTION_HOURS`]. Cleanup is a best-effort operation, so we
-/// never want to block startup because a setting is malformed.
 pub fn load_retention(pool: &DbPool) -> Duration {
     let hours = (|| -> Option<u32> {
         let conn = pool.get().ok()?;
@@ -176,15 +132,11 @@ pub fn load_retention(pool: &DbPool) -> Duration {
             .ok()?;
         value.parse::<u32>().ok()
     })()
-    .unwrap_or(DEFAULT_RETENTION_HOURS);
+        .unwrap_or(DEFAULT_RETENTION_HOURS);
 
     Duration::from_secs(hours as u64 * 3600)
 }
 
-/// Purge stale temp artifacts left behind by previous runs.
-///
-/// * `.tmp` files (failed downloads) are always removed.
-/// * `.pdf` files older than `retention` are removed.
 pub fn startup_cleanup(temp_dir: &Path, retention: Duration) {
     if !temp_dir.exists() {
         if let Err(e) = std::fs::create_dir_all(temp_dir) {
@@ -344,13 +296,13 @@ mod tests {
 
         let old_time = SystemTime::UNIX_EPOCH
             + Duration::from_secs(
-                SystemTime::now()
-                    .duration_since(SystemTime::UNIX_EPOCH)
-                    .unwrap()
-                    .as_secs()
-                    - TEST_RETENTION.as_secs()
-                    - 3600,
-            );
+            SystemTime::now()
+                .duration_since(SystemTime::UNIX_EPOCH)
+                .unwrap()
+                .as_secs()
+                - TEST_RETENTION.as_secs()
+                - 3600,
+        );
         filetime::set_file_mtime(&old_pdf, filetime::FileTime::from_system_time(old_time)).unwrap();
 
         startup_cleanup(&dir, TEST_RETENTION);
@@ -459,7 +411,7 @@ mod tests {
                 "UPDATE app_settings SET value = '48' WHERE key = 'temp_file_retention_hours'",
                 [],
             )
-            .unwrap();
+                .unwrap();
         }
 
         let retention = load_retention(&pool);
@@ -484,7 +436,7 @@ mod tests {
                 "DELETE FROM app_settings WHERE key = 'temp_file_retention_hours'",
                 [],
             )
-            .unwrap();
+                .unwrap();
         }
 
         let retention = load_retention(&pool);

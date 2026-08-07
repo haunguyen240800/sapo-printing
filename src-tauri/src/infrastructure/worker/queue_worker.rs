@@ -1,28 +1,13 @@
-//! Queue Worker — Background Job Driver
-//!
-//! Polls the durable queue and delegates job processing to
-//! `ProcessPrintJobUseCase`. On failure, it forwards the failed job to
-//! `JobFailureHandler` (application layer) which owns retry/backoff policy.
-//!
-//! Responsibilities are intentionally narrow:
-//! - Lifecycle: start/stop the background thread
-//! - Polling: pull jobs from the `QueueManager`
-//! - Delegation: hand the job to the application use case and failure handler
-//!
-//! No business logic lives here — the worker is a pure infrastructure driver.
-
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::thread::{self, JoinHandle};
 use std::time::Duration;
 
-use crate::application::ports::QueueManager;
 use crate::application::handlers::job_failure_handler::JobFailureHandler;
+use crate::application::ports::QueueManager;
 use crate::application::use_cases::ProcessPrintJobUseCase;
 use crate::domain::print_job::PrintJobRepository;
 
-/// Background worker that drives `ProcessPrintJobUseCase` and delegates
-/// failure handling to `JobFailureHandler`.
 pub struct QueueWorker {
     queue_manager: Arc<dyn QueueManager>,
     job_repo: Arc<dyn PrintJobRepository>,

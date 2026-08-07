@@ -1,7 +1,6 @@
 use std::fmt;
 use std::sync::Arc;
 
-/// Errors that can occur when publishing events.
 #[derive(Debug)]
 pub enum EventBusError {
     PublishFailed { reason: String },
@@ -19,36 +18,16 @@ impl fmt::Display for EventBusError {
 
 impl std::error::Error for EventBusError {}
 
-/// Handler contract for processing domain events.
-///
-/// Implementations should be stateless or thread-safe (Send + Sync).
 pub trait EventHandler: Send + Sync {
-    /// Handle a domain event.
-    ///
-    /// # Arguments
-    /// * `event_type` - The type of event (e.g., "PrintJobCreated")
-    /// * `payload` - JSON-serialized event payload
     fn handle(&self, event_type: &str, payload: &str);
 }
 
-/// Contract for publishing and subscribing to domain events.
-///
-/// Implementations live in the Infrastructure layer (`InMemoryEventBus`, `TauriEventBus`, etc.).
-/// Both `event_type` and `payload` are plain strings for maximum flexibility
-/// until the event schema stabilises in Epic 2+.
 pub trait EventBus: Send + Sync {
-    /// Publish an event to all registered handlers.
     fn publish(&self, event_type: &str, payload: &str) -> Result<(), EventBusError>;
 
-    /// Subscribe a handler to a specific event type.
-    ///
-    /// When an event of `event_type` is published, all registered handlers
-    /// for that type will be invoked synchronously.
     fn subscribe(&self, event_type: &str, handler: Arc<dyn EventHandler>);
 }
 
-/// In-memory event bus — logs events but does not persist them.
-/// Supports handler subscription for event-driven architecture.
 pub struct InMemoryEventBus {
     handlers: std::sync::Mutex<std::collections::HashMap<String, Vec<Arc<dyn EventHandler>>>>,
 }

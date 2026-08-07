@@ -1,6 +1,5 @@
 use serde::{Deserialize, Serialize};
 
-/// DTO for printer information returned to frontend
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PrinterDto {
     pub name: String,
@@ -11,7 +10,6 @@ pub struct PrinterDto {
     pub is_default: Option<bool>,
 }
 
-/// DTO for printer configuration submitted from frontend
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PrinterConfigDto {
     pub printer_name: String,
@@ -29,7 +27,6 @@ pub struct PrinterConfigDto {
     pub buffer_size_kb: Option<u32>, // KB, 1-1024, required when enable_buffer = true
 }
 
-/// DTO for printer status query response
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PrinterStatusDto {
     pub status: String, // "Online" | "Offline" | "Error"

@@ -3,7 +3,7 @@ use std::sync::Arc;
 use crate::application::ports::{EventStore, SecretManager};
 use crate::domain::print_job::PrintJobRepository;
 use crate::infrastructure::configs::db::{run_migrations, DbPool};
-use crate::infrastructure::persistence::sqlite::{SqliteEventStore, SqlitePrintJobRepository};
+use crate::infrastructure::persistence::{SqliteEventStore, SqlitePrintJobRepository};
 
 
 use crate::shared::errors::InfrastructureError;

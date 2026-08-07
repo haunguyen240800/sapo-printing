@@ -1,12 +1,3 @@
-//! UI presenter that forwards `PrintJob*` domain events to the Tauri frontend.
-//!
-//! Subscribes to the event bus via the [`EventHandler`] port and emits a
-//! single `job_status_changed` Tauri event with a UI-shaped payload
-//! (`job_id`, `status`, `progress`, `error_message`).
-//!
-//! Lives in the interface layer because the mapping `domain event →
-//! presentation payload` is presentation concern, not infrastructure.
-
 use std::sync::Arc;
 
 use serde_json::Value;
@@ -14,7 +5,6 @@ use tauri::{AppHandle, Emitter};
 
 use crate::shared::event_bus::{EventBus, EventHandler};
 
-/// All domain events this presenter cares about, in the order they fire.
 const JOB_STATUS_EVENTS: &[&str] = &[
     "PrintJobCreated",
     "PrintJobQueued",
@@ -37,8 +27,6 @@ impl JobStatusEmitter {
         Self { app_handle }
     }
 
-    /// Subscribe `self` to every job-status event on the given bus.
-    /// Returns the `Arc` so callers can keep a handle if needed.
     pub fn register(self, bus: &Arc<dyn EventBus>) -> Arc<Self> {
         let me = Arc::new(self);
         for event_type in JOB_STATUS_EVENTS {

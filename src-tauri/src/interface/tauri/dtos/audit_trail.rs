@@ -1,6 +1,5 @@
 use serde::Serialize;
 
-/// Response DTO for the audit trail of a print job.
 #[derive(Clone, Debug, Serialize)]
 pub struct AuditTrailResponse {
     pub job_id: String,
@@ -9,7 +8,6 @@ pub struct AuditTrailResponse {
     pub tampered_count: u64,
 }
 
-/// DTO for a single audit event.
 #[derive(Clone, Debug, Serialize)]
 pub struct AuditEventDto {
     pub sequence_number: i64,
