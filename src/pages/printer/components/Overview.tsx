@@ -14,7 +14,7 @@ type Props = {
     };
 }
 
-export function OverviewTab({printerConfig, stats}: Props) {
+export function Overview({printerConfig, stats}: Props) {
     return (
         <Box padding="4">
             <BlockStack gap="4">

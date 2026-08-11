@@ -3,17 +3,16 @@ import styled from '@emotion/styled';
 import {ActionListButton} from '../../components/ActionListButton';
 import {useCallback, useEffect, useRef, useState} from 'react';
 import {ConfirmModal} from '../../components/ConfirmModal';
-import ConnectionConfigModal from './components/ConnectionConfigModal';
+import PrinterSettingsFormModal from './components/PrinterSettingsFormModal.tsx';
 import AppInfoModal from './components/AppInfoModal';
-import PrinterSettingsForm from './components/PrinterSettingsForm';
-import {OverviewTab} from './components/OverviewTab';
+import {Overview} from './components/Overview.tsx';
 import {SupportTab} from './components/SupportTab';
 import {getMetrics, getPrinterConfig, type MetricsDto,} from '../../services/printer-service';
 import type {PrinterConfigDto} from '../../types';
 import {type JobStatusPayload, onJobStatusChanged} from '../../services/event-listener';
 
 export default function PrinterPage() {
-    const [activeTab, setActiveTab] = useState<'overview' | 'print-config' | 'support'>('overview');
+    const [activeTab, setActiveTab] = useState<'overview' | 'support'>('overview');
     const [modalName, setModalName] = useState<undefined | 'config' | 'clear-cache' | 'app-info'>();
 
     const [printerConfig, setPrinterConfig] = useState<PrinterConfigDto>();
@@ -170,54 +169,39 @@ export default function PrinterPage() {
     );
 
     const systemConfigModal = modalName === 'config' &&
-        <ConnectionConfigModal open onClose={() => setModalName(undefined)}/>;
+        <PrinterSettingsFormModal open onClose={() => setModalName(undefined)} onSaved={loadPrinterConfig}/>;
 
     const appInfoMarkup = modalName === 'app-info' && <AppInfoModal open onClose={() => setModalName(undefined)}/>;
 
     const renderTabContent = () => {
         switch (activeTab) {
-            case 'print-config':
-                return (
-                    <PrinterSettingsForm
-                        onSaved={() => {
-                            setActiveTab('overview');
-                            loadPrinterConfig();
-                        }}
-                        onCancel={() => setActiveTab('overview')}
-                    />
-                );
             case 'support':
                 return <SupportTab/>;
             default:
-                return <OverviewTab printerConfig={printerConfig} stats={stats}/>;
+                return <Overview printerConfig={printerConfig} stats={stats}/>;
         }
     };
 
     return (
         <Box>
-            {activeTab !== 'print-config' && (
-                <ButtonGroupStyled>
-                    <Button plain onClick={() => setActiveTab('print-config')}>
-                        Cấu hình in
-                    </Button>
-                    <ActionListButton
-                        plain
-                        actions={[
-                            {content: 'Chỉnh sửa cấu hình', onAction: () => setModalName('config')},
-                            {content: 'Xóa dữ liệu cache', onAction: () => setModalName('clear-cache')},
-                            {content: 'Đường dẫn', onAction: () => console.log('Đường dẫn')},
-                        ]}
-                    >
-                        Cấu hình hệ thống
-                    </ActionListButton>
-                    <Button plain onClick={() => setActiveTab('support')}>
-                        Hỗ trợ
-                    </Button>
-                    <Button plain onClick={() => setModalName('app-info')}>
-                        Thông tin
-                    </Button>
-                </ButtonGroupStyled>
-            )}
+            <ButtonGroupStyled>
+                <ActionListButton
+                    plain
+                    actions={[
+                        {content: 'Chỉnh sửa cấu hình', onAction: () => setModalName('config')},
+                        {content: 'Xóa dữ liệu cache', onAction: () => setModalName('clear-cache')},
+                        {content: 'Đường dẫn', onAction: () => console.log('Đường dẫn')},
+                    ]}
+                >
+                    Cấu hình hệ thống
+                </ActionListButton>
+                <Button plain onClick={() => setActiveTab('support')}>
+                    Hỗ trợ
+                </Button>
+                <Button plain onClick={() => setModalName('app-info')}>
+                    Thông tin
+                </Button>
+            </ButtonGroupStyled>
             {renderTabContent()}
             {appInfoMarkup}
             {clearCacheConfirmModal}
@@ -231,5 +215,6 @@ const ButtonGroupStyled = styled.div`
     justify-content: start;
     gap: ${(p) => p.theme.spacing('8')};
     padding: ${(p) => p.theme.spacing('4')};
-    background-color: #f2f9ff;
+    background-color: #eff7fe;
+    border-bottom: 1px solid #D2D6DB;
 `;
