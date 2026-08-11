@@ -1,5 +1,5 @@
 # Uninstall-time script - remove CA cert from Windows trust store.
-# IMPORTANT: keep this file ASCII-only (see register-service.ps1 for the reason).
+# IMPORTANT: keep this file ASCII-only (see install-ca-cert.ps1 for the reason).
 
 $ErrorActionPreference = 'Continue'
 $InstallDir = $PSScriptRoot

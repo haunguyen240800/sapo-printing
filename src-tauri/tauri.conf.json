@@ -32,8 +32,8 @@
     ],
     "resources": {
       "bin/pdfium.dll": "./",
-      "../installers/windows/register-service.ps1": "./",
-      "../installers/windows/unregister-service.ps1": "./"
+      "../installers/windows/install-ca-cert.ps1": "./",
+      "../installers/windows/uninstall-ca-cert.ps1": "./"
     },
     "windows": {
       "wix": {

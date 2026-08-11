@@ -675,7 +675,6 @@ fn main() {
 
             let failure_handler = Arc::new(
                 sapo_printer::application::handlers::job_failure_handler::JobFailureHandler::new(
-                    Arc::clone(&queue_manager),
                     Arc::clone(&job_repo_port),
                     Arc::clone(&event_store_port),
                     Arc::clone(&event_bus),

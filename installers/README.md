@@ -4,20 +4,22 @@ Install-time scripts + service unit files. Chạy trong context installer với 
 
 ## Windows (Wix MSI / NSIS)
 
-1. Build binary chính (`sapo-printer.exe`) + agent (`sapo-printer-agent.exe`) vào `%INSTALL_DIR%`.
-2. Copy `windows/register-service.ps1` + `windows/unregister-service.ps1` vào `%INSTALL_DIR%`.
+1. Build binary chính (`sapo-printer.exe`) + cert-manager (`sapo-printer-cert-manager.exe`) vào `%INSTALL_DIR%`.
+2. Copy `windows/install-ca-cert.ps1` + `windows/uninstall-ca-cert.ps1` vào `%INSTALL_DIR%`.
 3. Custom action lúc install:
    ```
-   powershell.exe -ExecutionPolicy Bypass -File "%INSTALL_DIR%\register-service.ps1"
+   powershell.exe -ExecutionPolicy Bypass -File "%INSTALL_DIR%\install-ca-cert.ps1"
    ```
 4. Custom action lúc uninstall:
    ```
-   powershell.exe -ExecutionPolicy Bypass -File "%INSTALL_DIR%\unregister-service.ps1"
+   powershell.exe -ExecutionPolicy Bypass -File "%INSTALL_DIR%\uninstall-ca-cert.ps1"
    ```
 
-Script tự chạy `sapo-printer-agent --install-ca` để sinh cert + install vào `LocalMachine\Root`, sau đó `sc create` service.
+Script tự chạy `sapo-printer-cert-manager --install-ca` để sinh CA + server cert và install CA vào `LocalMachine\Root`.
 
-Wix fragment: `windows/wix-fragment.wxs` — include vào Tauri Wix builder qua `tauri.conf.json > bundle > windows > wix > fragmentPaths`.
+Cấu hình bundle:
+- Wix (MSI): `windows/wix-fragment.wxs` — include qua `tauri.conf.json > bundle > windows > wix > fragmentPaths`.
+- NSIS: `windows/nsis-hooks.nsh` — include qua `tauri.conf.json > bundle > windows > nsis > installerHooks`.
 
 ## macOS (pkg)
 

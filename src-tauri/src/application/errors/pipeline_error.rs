@@ -10,15 +10,6 @@ pub enum PipelineError {
     Persistence(String),
 }
 
-impl PipelineError {
-    pub fn is_retryable(&self) -> bool {
-        match self {
-            Self::Infrastructure(e) => crate::application::policies::retry_policy::is_retryable(e),
-            Self::Domain(_) | Self::Persistence(_) => false,
-        }
-    }
-}
-
 impl fmt::Display for PipelineError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
