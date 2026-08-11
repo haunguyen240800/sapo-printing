@@ -2,7 +2,7 @@
 # pkg postinstall — chạy root.
 set -euo pipefail
 
-AGENT="/Applications/Sapo Printer.app/Contents/MacOS/sapo-printer-agent"
+AGENT="/Applications/Sapo Printer.app/Contents/MacOS/sapo-printer-cert-manager"
 PLIST_SRC="/Applications/Sapo Printer.app/Contents/Resources/com.sapo.printer.agent.plist"
 PLIST_DST="/Library/LaunchDaemons/com.sapo.printer.agent.plist"
 DATA_DIR="/Library/Application Support/SapoPrinter"

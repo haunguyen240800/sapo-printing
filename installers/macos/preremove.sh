@@ -2,7 +2,7 @@
 # pkg preremove — chạy root khi uninstall.
 set +e
 
-AGENT="/Applications/Sapo Printer.app/Contents/MacOS/sapo-printer-agent"
+AGENT="/Applications/Sapo Printer.app/Contents/MacOS/sapo-printer-cert-manager"
 PLIST_DST="/Library/LaunchDaemons/com.sapo.printer.agent.plist"
 DATA_DIR="/Library/Application Support/SapoPrinter"
 

@@ -2,11 +2,11 @@
 # deb postinst — chạy root.
 set -e
 
-AGENT=/usr/bin/sapo-printer-agent
+AGENT=/usr/bin/sapo-printer-cert-manager
 DATA_DIR=/var/lib/sapo-printer
 GROUP=sapo-printer
-UNIT_SRC=/usr/share/sapo-printer/sapo-printer-agent.service
-UNIT_DST=/etc/systemd/system/sapo-printer-agent.service
+UNIT_SRC=/usr/share/sapo-printer/sapo-printer-cert-manager.service
+UNIT_DST=/etc/systemd/system/sapo-printer-cert-manager.service
 
 # 1. Create group + add invoking user.
 getent group "$GROUP" >/dev/null || groupadd -r "$GROUP"
@@ -29,6 +29,6 @@ if [ -f "$UNIT_SRC" ]; then
     chmod 644 "$UNIT_DST"
 fi
 systemctl daemon-reload
-systemctl enable --now sapo-printer-agent.service
+systemctl enable --now sapo-printer-cert-manager.service
 
 exit 0

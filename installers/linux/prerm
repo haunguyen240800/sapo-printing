@@ -2,13 +2,13 @@
 # deb prerm — chạy root khi uninstall.
 set +e
 
-AGENT=/usr/bin/sapo-printer-agent
+AGENT=/usr/bin/sapo-printer-cert-manager
 DATA_DIR=/var/lib/sapo-printer
-UNIT_DST=/etc/systemd/system/sapo-printer-agent.service
+UNIT_DST=/etc/systemd/system/sapo-printer-cert-manager.service
 
 # 1. Stop + disable service.
-systemctl stop sapo-printer-agent.service 2>/dev/null
-systemctl disable sapo-printer-agent.service 2>/dev/null
+systemctl stop sapo-printer-cert-manager.service 2>/dev/null
+systemctl disable sapo-printer-cert-manager.service 2>/dev/null
 rm -f "$UNIT_DST"
 systemctl daemon-reload 2>/dev/null
 

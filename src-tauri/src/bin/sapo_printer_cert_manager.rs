@@ -10,7 +10,7 @@
 //! Chạy với quyền SYSTEM (Windows Service) / root (launchd/systemd).
 //! Sprint 7 sẽ thêm SCM integration cho Windows và service unit files.
 //!
-//! Dev/CLI usage: `sapo-printer-agent --data-dir <path>` để test local.
+//! Dev/CLI usage: `sapo-printer-cert-manager --data-dir <path>` để test local.
 
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -116,23 +116,9 @@ fn resolve_data_dir(args: &[String]) -> Result<PathBuf, Box<dyn std::error::Erro
             return Ok(PathBuf::from(path));
         }
     }
-    if let Some(v) = std::env::var_os("SAPO_AGENT_DATA_DIR") {
-        return Ok(PathBuf::from(v));
-    }
-    #[cfg(target_os = "windows")]
-    {
-        let program_data =
-            std::env::var("ProgramData").unwrap_or_else(|_| r"C:\ProgramData".into());
-        Ok(PathBuf::from(program_data).join("SapoPrinter"))
-    }
-    #[cfg(target_os = "macos")]
-    {
-        Ok(PathBuf::from("/Library/Application Support/SapoPrinter"))
-    }
-    #[cfg(target_os = "linux")]
-    {
-        Ok(PathBuf::from("/var/lib/sapo-printer"))
-    }
+    // Env override + platform default resolved bởi shared helper (single source of truth
+    // dùng chung với main app — xem infrastructure::platform::tls::cert_dir).
+    Ok(sapo_printer::infrastructure::platform::tls::shared_cert_dir())
 }
 
 // ===================== Renewal loop =====================

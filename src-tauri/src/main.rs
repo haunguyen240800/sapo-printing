@@ -743,6 +743,10 @@ fn main() {
                 use sapo_printer::interface::tauri::commands::agent::AgentState;
 
                 let bootstrap_data_dir = data_dir.clone();
+                // Cert dùng chung với cert-manager (ProgramData\SapoPrinter trên Windows).
+                // App đọc cert đã được installer provision + trust, không tự cài CA.
+                let bootstrap_cert_dir =
+                    sapo_printer::infrastructure::platform::tls::shared_cert_dir();
                 let bootstrap_pool = pool.clone();
                 let bootstrap_ctx = app.state::<AppContextState>();
                 let bootstrap_event_bus = bootstrap_ctx.event_bus.clone();
@@ -764,6 +768,7 @@ fn main() {
 
                 tauri::async_runtime::spawn(async move {
                     match http_server::start_bootstrap(
+                        &bootstrap_cert_dir,
                         &bootstrap_data_dir,
                         bootstrap_pool,
                         bootstrap_event_bus,
@@ -801,14 +806,22 @@ fn main() {
                 });
             }
 
+            // Register dialog plugin for native file dialogs
+            app.handle().plugin(tauri_plugin_dialog::init())?;
+
+            // ==================== AUTO-UPDATE ====================
+            // Cơ chế check version / auto-update qua tauri-plugin-updater.
+            // NOTE(local-publish): việc phát hành `latest.json` ở LOCAL đã bị gỡ
+            // (`scripts/update-latest-json.mjs` + hook trong `pnpm build` + file
+            // `installers/latest.json`). Sẽ thay bằng CI phát hành theo git tag `v*`
+            // (GitLab CI/CD) tự sinh + upload `latest.json` như release artifact.
+            // Endpoint trong `tauri.conf.json` cần trỏ về GitLab release sau này.
+
             // Register updater plugin
             #[cfg(desktop)]
             app.handle().plugin(
                 tauri_plugin_updater::Builder::new().build(),
             )?;
-
-            // Register dialog plugin for native file dialogs
-            app.handle().plugin(tauri_plugin_dialog::init())?;
 
             // Spawn background update checker (startup + periodic every 24h)
             #[cfg(desktop)]

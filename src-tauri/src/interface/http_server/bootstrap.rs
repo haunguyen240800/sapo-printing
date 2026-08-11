@@ -5,8 +5,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use crate::application::services::{ApiTokenManager, UseCaseFactory};
 use crate::infrastructure::configs::db::connection::DbPool;
 use crate::infrastructure::platform::tls::{
-    cert_generator::{CertGenerator, CertPaths},
-    cert_installer::{CertInstaller, PlatformInstaller},
+    cert_generator::CertPaths,
     cert_watcher,
 };
 use crate::shared::errors::InfrastructureError;
@@ -28,6 +27,7 @@ pub struct BootstrapResult {
 }
 
 pub async fn start(
+    cert_dir: &Path,
     data_dir: &Path,
     db: DbPool,
     event_bus: Arc<dyn EventBus>,
@@ -35,24 +35,22 @@ pub async fn start(
     app_version: &'static str,
     min_webapp_version: &'static str,
 ) -> Result<BootstrapResult, InfrastructureError> {
-    let paths = CertPaths::under(data_dir);
+    // Cert (bao gồm CA) CHỈ được provision bởi cert-manager (elevated) lúc CÀI ĐẶT app.
+    // App runtime CHỈ đọc cert ở đây — KHÔNG tự sinh CA/cert. User process không có
+    // quyền cài CA vào trust store, và CA tự sinh sẽ không được trust => web call sẽ lỗi.
+    let paths = CertPaths::under(cert_dir);
 
     if !paths.server_pem.exists() || !paths.server_key.exists() {
-        tracing::warn!(
-            data_dir = %paths.tls_dir().display(),
-            "Server cert missing — app tự sinh (helper service chưa chạy)"
+        tracing::error!(
+            cert_dir = %paths.tls_dir().display(),
+            "Server cert missing — cert-manager chưa provision. Cần cài lại app với \
+             quyền admin để cert-manager sinh + trust CA lúc cài đặt."
         );
-        let bundle = CertGenerator::load_or_generate(data_dir)?;
-        if bundle.is_newly_generated {
-            let installer = PlatformInstaller::default();
-            match installer.install_ca(&paths.ca_pem) {
-                Ok(_) => tracing::info!("CA installed into system trust store"),
-                Err(e) => tracing::warn!(
-                    error = %e,
-                    "CA install failed (cần admin/root). Browser sẽ hiện cert warning tới khi cài lại app với quyền admin."
-                ),
-            }
-        }
+        return Err(InfrastructureError::SecretServiceUnavailable(format!(
+            "TLS cert chưa được provision tại {}. Hãy cài lại app với quyền admin \
+             để cert-manager sinh cert + trust CA.",
+            paths.tls_dir().display()
+        )));
     }
 
     let token_manager = ApiTokenManager::new(db);

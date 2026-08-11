@@ -1,19 +1,11 @@
-# Uninstall-time script — gỡ service + xóa CA khỏi trust store.
+# Uninstall-time script - remove CA cert from Windows trust store.
+# IMPORTANT: keep this file ASCII-only (see register-service.ps1 for the reason).
 
 $ErrorActionPreference = 'Continue'
 $InstallDir = $PSScriptRoot
-$Agent = Join-Path $InstallDir 'sapo-printer-agent.exe'
-$ServiceName = 'SapoPrinterAgent'
+$Agent = Join-Path $InstallDir 'sapo-printer-cert-manager.exe'
 
-# 1. Stop + remove service.
-$svc = Get-Service -Name $ServiceName -ErrorAction SilentlyContinue
-if ($svc) {
-    Stop-Service -Name $ServiceName -Force -ErrorAction SilentlyContinue
-    sc.exe delete $ServiceName | Out-Null
-    Write-Host "Service $ServiceName removed"
-}
-
-# 2. Uninstall CA.
+# Uninstall CA.
 if (Test-Path $Agent) {
     & $Agent --uninstall-ca
     if ($LASTEXITCODE -eq 0) {

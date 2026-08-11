@@ -19,19 +19,39 @@
         "fullscreen": false
       }
     ],
-    "security": {
-    }
+    "security": {}
   },
   "bundle": {
     "active": true,
-    "targets": "all",
+    "targets": [
+      "msi",
+      "nsis"
+    ],
+    "icon": [
+      "icons/icon.ico"
+    ],
+    "resources": {
+      "bin/pdfium.dll": "./",
+      "../installers/windows/register-service.ps1": "./",
+      "../installers/windows/unregister-service.ps1": "./"
+    },
+    "windows": {
+      "wix": {
+        "fragmentPaths": [
+          "../installers/windows/wix-fragment.wxs"
+        ]
+      },
+      "nsis": {
+        "installerHooks": "../installers/windows/nsis-hooks.nsh"
+      }
+    },
     "createUpdaterArtifacts": true
   },
   "plugins": {
     "updater": {
-      "pubkey": "<PUBLIC_KEY_CONTENTS>",
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDkxMkIxRTg0QzJCQ0NENjAKUldSZ3piekNoQjRya1pLalBEb0NQMUhnK1pYSnFYQWNvMEhWWnJzdWx5T3F6YlZZODRvN0hWc08K",
       "endpoints": [
-        "https://github.com/<org>/<repo>/releases/latest/download/latest.json"
+        "https://github.com/haunguyen240800/sapo-printing/releases/latest/download/latest.json"
       ],
       "windows": {
         "installMode": "passive"

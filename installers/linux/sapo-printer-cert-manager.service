@@ -4,7 +4,7 @@ After=network.target
 
 [Service]
 Type=simple
-ExecStart=/usr/bin/sapo-printer-agent
+ExecStart=/usr/bin/sapo-printer-cert-manager
 Restart=on-failure
 RestartSec=10
 User=root

@@ -37,3 +37,5 @@ pnpm-debug.log*
 *.pfx
 *.p12
 .tauri/
+
+*.key

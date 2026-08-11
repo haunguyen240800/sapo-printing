@@ -95,5 +95,5 @@ filetime = "0.2"
 tempfile = "3"
 
 [[bin]]
-name = "sapo-printer-agent"
-path = "src/bin/sapo_printer_agent.rs"
+name = "sapo-printer-cert-manager"
+path = "src/bin/sapo_printer_cert_manager.rs"

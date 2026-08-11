@@ -1,41 +1,23 @@
-# Install-time script — chạy elevated bởi MSI/NSIS custom action.
-# Cài CA + register Windows Service cho sapo-printer-agent.
+# Install-time script - run elevated by MSI/NSIS custom action.
+# Install CA cert into Windows trust store for sapo-printer-cert-manager.
+# NOTE: Windows Service integration will be added after the binary implements the SCM protocol.
+# IMPORTANT: keep this file ASCII-only. PowerShell 5.1 reads BOM-less scripts using the
+# system ANSI codepage, so non-ASCII bytes get mangled and break parsing.
 
 $ErrorActionPreference = 'Stop'
 $InstallDir = $PSScriptRoot
-$Agent = Join-Path $InstallDir 'sapo-printer-agent.exe'
+$Agent = Join-Path $InstallDir 'sapo-printer-cert-manager.exe'
 
 if (-not (Test-Path $Agent)) {
-    Write-Error "Agent binary not found: $Agent"
+    Write-Error "Cert manager binary not found: $Agent"
     exit 1
 }
 
-# 1. Sinh CA + install vào LocalMachine\Root.
+# 1. Generate CA + install into LocalMachine\Root (idempotent).
 & $Agent --install-ca
 if ($LASTEXITCODE -ne 0) {
     Write-Error "CA install failed (exit $LASTEXITCODE)"
     exit $LASTEXITCODE
 }
 Write-Host "CA installed into LocalMachine\Root"
-
-# 2. Register Windows Service.
-$ServiceName = 'SapoPrinterAgent'
-$existing = Get-Service -Name $ServiceName -ErrorAction SilentlyContinue
-if ($existing) {
-    Write-Host "Service $ServiceName exists, stopping first"
-    Stop-Service -Name $ServiceName -Force -ErrorAction SilentlyContinue
-    sc.exe delete $ServiceName | Out-Null
-}
-
-$binPath = "`"$Agent`""
-sc.exe create $ServiceName binPath= $binPath start= auto DisplayName= "Sapo Printer Agent"
-if ($LASTEXITCODE -ne 0) {
-    Write-Error "sc create failed"
-    exit $LASTEXITCODE
-}
-
-sc.exe description $ServiceName "Local HTTPS agent + cert lifecycle for Sapo Printer."
-sc.exe failure $ServiceName reset= 86400 actions= restart/60000/restart/60000/restart/60000
-
-Start-Service -Name $ServiceName
-Write-Host "Service $ServiceName started"
+Write-Host "Done - app ready to serve HTTPS on local.mysapo.net:18901"
