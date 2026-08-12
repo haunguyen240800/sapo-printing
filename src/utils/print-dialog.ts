@@ -1,11 +1,11 @@
-import { save } from '@tauri-apps/plugin-dialog';
-import { invoke } from '@tauri-apps/api/core';
+import { invoke } from "@tauri-apps/api/core";
+import { save } from "@tauri-apps/plugin-dialog";
 
 /**
  * Printer category detection result from backend
  */
 interface PrinterCategoryResult {
-  category: 'pdf' | 'virtual' | 'physical';
+  category: "pdf" | "virtual" | "physical";
   needs_rendering: boolean;
   needs_save_dialog: boolean;
   description: string;
@@ -15,10 +15,8 @@ interface PrinterCategoryResult {
  * Detect printer category using backend classification logic.
  * This ensures frontend and backend use the same printer detection rules.
  */
-export async function detectPrinterCategory(
-  printerName: string
-): Promise<PrinterCategoryResult> {
-  return invoke('detect_printer_category', { printerName });
+export async function detectPrinterCategory(printerName: string): Promise<PrinterCategoryResult> {
+  return invoke("detect_printer_category", { printerName });
 }
 
 /**
@@ -33,11 +31,11 @@ export async function showPrintToFileDialog(): Promise<string | null> {
     defaultPath: defaultFilename,
     filters: [
       {
-        name: 'PDF Document',
-        extensions: ['pdf'],
+        name: "PDF Document",
+        extensions: ["pdf"],
       },
     ],
-    title: 'Lưu file PDF',
+    title: "Lưu file PDF",
   });
 
   return filePath;
@@ -49,20 +47,18 @@ export async function showPrintToFileDialog(): Promise<string | null> {
  */
 export function isPrintToPdfPrinter(printerName: string): boolean {
   const pdfPrinterPatterns = [
-    'Microsoft Print to PDF',
-    'Print to PDF',
-    'Save as PDF',
-    'PDF Printer',
-    'Adobe PDF',
-    'Foxit Reader PDF Printer',
-    'Nitro PDF Creator',
-    'CutePDF Writer',
-    'doPDF',
+    "Microsoft Print to PDF",
+    "Print to PDF",
+    "Save as PDF",
+    "PDF Printer",
+    "Adobe PDF",
+    "Foxit Reader PDF Printer",
+    "Nitro PDF Creator",
+    "CutePDF Writer",
+    "doPDF",
   ];
 
-  return pdfPrinterPatterns.some((pattern) =>
-    printerName.toLowerCase().includes(pattern.toLowerCase())
-  );
+  return pdfPrinterPatterns.some((pattern) => printerName.toLowerCase().includes(pattern.toLowerCase()));
 }
 
 /**
@@ -72,16 +68,14 @@ export function isPrintToPdfPrinter(printerName: string): boolean {
  */
 export function isVirtualPrinter(printerName: string): boolean {
   const virtualPrinterPatterns = [
-    'Microsoft XPS Document Writer',
-    'Microsoft Print to Image',
-    'Fax',
-    'OneNote',
-    'Send to OneNote',
+    "Microsoft XPS Document Writer",
+    "Microsoft Print to Image",
+    "Fax",
+    "OneNote",
+    "Send to OneNote",
   ];
 
-  return virtualPrinterPatterns.some((pattern) =>
-    printerName.toLowerCase().includes(pattern.toLowerCase())
-  );
+  return virtualPrinterPatterns.some((pattern) => printerName.toLowerCase().includes(pattern.toLowerCase()));
 }
 
 /**
@@ -102,9 +96,8 @@ export function needsRenderingToBitmap(printerName: string): boolean {
  * Get printer type for logging/debugging
  * @deprecated Use detectPrinterCategory() instead for consistent backend logic
  */
-export function getPrinterType(printerName: string): 'pdf' | 'virtual' | 'physical' {
-  if (isPrintToPdfPrinter(printerName)) return 'pdf';
-  if (isVirtualPrinter(printerName)) return 'virtual';
-  return 'physical';
+export function getPrinterType(printerName: string): "pdf" | "virtual" | "physical" {
+  if (isPrintToPdfPrinter(printerName)) return "pdf";
+  if (isVirtualPrinter(printerName)) return "virtual";
+  return "physical";
 }
-

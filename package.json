@@ -9,8 +9,13 @@
     "build": "tauri build",
     "build:web": "tsc && vite build",
     "preview": "vite preview",
-    "tauri": "tauri"
+    "tauri": "tauri",
+    "lint": "eslint . --report-unused-disable-directives",
+    "lint:fix": "eslint . --fix --report-unused-disable-directives",
+    "format": "prettier --write \"src/**/*.{ts,tsx,css,json}\"",
+    "format:check": "prettier --check \"src/**/*.{ts,tsx,css,json}\""
   },
+  "prettier": "@sapo/prettier-config",
   "dependencies": {
     "@emotion/react": "^11.14.0",
     "@emotion/styled": "^11.14.1",
@@ -26,10 +31,16 @@
     "yup": "^1.7.1"
   },
   "devDependencies": {
+    "@sapo/eslint-plugin": "^3.0.0",
+    "@sapo/prettier-config": "^0.1.0",
     "@tauri-apps/cli": "^2.0.0",
     "@types/react": "^18.3.12",
     "@types/react-dom": "^18.3.1",
     "@vitejs/plugin-react": "^5.0.0",
+    "eslint": "^9.39.5",
+    "eslint-plugin-react-refresh": "^0.5.4",
+    "eslint-plugin-unused-imports": "^4.4.1",
+    "prettier": "^3.9.6",
     "typescript": "^5.7.2",
     "vite": "^7.0.0"
   },

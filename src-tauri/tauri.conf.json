@@ -1,6 +1,6 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "sapo-printer",
+  "productName": "Sapo Printer Pro Max",
   "version": "0.1.0",
   "identifier": "com.sapo.printer",
   "build": {
@@ -12,10 +12,10 @@
   "app": {
     "windows": [
       {
-        "title": "Sapo Printer",
-        "width": 1200,
-        "height": 800,
-        "resizable": true,
+        "title": "Sapo Printer Pro Max",
+        "width": 800,
+        "height": 500,
+        "resizable": false,
         "fullscreen": false
       }
     ],

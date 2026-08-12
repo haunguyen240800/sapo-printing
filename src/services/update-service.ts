@@ -1,5 +1,5 @@
-import { listen, UnlistenFn } from '@tauri-apps/api/event';
-import { invoke } from '@tauri-apps/api/core';
+import { invoke } from "@tauri-apps/api/core";
+import { listen, UnlistenFn } from "@tauri-apps/api/event";
 
 export interface UpdateCheckResponse {
   update_available: boolean;
@@ -7,30 +7,26 @@ export interface UpdateCheckResponse {
   release_notes: string | null;
 }
 
-export async function onUpdateAvailable(
-  handler: (payload: UpdateCheckResponse) => void
-): Promise<UnlistenFn> {
-  return listen<UpdateCheckResponse>('update-available', (event) => {
+export async function onUpdateAvailable(handler: (payload: UpdateCheckResponse) => void): Promise<UnlistenFn> {
+  return listen<UpdateCheckResponse>("update-available", (event) => {
     handler(event.payload);
   });
 }
 
-export async function onUpdateReadyToApply(
-  handler: () => void
-): Promise<UnlistenFn> {
-  return listen('update-ready-to-apply', () => {
+export async function onUpdateReadyToApply(handler: () => void): Promise<UnlistenFn> {
+  return listen("update-ready-to-apply", () => {
     handler();
   });
 }
 
 export async function checkForUpdates(): Promise<UpdateCheckResponse> {
-  return invoke<UpdateCheckResponse>('check_for_updates');
+  return invoke<UpdateCheckResponse>("check_for_updates");
 }
 
 export async function installUpdate(): Promise<void> {
-  return invoke('install_update');
+  return invoke("install_update");
 }
 
 export async function restartApp(): Promise<void> {
-  return invoke('restart_app');
+  return invoke("restart_app");
 }

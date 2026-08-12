@@ -1,2 +1,2 @@
 export * from "./emotion";
-export * from "./printer.ts";
+export * from "./printer";
