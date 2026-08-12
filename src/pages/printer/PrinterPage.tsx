@@ -76,7 +76,7 @@ export default function PrinterPage() {
           }
         });
       } catch {
-        return () => {};
+        return () => { };
       }
     };
 
@@ -90,17 +90,17 @@ export default function PrinterPage() {
       // Clear pending job-removal timeouts
       removalTimeouts.forEach((id) => clearTimeout(id));
       removalTimeouts.clear();
-      listenerPromise.then((unlisten) => unlisten()).catch(() => {});
+      listenerPromise.then((unlisten) => unlisten()).catch(() => { });
     };
   }, [loadPrinterConfig, loadMetrics]);
 
   // Calculate real-time stats from metrics and active jobs
   const stats = {
-    total: metrics?.job_metrics.total_jobs || 0,
-    success: metrics?.job_metrics.completed || 0,
-    failed: metrics?.job_metrics.failed || 0,
-    printTime: metrics?.performance_metrics.avg_print_time_secs
-      ? `${metrics.performance_metrics.avg_print_time_secs.toFixed(1)}s`
+    total: metrics?.total_jobs || 0,
+    success: metrics?.completed || 0,
+    failed: metrics?.failed || 0,
+    printTime: metrics?.avg_print_time_secs
+      ? `${metrics.avg_print_time_secs.toFixed(1)}s`
       : null,
     downloadProgress: calculateDownloadProgress(),
     printProgress: calculatePrintProgress(),

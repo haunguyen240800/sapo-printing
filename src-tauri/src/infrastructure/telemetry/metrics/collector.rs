@@ -3,20 +3,21 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use rusqlite::Connection;
 
+use crate::application::errors::Error;
 use crate::application::ports::{
-    JobMetrics, MetricsProvider, MetricsSnapshot, PerformanceMetrics, PrinterJobStats,
-    PrinterMetrics, QueueManager, QueueMetrics,
+    JobMetrics, MetricsPort, MetricsSnapshot, PerformanceMetrics, PrinterJobStats, PrinterMetrics,
+    QueueMetrics, QueuePort,
 };
 use crate::infrastructure::configs::db::DbPool;
-use crate::shared::errors::InfrastructureError;
+use crate::infrastructure::errors::InfrastructureError;
 
 pub struct MetricsCollector {
     pool: DbPool,
-    queue_manager: Arc<dyn QueueManager>,
+    queue_manager: Arc<dyn QueuePort>,
 }
 
 impl MetricsCollector {
-    pub fn new(pool: DbPool, queue_manager: Arc<dyn QueueManager>) -> Self {
+    pub fn new(pool: DbPool, queue_manager: Arc<dyn QueuePort>) -> Self {
         Self {
             pool,
             queue_manager,
@@ -319,9 +320,9 @@ impl MetricsCollector {
     }
 }
 
-impl MetricsProvider for MetricsCollector {
-    fn collect(&self) -> Result<MetricsSnapshot, InfrastructureError> {
-        self.collect_metrics()
+impl MetricsPort for MetricsCollector {
+    fn collect(&self) -> Result<MetricsSnapshot, Error> {
+        self.collect_metrics().map_err(Error::from)
     }
 }
 
@@ -356,7 +357,7 @@ mod tests {
         }
     }
 
-    impl QueueManager for MockQueueManager {
+    impl QueuePort for MockQueueManager {
         fn push(&self, _job_id: &PrintJobId) -> Result<(), QueueError> {
             Ok(())
         }

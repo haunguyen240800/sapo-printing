@@ -17,9 +17,9 @@ use security_framework::passwords::{
     delete_generic_password, get_generic_password, set_generic_password,
 };
 
-use crate::application::ports::SecretManager;
+use crate::application::errors::Error;
+use crate::application::ports::SecretPort;
 use crate::application::services::secret_key_service::{MAX_SECRET_SIZE, validate_key};
-use crate::shared::errors::InfrastructureError;
 
 /// macOS Keychain implementation using Keychain Services.
 #[cfg(target_os = "macos")]
@@ -33,14 +33,14 @@ impl MacOSKeychain {
 }
 
 #[cfg(target_os = "macos")]
-impl SecretManager for MacOSKeychain {
-    fn store(&self, key: &str, value: &str) -> Result<(), InfrastructureError> {
+impl SecretPort for MacOSKeychain {
+    fn store(&self, key: &str, value: &str) -> Result<(), Error> {
         // Validate key format
         validate_key(key)?;
 
         // Validate size limit (apply Windows limit for consistency)
         if value.len() > MAX_SECRET_SIZE {
-            return Err(InfrastructureError::SecretStoreError(format!(
+            return Err(Error::Operation(format!(
                 "Secret value too large: {} bytes (max {} bytes)",
                 value.len(),
                 MAX_SECRET_SIZE
@@ -54,19 +54,19 @@ impl SecretManager for MacOSKeychain {
                 // errSecDuplicateItem (-25299) means key exists, delete and retry
                 if e.code() == -25299 {
                     delete_generic_password("com.sapo.printer", key).map_err(|_| {
-                        InfrastructureError::SecretStoreError(format!(
+                        Error::Operation(format!(
                             "Failed to delete existing keychain item '{}' before update",
                             key
                         ))
                     })?;
                     set_generic_password("com.sapo.printer", key, value.as_bytes()).map_err(|e| {
-                        InfrastructureError::SecretStoreError(format!(
+                        Error::Operation(format!(
                             "Failed to update keychain item '{}': {:?}",
                             key, e
                         ))
                     })
                 } else {
-                    Err(InfrastructureError::SecretStoreError(format!(
+                    Err(Error::Operation(format!(
                         "Failed to store keychain item '{}': {:?}",
                         key, e
                     )))
@@ -75,14 +75,11 @@ impl SecretManager for MacOSKeychain {
         }
     }
 
-    fn retrieve(&self, key: &str) -> Result<Option<String>, InfrastructureError> {
+    fn retrieve(&self, key: &str) -> Result<Option<String>, Error> {
         match get_generic_password("com.sapo.printer", key) {
             Ok(password_bytes) => {
                 let value = String::from_utf8(password_bytes).map_err(|e| {
-                    InfrastructureError::SecretRetrieveError(format!(
-                        "Invalid UTF-8 in keychain item '{}': {}",
-                        key, e
-                    ))
+                    Error::Operation(format!("Invalid UTF-8 in keychain item '{}': {}", key, e))
                 })?;
                 Ok(Some(value))
             }
@@ -90,7 +87,7 @@ impl SecretManager for MacOSKeychain {
                 if e.code() == -25300 {
                     Ok(None)
                 } else {
-                    Err(InfrastructureError::SecretRetrieveError(format!(
+                    Err(Error::Operation(format!(
                         "Failed to retrieve keychain item '{}': {:?}",
                         key, e
                     )))
@@ -99,14 +96,14 @@ impl SecretManager for MacOSKeychain {
         }
     }
 
-    fn delete(&self, key: &str) -> Result<(), InfrastructureError> {
+    fn delete(&self, key: &str) -> Result<(), Error> {
         match delete_generic_password("com.sapo.printer", key) {
             Ok(_) => Ok(()),
             Err(e) => {
                 if e.code() == -25300 {
                     Ok(())
                 } else {
-                    Err(InfrastructureError::SecretDeleteError(format!(
+                    Err(Error::Operation(format!(
                         "Failed to delete keychain item '{}': {:?}",
                         key, e
                     )))

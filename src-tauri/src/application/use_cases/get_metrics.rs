@@ -1,30 +1,27 @@
 use std::sync::Arc;
 
-use crate::application::errors::ApplicationError;
-use crate::application::ports::{MetricsProvider, MetricsSnapshot};
+use crate::application::errors::Error;
+use crate::application::ports::{MetricsPort, MetricsSnapshot};
 
 pub struct GetMetricsUseCase {
-    metrics: Arc<dyn MetricsProvider>,
+    metrics: Arc<dyn MetricsPort>,
 }
 
 impl GetMetricsUseCase {
-    pub fn new(metrics: Arc<dyn MetricsProvider>) -> Self {
+    pub fn new(metrics: Arc<dyn MetricsPort>) -> Self {
         Self { metrics }
     }
 
-    pub fn execute(&self) -> Result<MetricsSnapshot, ApplicationError> {
+    pub fn execute(&self) -> Result<MetricsSnapshot, Error> {
         tracing::info!(
             target = "sapo_printer::application::use_case::get_metrics",
             "GetMetricsUseCase: starting"
         );
 
         let start = std::time::Instant::now();
-        let snapshot = self
-            .metrics
-            .collect()
-            .map_err(|e| ApplicationError::MetricsError {
-                reason: format!("Failed to collect metrics: {}", e),
-            })?;
+        let snapshot = self.metrics.collect().map_err(|e| Error::MetricsError {
+            reason: format!("Failed to collect metrics: {}", e),
+        })?;
         let duration = start.elapsed();
 
         tracing::info!(

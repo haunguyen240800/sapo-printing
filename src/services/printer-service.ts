@@ -5,40 +5,10 @@ import type { JobDto, JobFilterDto } from "../types/print-job";
 import { detectPrinterCategory, showPrintToFileDialog } from "../utils/print-dialog";
 
 export interface MetricsDto {
-  collected_at: number;
-  job_metrics: {
-    total_jobs: number;
-    pending: number;
-    queued: number;
-    downloaded: number;
-    submitted: number;
-    printing: number;
-    completed: number;
-    failed: number;
-    cancelled: number;
-    success_rate: number;
-  };
-  queue_metrics: {
-    current_depth: number;
-    avg_wait_time_secs: number;
-  };
-  printer_metrics: {
-    printers: {
-      printer_name: string;
-      total_jobs: number;
-      completed_jobs: number;
-      utilization_percent: number;
-    }[];
-  };
-  performance_metrics: {
-    avg_job_duration_secs: number;
-    p50_job_duration_secs: number;
-    p95_job_duration_secs: number;
-    p99_job_duration_secs: number;
-    avg_download_time_secs: number;
-    avg_render_time_secs: number;
-    avg_print_time_secs: number;
-  };
+  total_jobs: number;
+  completed: number;
+  failed: number;
+  avg_print_time_secs: number;
 }
 
 export async function listPrinters(): Promise<PrinterDto[]> {

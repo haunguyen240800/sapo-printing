@@ -9,7 +9,7 @@
 
 use std::path::Path;
 
-use crate::shared::errors::InfrastructureError;
+use crate::infrastructure::errors::InfrastructureError;
 
 pub const CA_FRIENDLY_NAME: &str = "Sapo Printer Local CA";
 pub const LINUX_CA_FILENAME: &str = "sapo-printer-ca.crt";

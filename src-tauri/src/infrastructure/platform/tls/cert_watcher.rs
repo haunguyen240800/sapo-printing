@@ -11,7 +11,7 @@ use axum_server::tls_rustls::RustlsConfig;
 use notify::{RecursiveMode, Watcher};
 use tokio::sync::mpsc;
 
-use crate::shared::errors::InfrastructureError;
+use crate::infrastructure::errors::InfrastructureError;
 
 const DEBOUNCE: Duration = Duration::from_millis(500);
 

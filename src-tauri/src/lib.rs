@@ -3,9 +3,9 @@
 
 use std::sync::Arc;
 
-use application::ports::{
-    ConfigProvider, EventStore, MetricsProvider, PrinterManager, QueueManager, SecretManager,
-    TempFileManager,
+use application::use_cases::{
+    CancelPrintJobUseCase, CreatePrintJobUseCase, GetAuditTrailUseCase, GetJobStatusUseCase,
+    GetMetricsUseCase, ListPrintJobsUseCase, ListPrintersUseCase,
 };
 
 // Interface Layer - External-facing APIs
@@ -20,22 +20,21 @@ pub mod domain;
 // Infrastructure Layer - External System Implementations
 pub mod infrastructure;
 
-// Shared Layer - Cross-Cutting Concerns
-pub mod shared;
-
 /// Shared state registered with Tauri via `.manage()`.
 /// Commands access this via `tauri::State<'_, AppContextState>`.
+///
+/// Holds pre-built application use cases (assembled in the composition root).
+/// The interface layer invokes these use cases and never touches domain
+/// repositories or infrastructure ports directly.
 pub struct AppContextState {
-    pub secret_manager: Arc<dyn SecretManager>,
-    pub job_repo: Arc<dyn domain::print_job::PrintJobRepository>,
-    pub event_store: Arc<dyn EventStore>,
-    pub event_bus: Arc<dyn shared::event_bus::EventBus>,
-    pub queue_manager: Arc<dyn QueueManager>,
+    pub create_print_job_uc: Arc<CreatePrintJobUseCase>,
+    pub cancel_print_job_uc: Arc<CancelPrintJobUseCase>,
+    pub list_print_jobs_uc: Arc<ListPrintJobsUseCase>,
+    pub get_job_status_uc: Arc<GetJobStatusUseCase>,
+    pub get_metrics_uc: Arc<GetMetricsUseCase>,
+    pub get_audit_trail_uc: Arc<GetAuditTrailUseCase>,
+    pub list_printers_uc: Arc<ListPrintersUseCase>,
     pub queue_worker: Arc<infrastructure::worker::QueueWorker>,
-    pub metrics_provider: Arc<dyn MetricsProvider>,
-    pub config_provider: Arc<dyn ConfigProvider>,
-    pub printer_manager: Arc<dyn PrinterManager>,
-    pub temp_files: Arc<dyn TempFileManager>,
     pub app_handle: tauri::AppHandle,
     pub install_guard: infrastructure::platform::updater::update_checker::InstallGuard,
     pub last_emitted_update_version: std::sync::Mutex<Option<String>>,

@@ -19,9 +19,9 @@
 #[cfg(target_os = "linux")]
 use secret_service::{Collection, EncryptionType, SecretService};
 
-use crate::application::ports::SecretManager;
+use crate::application::errors::Error;
+use crate::application::ports::SecretPort;
 use crate::application::services::secret_key_service::{MAX_SECRET_SIZE, validate_key};
-use crate::shared::errors::InfrastructureError;
 
 /// Linux Secret Service implementation using D-Bus API.
 #[cfg(target_os = "linux")]
@@ -36,10 +36,10 @@ impl LinuxSecretService {
     /// # Errors
     /// Returns `SecretServiceUnavailable` if D-Bus Secret Service daemon is not running.
     /// Install gnome-keyring, kwallet, or keepassxc to provide the service.
-    pub fn new() -> Result<Self, InfrastructureError> {
+    pub fn new() -> Result<Self, Error> {
         let service = SecretService::connect(EncryptionType::Dh)
             .map_err(|e| {
-                InfrastructureError::SecretServiceUnavailable(format!(
+                Error::Unavailable(format!(
                     "D-Bus Secret Service not available: {}. Install gnome-keyring or use environment variables.",
                     e
                 ))
@@ -47,25 +47,22 @@ impl LinuxSecretService {
         Ok(Self { service })
     }
 
-    fn get_default_collection(&self) -> Result<Collection<'static>, InfrastructureError> {
-        self.service.get_default_collection().map_err(|e| {
-            InfrastructureError::SecretServiceUnavailable(format!(
-                "Failed to access default collection: {}",
-                e
-            ))
-        })
+    fn get_default_collection(&self) -> Result<Collection<'static>, Error> {
+        self.service
+            .get_default_collection()
+            .map_err(|e| Error::Unavailable(format!("Failed to access default collection: {}", e)))
     }
 }
 
 #[cfg(target_os = "linux")]
-impl SecretManager for LinuxSecretService {
-    fn store(&self, key: &str, value: &str) -> Result<(), InfrastructureError> {
+impl SecretPort for LinuxSecretService {
+    fn store(&self, key: &str, value: &str) -> Result<(), Error> {
         // Validate key format
         validate_key(key)?;
 
         // Validate size limit (apply Windows limit for consistency)
         if value.len() > MAX_SECRET_SIZE {
-            return Err(InfrastructureError::SecretStoreError(format!(
+            return Err(Error::Operation(format!(
                 "Secret value too large: {} bytes (max {} bytes)",
                 value.len(),
                 MAX_SECRET_SIZE
@@ -82,16 +79,13 @@ impl SecretManager for LinuxSecretService {
         collection
             .create_item(&label, attributes, value.as_bytes(), true, "text/plain")
             .map_err(|e| {
-                InfrastructureError::SecretStoreError(format!(
-                    "Failed to create secret item '{}': {}",
-                    key, e
-                ))
+                Error::Operation(format!("Failed to create secret item '{}': {}", key, e))
             })?;
 
         Ok(())
     }
 
-    fn retrieve(&self, key: &str) -> Result<Option<String>, InfrastructureError> {
+    fn retrieve(&self, key: &str) -> Result<Option<String>, Error> {
         let collection = self.get_default_collection()?;
 
         let mut attributes = std::collections::HashMap::new();
@@ -99,10 +93,7 @@ impl SecretManager for LinuxSecretService {
         attributes.insert("key", key);
 
         let items = collection.search_items(attributes).map_err(|e| {
-            InfrastructureError::SecretRetrieveError(format!(
-                "Failed to search for secret '{}': {}",
-                key, e
-            ))
+            Error::Operation(format!("Failed to search for secret '{}': {}", key, e))
         })?;
 
         // Use first() to safely handle potential race condition
@@ -112,23 +103,16 @@ impl SecretManager for LinuxSecretService {
         };
 
         let secret = item.get_secret().map_err(|e| {
-            InfrastructureError::SecretRetrieveError(format!(
-                "Failed to get secret value for '{}': {}",
-                key, e
-            ))
+            Error::Operation(format!("Failed to get secret value for '{}': {}", key, e))
         })?;
 
-        let value = String::from_utf8(secret).map_err(|e| {
-            InfrastructureError::SecretRetrieveError(format!(
-                "Invalid UTF-8 in secret '{}': {}",
-                key, e
-            ))
-        })?;
+        let value = String::from_utf8(secret)
+            .map_err(|e| Error::Operation(format!("Invalid UTF-8 in secret '{}': {}", key, e)))?;
 
         Ok(Some(value))
     }
 
-    fn delete(&self, key: &str) -> Result<(), InfrastructureError> {
+    fn delete(&self, key: &str) -> Result<(), Error> {
         let collection = self.get_default_collection()?;
 
         let mut attributes = std::collections::HashMap::new();
@@ -136,7 +120,7 @@ impl SecretManager for LinuxSecretService {
         attributes.insert("key", key);
 
         let items = collection.search_items(attributes).map_err(|e| {
-            InfrastructureError::SecretDeleteError(format!(
+            Error::Operation(format!(
                 "Failed to search for secret '{}' to delete: {}",
                 key, e
             ))
@@ -144,10 +128,7 @@ impl SecretManager for LinuxSecretService {
 
         for item in items {
             item.delete().map_err(|e| {
-                InfrastructureError::SecretDeleteError(format!(
-                    "Failed to delete secret '{}': {}",
-                    key, e
-                ))
+                Error::Operation(format!("Failed to delete secret '{}': {}", key, e))
             })?;
         }
 

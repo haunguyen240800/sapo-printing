@@ -7,7 +7,7 @@ use std::time::Duration;
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 
 use super::ipc::{IPC_ENDPOINT, IpcRequest, IpcResponse};
-use crate::shared::errors::InfrastructureError;
+use crate::infrastructure::errors::InfrastructureError;
 
 const CONNECT_TIMEOUT: Duration = Duration::from_secs(5);
 const REQUEST_TIMEOUT: Duration = Duration::from_secs(10);

@@ -1,16 +1,16 @@
-use serde::{Deserialize, Serialize};
+﻿use serde::{Deserialize, Serialize};
 
 /// Print job lifecycle states.
 ///
 /// State machine:
 /// ```text
-/// PENDING → QUEUED → DOWNLOADED → SUBMITTED_TO_QUEUE → PRINTING → COMPLETED
-///                ↓                ↓                      ↓
-///             FAILED  ←───────── FAILED  ←──────────── FAILED
-///                ↓
+/// PENDING â†’ QUEUED â†’ DOWNLOADED â†’ SUBMITTED_TO_QUEUE â†’ PRINTING â†’ COMPLETED
+///                â†“                â†“                      â†“
+///             FAILED  â†â”€â”€â”€â”€â”€â”€â”€â”€â”€ FAILED  â†â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ FAILED
+///                â†“
 ///             QUEUED (retry, if retry_count < 3)
 ///
-/// Any non-terminal state → CANCELLED (via cancel())
+/// Any non-terminal state â†’ CANCELLED (via cancel())
 /// ```
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum PrintStatus {
@@ -36,7 +36,7 @@ impl PrintStatus {
     /// Serialize to the canonical UPPER_CASE database representation.
     ///
     /// This is the single source of truth for status string serialization shared
-    /// by all SQLite adapters (`SqlitePrintJobRepository`, `SqliteQueueManager`,
+    /// by all SQLite adapters (`PrintJobRepository`, `JobQueueBroker`,
     /// `MetricsCollector`). Changing this requires updating the DB schema default.
     pub fn to_db_string(&self) -> &'static str {
         match self {
@@ -71,9 +71,9 @@ impl PrintStatus {
     /// Checks whether a transition to `target` is valid from this state.
     ///
     /// Valid transitions follow the job processing pipeline with failure exits:
-    /// - Forward progression: Pending → Queued → Downloaded → SubmittedToQueue → Printing → Completed
+    /// - Forward progression: Pending â†’ Queued â†’ Downloaded â†’ SubmittedToQueue â†’ Printing â†’ Completed
     /// - Failure exits: Any intermediate state can transition to Failed
-    /// - Retry: Failed → Queued (for auto-retry logic)
+    /// - Retry: Failed â†’ Queued (for auto-retry logic)
     pub fn can_transition_to(&self, target: &PrintStatus) -> bool {
         matches!(
             (self, target),
@@ -180,3 +180,5 @@ mod tests {
         assert!(!PrintStatus::Cancelled.can_transition_to(&PrintStatus::Failed));
     }
 }
+
+

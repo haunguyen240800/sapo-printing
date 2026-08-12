@@ -2,7 +2,7 @@ use tauri::{AppHandle, Emitter};
 
 use crate::infrastructure::platform::updater::update_checker;
 use crate::infrastructure::platform::updater::update_checker::InstallGuard;
-use crate::interface::tauri::dtos::update::UpdateCheckResponse;
+use crate::application::dto::UpdateCheckResponse;
 
 pub async fn execute_check_for_updates(app: &AppHandle) -> Result<UpdateCheckResponse, String> {
     let result = update_checker::check_for_updates(app).await?;

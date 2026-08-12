@@ -2,8 +2,9 @@ use std::sync::Mutex;
 use std::time::{Duration, Instant};
 
 use crate::application::dto::PrinterDto;
-use crate::application::ports::{PrinterAvailability, PrinterManager};
-use crate::shared::errors::InfrastructureError;
+use crate::application::errors::Error;
+use crate::application::ports::{PrinterAvailability, PrinterPort};
+use crate::infrastructure::errors::InfrastructureError;
 
 const LIST_CACHE_TTL: Duration = Duration::from_secs(5);
 
@@ -42,12 +43,12 @@ impl Default for SystemPrinterManager {
     }
 }
 
-impl PrinterManager for SystemPrinterManager {
-    fn list(&self) -> Result<Vec<PrinterDto>, InfrastructureError> {
-        self.list_cached()
+impl PrinterPort for SystemPrinterManager {
+    fn list(&self) -> Result<Vec<PrinterDto>, Error> {
+        self.list_cached().map_err(Error::from)
     }
 
-    fn availability(&self, printer_id: &str) -> Result<PrinterAvailability, InfrastructureError> {
+    fn availability(&self, printer_id: &str) -> Result<PrinterAvailability, Error> {
         let printers = self.list_cached()?;
         let found = printers.into_iter().find(|p| p.id == printer_id);
 
@@ -166,7 +167,7 @@ fn list_os_printers() -> Result<Vec<PrinterDto>, InfrastructureError> {
             name,
             status: win32_status_to_str(info.Status).to_string(),
             printer_type: "Local".to_string(),
-            is_default,
+            is_default: Some(is_default),
         });
     }
 

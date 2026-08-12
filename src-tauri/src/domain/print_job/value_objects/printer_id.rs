@@ -3,7 +3,7 @@
 //! Held by `PrintJob` aggregate as the **identity** of the destination printer.
 //! The printer itself is an OS-owned resource (not a domain aggregate), so the
 //! `PrintJob` only carries its identifier — the actual printer state lives in
-//! the OS spooler and is queried at print time via the `PrinterManager` port.
+//! the OS spooler and is queried at print time via the `PrinterPort` port.
 //!
 //! The underlying value is the OS device identifier:
 //! - Windows: print queue / device name returned by `Get-Printer`

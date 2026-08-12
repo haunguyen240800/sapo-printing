@@ -6,6 +6,11 @@ authors = ["SAPO Team"]
 edition = "2024"
 default-run = "sapo-printer"
 
+# Keep the library crate name stable (`sapo_printer`) regardless of the package
+# name, so `use sapo_printer::...` in the binaries keeps resolving.
+[lib]
+name = "sapo_printer"
+
 # Lint policy applied to the whole crate (both binaries). Levels are "warn" so
 # they surface in `cargo build`/`cargo clippy` without breaking local builds;
 # enforce with `-D warnings` in CI. Fine-tuning of individual lints lives in
@@ -50,6 +55,7 @@ r2d2_sqlite = "0.25"
 
 # Async runtime
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "sync", "time", "fs", "io-util"] }
+async-trait = "0.1"
 
 # Logging
 tracing = "0.1"
@@ -113,6 +119,10 @@ cups-sys = "0.1"
 mockito = "1.0"
 filetime = "0.2"
 tempfile = "3"
+
+[[bin]]
+name = "sapo-printer"
+path = "src/main.rs"
 
 [[bin]]
 name = "sapo-printer-cert-manager"

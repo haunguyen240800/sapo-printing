@@ -1,15 +1,16 @@
 use std::sync::Arc;
 
-use crate::application::services::{ApiTokenManager, UseCaseFactory};
+use crate::application::ports::ApiTokenPort;
+use crate::application::use_cases::{CreatePrintJobUseCase, GetJobStatusUseCase};
 
 use super::sse::SseBroadcaster;
 
 #[derive(Clone)]
 pub struct HttpServerState {
-    pub token_manager: Arc<ApiTokenManager>,
+    pub token_manager: Arc<dyn ApiTokenPort>,
     pub app_version: &'static str,
-    pub min_webapp_version: &'static str,
     pub agent_port: u16,
     pub sse_broadcaster: Option<Arc<SseBroadcaster>>,
-    pub use_cases: Arc<UseCaseFactory>,
+    pub create_print_job_uc: Arc<CreatePrintJobUseCase>,
+    pub get_job_status_uc: Arc<GetJobStatusUseCase>,
 }

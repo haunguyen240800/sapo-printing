@@ -1,4 +1,4 @@
-// Entry point for Tauri application
+﻿// Entry point for Tauri application
 // This file initializes the Tauri runtime and registers commands
 
 // Prevents additional console window on Windows in release builds
@@ -6,10 +6,10 @@
 
 use sapo_printer::AppContextState;
 use sapo_printer::application::dto::create_print_job_request::CreatePrintJobRequest;
-use sapo_printer::application::errors::ApplicationError;
+use sapo_printer::application::errors::Error;
+use sapo_printer::application::ports::event_bus::EventBus;
 use sapo_printer::application::ports::{
-    ConfigProvider, EventStore, MetricsProvider, PrinterManager, QueueManager, SecretManager,
-    TempFileManager,
+    ConfigPort, EventStore, MetricsPort, PrinterPort, QueuePort, SecretPort, TempFilePort,
 };
 use sapo_printer::application::use_cases::create_print_job::CreatePrintJobUseCase;
 use sapo_printer::infrastructure::configs::app::JsonFileConfigProvider;
@@ -17,19 +17,18 @@ use sapo_printer::infrastructure::configs::db::{DbPool, run_migrations};
 use sapo_printer::infrastructure::integrations::network::ReqwestDownloader;
 use sapo_printer::infrastructure::integrations::pdf_engine::bitmap_strategy::BitmapRenderStrategy;
 use sapo_printer::infrastructure::integrations::pdf_engine::pdfium_loader;
-use sapo_printer::infrastructure::persistence::SqliteQueueManager;
-use sapo_printer::infrastructure::persistence::{SqliteEventStore, SqlitePrintJobRepository};
+use sapo_printer::infrastructure::persistence::JobQueueBroker;
+use sapo_printer::infrastructure::persistence::{EventRepository, PrintJobRepository};
 use sapo_printer::infrastructure::platform::printer_api::SystemPrinterManager;
 use sapo_printer::infrastructure::platform::printing::DefaultPrintService;
+use sapo_printer::infrastructure::telemetry::logger::init_logging;
 use sapo_printer::infrastructure::telemetry::metrics::MetricsCollector;
 use sapo_printer::infrastructure::temp_file::{self, FilesystemTempFileManager};
 use sapo_printer::infrastructure::worker::QueueWorker;
-use sapo_printer::interface::tauri::dtos::printer_dto::{
+use sapo_printer::application::dto::{
     PrinterConfigDto, PrinterDto, PrinterStatusDto,
 };
 use sapo_printer::interface::tauri::job_status_emitter::JobStatusEmitter;
-use sapo_printer::shared::event_bus::EventBus;
-use sapo_printer::shared::logger::init_logging;
 use std::sync::Arc;
 use tauri::Manager;
 
@@ -45,12 +44,8 @@ async fn create_print_job(
         "Command received, spawning blocking task"
     );
 
-    // Clone dependencies to move into blocking task
-    let job_repo = ctx.job_repo.clone();
-    let event_store = ctx.event_store.clone();
-    let event_bus = ctx.event_bus.clone();
-    let config_provider = ctx.config_provider.clone();
-    let printer_manager = ctx.printer_manager.clone();
+    // Clone the pre-built use case to move into blocking task
+    let use_case = ctx.create_print_job_uc.clone();
 
     // Run in blocking task to avoid blocking async runtime
     let result = tokio::task::spawn_blocking(move || {
@@ -62,22 +57,14 @@ async fn create_print_job(
             );
 
             if payload.pdf_urls.is_empty() {
-                return Err("Danh sách URLs không được rỗng".to_string());
+                return Err("Danh sÃ¡ch URLs khÃ´ng Ä‘Æ°á»£c rá»—ng".to_string());
             }
             if payload.pdf_urls.len() > 5000 {
                 return Err(format!(
-                    "Số lượng URLs vượt quá giới hạn 5000 (nhận được: {})",
+                    "Sá»‘ lÆ°á»£ng URLs vÆ°á»£t quÃ¡ giá»›i háº¡n 5000 (nháº­n Ä‘Æ°á»£c: {})",
                     payload.pdf_urls.len()
                 ));
             }
-
-            let use_case = CreatePrintJobUseCase {
-                job_repo,
-                event_store,
-                event_bus,
-                config_provider,
-                printer_manager,
-            };
 
             tracing::info!(target = "sapo_printer::tauri_command", "Executing use case");
 
@@ -85,8 +72,8 @@ async fn create_print_job(
             for url in payload.pdf_urls {
                 let request = CreatePrintJobRequest { pdf_url: url };
                 let id = use_case.execute(request).map_err(|e| match &e {
-                    ApplicationError::PrinterNotAvailable { name } => {
-                        format!("Máy in '{}' không khả dụng hoặc đang offline", name)
+                    Error::PrinterNotAvailable { name } => {
+                        format!("MÃ¡y in '{}' khÃ´ng kháº£ dá»¥ng hoáº·c Ä‘ang offline", name)
                     }
                     _ => format!("{}", e),
                 })?;
@@ -156,7 +143,7 @@ fn list_jobs(
 fn get_job_status(
     job_id: String,
     ctx: tauri::State<'_, AppContextState>,
-) -> Result<sapo_printer::application::dto::PrintJobDto, String> {
+) -> Result<sapo_printer::application::dto::print_job_status_dto::PrintJobStatusDto, String> {
     sapo_printer::interface::tauri::commands::print_job::execute_get_job_status(job_id, ctx.inner())
 }
 
@@ -165,7 +152,7 @@ fn get_job_status(
 fn get_job_audit_trail(
     job_id: String,
     ctx: tauri::State<'_, AppContextState>,
-) -> Result<sapo_printer::interface::tauri::dtos::audit_trail::AuditTrailResponse, String> {
+) -> Result<sapo_printer::application::dto::AuditTrailDto, String> {
     sapo_printer::interface::tauri::commands::audit_trail::execute_get_job_audit_trail(
         job_id,
         ctx.inner(),
@@ -176,58 +163,13 @@ fn get_job_audit_trail(
 #[tauri::command]
 async fn get_metrics(
     ctx: tauri::State<'_, AppContextState>,
-) -> Result<sapo_printer::interface::tauri::dtos::metrics::MetricsDto, String> {
-    // Clone only what we need to avoid blocking
-    let metrics_provider = ctx.metrics_provider.clone();
+) -> Result<sapo_printer::application::dto::MetricsDto, String> {
+    let use_case = ctx.get_metrics_uc.clone();
 
-    // Run in blocking task to avoid blocking async runtime
     tokio::task::spawn_blocking(move || {
-        use sapo_printer::application::use_cases::GetMetricsUseCase;
-        let use_case = GetMetricsUseCase::new(metrics_provider);
+        use sapo_printer::application::dto::MetricsDto;
         let snapshot = use_case.execute().map_err(|e| format!("{}", e))?;
-
-        use sapo_printer::interface::tauri::dtos::metrics::*;
-        Ok(MetricsDto {
-            collected_at: snapshot.collected_at,
-            job_metrics: JobMetricsDto {
-                total_jobs: snapshot.job_metrics.total_jobs,
-                pending: snapshot.job_metrics.pending,
-                queued: snapshot.job_metrics.queued,
-                downloaded: snapshot.job_metrics.downloaded,
-                submitted: snapshot.job_metrics.submitted,
-                printing: snapshot.job_metrics.printing,
-                completed: snapshot.job_metrics.completed,
-                failed: snapshot.job_metrics.failed,
-                cancelled: snapshot.job_metrics.cancelled,
-                success_rate: snapshot.job_metrics.success_rate,
-            },
-            queue_metrics: QueueMetricsDto {
-                current_depth: snapshot.queue_metrics.current_depth,
-                avg_wait_time_secs: snapshot.queue_metrics.avg_wait_time_secs,
-            },
-            printer_metrics: PrinterMetricsDto {
-                printers: snapshot
-                    .printer_metrics
-                    .printers
-                    .iter()
-                    .map(|p| PrinterUsageDto {
-                        printer_name: p.printer_name.clone(),
-                        total_jobs: p.total_jobs,
-                        completed_jobs: p.completed_jobs,
-                        utilization_percent: p.utilization_percent,
-                    })
-                    .collect(),
-            },
-            performance_metrics: PerformanceMetricsDto {
-                avg_job_duration_secs: snapshot.performance_metrics.avg_job_duration_secs,
-                p50_job_duration_secs: snapshot.performance_metrics.p50_job_duration_secs,
-                p95_job_duration_secs: snapshot.performance_metrics.p95_job_duration_secs,
-                p99_job_duration_secs: snapshot.performance_metrics.p99_job_duration_secs,
-                avg_download_time_secs: snapshot.performance_metrics.avg_download_time_secs,
-                avg_render_time_secs: snapshot.performance_metrics.avg_render_time_secs,
-                avg_print_time_secs: snapshot.performance_metrics.avg_print_time_secs,
-            },
-        })
+        Ok(MetricsDto::from(snapshot))
     })
     .await
     .map_err(|e| format!("Task join error: {}", e))?
@@ -237,7 +179,7 @@ async fn get_metrics(
 #[tauri::command]
 async fn check_for_updates(
     app: tauri::AppHandle,
-) -> Result<sapo_printer::interface::tauri::dtos::update::UpdateCheckResponse, String> {
+) -> Result<sapo_printer::application::dto::UpdateCheckResponse, String> {
     sapo_printer::interface::tauri::commands::update::execute_check_for_updates(&app).await
 }
 
@@ -272,23 +214,10 @@ use sapo_printer::infrastructure::platform::keychain::LinuxSecretService;
 
 #[tauri::command]
 fn list_printers(ctx: tauri::State<'_, AppContextState>) -> Result<Vec<PrinterDto>, String> {
-    use sapo_printer::application::use_cases::ListPrintersUseCase;
-
-    let use_case = ListPrintersUseCase::new(ctx.printer_manager.clone());
-
-    match use_case.execute() {
-        Ok(printers) => Ok(printers
-            .into_iter()
-            .map(|p| PrinterDto {
-                name: p.name,
-                device_id: p.id,
-                status: p.status,
-                printer_type: p.printer_type,
-                is_default: Some(p.is_default),
-            })
-            .collect()),
-        Err(e) => Err(format!("{:?}", e)),
-    }
+    ctx.list_printers_uc
+        .clone()
+        .execute()
+        .map_err(|e| format!("{:?}", e))
 }
 
 /// Save printer configuration
@@ -302,49 +231,49 @@ fn save_printer_config(
     // 1. Validate config fields
     // Paper size validation
     if config.paper_size.is_empty() {
-        return Err("Khổ giấy không được để trống".to_string());
+        return Err("Khá»• giáº¥y khÃ´ng Ä‘Æ°á»£c Ä‘á»ƒ trá»‘ng".to_string());
     }
 
     // Dimensions validation (50-500mm range when provided)
     if let Some(width) = config.paper_width {
         if !(50..=500).contains(&width) {
-            return Err("Chiều rộng giấy phải trong khoảng 50-500mm".to_string());
+            return Err("Chiá»u rá»™ng giáº¥y pháº£i trong khoáº£ng 50-500mm".to_string());
         }
     }
 
     if let Some(height) = config.paper_height {
         if !(50..=500).contains(&height) {
-            return Err("Chiều cao giấy phải trong khoảng 50-500mm".to_string());
+            return Err("Chiá»u cao giáº¥y pháº£i trong khoáº£ng 50-500mm".to_string());
         }
     }
 
     // For Custom paper size, dimensions are required
     if config.paper_size == "Custom" {
         if config.paper_width.is_none() {
-            return Err("Chiều rộng giấy bắt buộc khi chọn khổ Custom".to_string());
+            return Err("Chiá»u rá»™ng giáº¥y báº¯t buá»™c khi chá»n khá»• Custom".to_string());
         }
         if config.paper_height.is_none() {
-            return Err("Chiều cao giấy bắt buộc khi chọn khổ Custom".to_string());
+            return Err("Chiá»u cao giáº¥y báº¯t buá»™c khi chá»n khá»• Custom".to_string());
         }
     }
 
     // Margins validation (0-100mm range)
     if config.margin_left > 100 {
-        return Err("Lề trái phải trong khoảng 0-100mm".to_string());
+        return Err("Lá» trÃ¡i pháº£i trong khoáº£ng 0-100mm".to_string());
     }
     if config.margin_right > 100 {
-        return Err("Lề phải phải trong khoảng 0-100mm".to_string());
+        return Err("Lá» pháº£i pháº£i trong khoáº£ng 0-100mm".to_string());
     }
     if config.margin_top > 100 {
-        return Err("Lề trên phải trong khoảng 0-100mm".to_string());
+        return Err("Lá» trÃªn pháº£i trong khoáº£ng 0-100mm".to_string());
     }
     if config.margin_bottom > 100 {
-        return Err("Lề dưới phải trong khoảng 0-100mm".to_string());
+        return Err("Lá» dÆ°á»›i pháº£i trong khoáº£ng 0-100mm".to_string());
     }
 
     // Printer name validation
     if config.printer_name.is_empty() {
-        return Err("Tên máy in không được để trống".to_string());
+        return Err("TÃªn mÃ¡y in khÃ´ng Ä‘Æ°á»£c Ä‘á»ƒ trá»‘ng".to_string());
     }
 
     // Buffer validation
@@ -355,23 +284,23 @@ fn save_printer_config(
             }
             Some(size) => {
                 return Err(format!(
-                    "Kích thước buffer phải trong khoảng 1-1024 KB (nhận được: {} KB)",
+                    "KÃ­ch thÆ°á»›c buffer pháº£i trong khoáº£ng 1-1024 KB (nháº­n Ä‘Æ°á»£c: {} KB)",
                     size
                 ));
             }
             None => {
-                return Err("Kích thước buffer bắt buộc khi bật buffer".to_string());
+                return Err("KÃ­ch thÆ°á»›c buffer báº¯t buá»™c khi báº­t buffer".to_string());
             }
         }
     } else if config.buffer_size_kb.is_some() {
-        return Err("Không thể đặt kích thước buffer khi buffer đã tắt".to_string());
+        return Err("KhÃ´ng thá»ƒ Ä‘áº·t kÃ­ch thÆ°á»›c buffer khi buffer Ä‘Ã£ táº¯t".to_string());
     }
 
     // Color mode validation
     let valid_color_modes = ["RGB", "ARGB", "BGR", "GRAY", "BINARY"];
     if !valid_color_modes.contains(&config.color_mode.as_str()) {
         return Err(format!(
-            "Loại ảnh in không hợp lệ: '{}'. Chỉ chấp nhận: RGB, ARGB, BGR, GRAY, BINARY",
+            "Loáº¡i áº£nh in khÃ´ng há»£p lá»‡: '{}'. Chá»‰ cháº¥p nháº­n: RGB, ARGB, BGR, GRAY, BINARY",
             config.color_mode
         ));
     }
@@ -539,7 +468,7 @@ fn main() {
         })
         .to_string();
 
-    // 2. Start Tauri — all dependency init moved into .setup() to access AppHandle
+    // 2. Start Tauri â€” all dependency init moved into .setup() to access AppHandle
     tauri::Builder::default()
         .setup(move |app| {
             let app_handle = app.handle().clone();
@@ -569,24 +498,24 @@ fn main() {
             }
 
             // Startup cleanup: retention is sourced from app_settings (see
-            // migration 2 — `temp_file_retention_hours`), falling back to the
+            // migration 2 â€” `temp_file_retention_hours`), falling back to the
             // hardcoded default on any read failure.
             let retention = temp_file::load_retention(&pool);
             temp_file::startup_cleanup(&temp_dir, retention);
 
             // Initialize AppContext dependencies
-            let job_repo = Arc::new(SqlitePrintJobRepository::new(pool.clone()));
+            let job_repo = Arc::new(PrintJobRepository::new(pool.clone()));
 
             // Initialize secret manager
             #[cfg(target_os = "windows")]
-            let secret_manager: Arc<dyn SecretManager> =
+            let secret_manager: Arc<dyn SecretPort> =
                 Arc::new(WindowsCredentialManager::new());
 
             #[cfg(target_os = "macos")]
-            let secret_manager: Arc<dyn SecretManager> = Arc::new(MacOSKeychain::new());
+            let secret_manager: Arc<dyn SecretPort> = Arc::new(MacOSKeychain::new());
 
             #[cfg(target_os = "linux")]
-            let secret_manager: Arc<dyn SecretManager> = Arc::new(
+            let secret_manager: Arc<dyn SecretPort> = Arc::new(
                 match LinuxSecretService::new() {
                     Ok(service) => service,
                     Err(e) => {
@@ -602,50 +531,50 @@ fn main() {
                 },
             );
 
-            let event_store = Arc::new(SqliteEventStore::new(pool.clone(), secret_manager.clone()));
+            let event_store = Arc::new(EventRepository::new(pool.clone(), secret_manager.clone()));
 
             // EventBus is just a pub/sub dispatcher (handlers run synchronously
             // in the publisher thread). UI emission is a SEPARATE subscriber:
             // `JobStatusEmitter` lives in the interface layer.
             let event_bus: Arc<dyn EventBus> =
-                Arc::new(sapo_printer::shared::event_bus::InMemoryEventBus::new());
+                Arc::new(sapo_printer::infrastructure::eventbus::InMemoryEventBus::new());
 
             // Forward `PrintJob*` events to the Tauri frontend.
             JobStatusEmitter::new(app_handle.clone()).register(&event_bus);
 
-            let queue_manager: Arc<dyn QueueManager> =
-                Arc::new(SqliteQueueManager::new(pool.clone()));
+            let queue_manager: Arc<dyn QueuePort> =
+                Arc::new(JobQueueBroker::new(pool.clone()));
 
-            // Register PushToQueueHandler to listen for PrintJobCreated events
-            let push_handler = Arc::new(sapo_printer::application::handlers::push_to_queue_handler::PushToQueueHandler::new(
+            // Register PrintJobCreatedHandler to listen for PrintJobCreated events
+            let push_handler = Arc::new(sapo_printer::application::handlers::print_job_created_handler::PrintJobCreatedHandler::new(
                 queue_manager.clone(),
             ));
             event_bus.subscribe("PrintJobCreated", push_handler);
             tracing::info!(
                 target = "sapo_printer::startup",
-                "PushToQueueHandler registered for PrintJobCreated events"
+                "PrintJobCreatedHandler registered for PrintJobCreated events"
             );
 
 
             // Initialize QueueWorker dependencies
-            let downloader: Arc<dyn sapo_printer::application::ports::DocumentDownloadService> =
+            let downloader: Arc<dyn sapo_printer::application::ports::DownloadPort> =
                 Arc::new(ReqwestDownloader::new());
             let render_strategy: Arc<dyn sapo_printer::infrastructure::integrations::pdf_engine::renderer::RenderStrategy> =
                 Arc::new(BitmapRenderStrategy::new().map_err(|e| e.to_string())?);
-            let print_service: Arc<dyn sapo_printer::application::ports::PrintService> =
+            let print_service: Arc<dyn sapo_printer::application::ports::PrintPort> =
                 Arc::new(DefaultPrintService::new(render_strategy));
 
             // Filesystem temp file manager (owns the per-app temp directory)
-            let temp_files: Arc<dyn TempFileManager> =
+            let temp_files: Arc<dyn TempFilePort> =
                 Arc::new(FilesystemTempFileManager::new(temp_dir.clone()));
 
-            // OS-backed PrinterManager — used both for ONLINE availability checks
+            // OS-backed PrinterPort â€” used both for ONLINE availability checks
             // and for the `list_printers` Tauri command.
-            let printer_manager: Arc<dyn PrinterManager> =
+            let printer_manager: Arc<dyn PrinterPort> =
                 Arc::new(SystemPrinterManager::new());
 
-            // Config provider — JSON file backed
-            let config_provider: Arc<dyn ConfigProvider> =
+            // Config provider â€” JSON file backed
+            let config_provider: Arc<dyn ConfigPort> =
                 Arc::new(JsonFileConfigProvider::new());
 
             // Cast event_store to the application port trait for DI
@@ -667,7 +596,7 @@ fn main() {
             );
 
             let failure_handler = Arc::new(
-                sapo_printer::application::handlers::job_failure_handler::JobFailureHandler::new(
+                sapo_printer::application::handlers::print_job_failed_handler::PrintJobFailedHandler::new(
                     Arc::clone(&job_repo_port),
                     Arc::clone(&event_store_port),
                     Arc::clone(&event_bus),
@@ -685,8 +614,8 @@ fn main() {
             worker.start().expect("Failed to start queue worker");
             println!("Queue worker started successfully");
 
-            // Create MetricsCollector (concrete) and cast to MetricsProvider port
-            let metrics_provider: Arc<dyn MetricsProvider> = Arc::new(MetricsCollector::new(
+            // Create MetricsCollector (concrete) and cast to MetricsPort port
+            let metrics_provider: Arc<dyn MetricsPort> = Arc::new(MetricsCollector::new(
                 pool.clone(),
                 queue_manager.clone(),
             ));
@@ -711,68 +640,92 @@ fn main() {
                 }
             }
 
+            // ==================== Composition root: build use cases ====================
+            // The interface layer (Tauri commands + HTTP handlers) invokes these
+            // pre-built use cases and never touches Domain repositories or
+            // Infrastructure ports directly.
+            use sapo_printer::application::use_cases::{
+                CancelPrintJobUseCase, GetAuditTrailUseCase, GetJobStatusUseCase,
+                GetMetricsUseCase, ListPrintJobsUseCase, ListPrintersUseCase,
+            };
+
+            let create_print_job_uc = Arc::new(CreatePrintJobUseCase {
+                job_repo: Arc::clone(&job_repo_port),
+                event_store: Arc::clone(&event_store_port),
+                event_bus: Arc::clone(&event_bus),
+                config_provider: Arc::clone(&config_provider),
+                printer_manager: Arc::clone(&printer_manager),
+            });
+            let cancel_print_job_uc = Arc::new(CancelPrintJobUseCase::new(
+                Arc::clone(&job_repo_port),
+                Arc::clone(&event_store_port),
+                Arc::clone(&event_bus),
+                Arc::clone(&temp_files),
+            ));
+            let list_print_jobs_uc =
+                Arc::new(ListPrintJobsUseCase::new(Arc::clone(&job_repo_port)));
+            let get_job_status_uc =
+                Arc::new(GetJobStatusUseCase::new(Arc::clone(&job_repo_port)));
+            let get_metrics_uc =
+                Arc::new(GetMetricsUseCase::new(Arc::clone(&metrics_provider)));
+            let get_audit_trail_uc = Arc::new(GetAuditTrailUseCase::new(
+                Arc::clone(&event_store_port),
+                Arc::clone(&secret_manager),
+            ));
+            let list_printers_uc =
+                Arc::new(ListPrintersUseCase::new(Arc::clone(&printer_manager)));
+
             // Register managed state
             app.manage(AppContextState {
-                secret_manager,
-                job_repo,
-                event_store: Arc::clone(&event_store) as Arc<dyn EventStore>,
-                event_bus,
-                queue_manager,
+                create_print_job_uc,
+                cancel_print_job_uc,
+                list_print_jobs_uc,
+                get_job_status_uc,
+                get_metrics_uc,
+                get_audit_trail_uc,
+                list_printers_uc,
                 queue_worker: worker,
-                metrics_provider,
-                config_provider,
-                printer_manager,
-                temp_files,
                 app_handle,
                 install_guard: sapo_printer::infrastructure::platform::updater::update_checker::InstallGuard::new(),
                 last_emitted_update_version: std::sync::Mutex::new(None),
             });
 
             // ==================== HTTPS local server bootstrap ====================
-            // Requires helper service `sapo-printer-agent` đã sinh cert vào data_dir/tls/.
+            // Requires helper service `sapo-printer-agent` Ä‘Ã£ sinh cert vÃ o data_dir/tls/.
             {
                 use sapo_printer::interface::http_server;
                 use sapo_printer::interface::tauri::commands::agent::AgentState;
 
                 let bootstrap_data_dir = data_dir.clone();
-                // Cert dùng chung với cert-manager (ProgramData\SapoPrinter trên Windows).
-                // App đọc cert đã được installer provision + trust, không tự cài CA.
+                // Cert dÃ¹ng chung vá»›i cert-manager (ProgramData\SapoPrinter trÃªn Windows).
+                // App Ä‘á»c cert Ä‘Ã£ Ä‘Æ°á»£c installer provision + trust, khÃ´ng tá»± cÃ i CA.
                 let bootstrap_cert_dir =
                     sapo_printer::infrastructure::platform::tls::shared_cert_dir();
-                let bootstrap_pool = pool.clone();
+                // Táº¡o ApiTokenRepository táº¡i composition root, truyá»n vÃ o bootstrap dÆ°á»›i dáº¡ng
+                // trait object â€” interface layer khÃ´ng phá»¥ thuá»™c vÃ o infrastructure::persistence.
+                let bootstrap_token_manager: Arc<dyn sapo_printer::application::ports::ApiTokenPort> =
+                    sapo_printer::infrastructure::persistence::ApiTokenRepository::new(pool.clone());
                 let bootstrap_ctx = app.state::<AppContextState>();
-                let bootstrap_event_bus = bootstrap_ctx.event_bus.clone();
-                let bootstrap_job_repo = bootstrap_ctx.job_repo.clone()
-                    as Arc<dyn sapo_printer::domain::print_job::PrintJobRepository>;
-                let bootstrap_event_store = bootstrap_ctx.event_store.clone();
-                let bootstrap_config_provider = bootstrap_ctx.config_provider.clone();
-                let bootstrap_printer_manager = bootstrap_ctx.printer_manager.clone();
-                let bootstrap_use_cases = Arc::new(
-                    sapo_printer::application::services::UseCaseFactory::new(
-                        bootstrap_job_repo,
-                        bootstrap_event_store,
-                        bootstrap_event_bus.clone(),
-                        bootstrap_config_provider,
-                        bootstrap_printer_manager,
-                    ),
-                );
+                let bootstrap_event_bus = event_bus.clone();
+                let bootstrap_create_uc = bootstrap_ctx.create_print_job_uc.clone();
+                let bootstrap_get_status_uc = bootstrap_ctx.get_job_status_uc.clone();
                 let app_handle_for_agent = app.handle().clone();
 
                 tauri::async_runtime::spawn(async move {
                     match http_server::start_bootstrap(
                         &bootstrap_cert_dir,
                         &bootstrap_data_dir,
-                        bootstrap_pool,
+                        bootstrap_token_manager,
                         bootstrap_event_bus,
-                        bootstrap_use_cases,
+                        bootstrap_create_uc,
+                        bootstrap_get_status_uc,
                         env!("CARGO_PKG_VERSION"),
-                        "1.0.0",
                     )
                     .await
                     {
                         Ok(result) => {
                             tracing::info!(port = result.port, "HTTPS agent started");
-                            // Wire pair request → Tauri emit → front-end toast.
+                            // Wire pair request â†’ Tauri emit â†’ front-end toast.
                             let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
                             result.token_manager.set_ui_sink(tx).await;
                             let emit_handle = app_handle_for_agent.clone();
@@ -792,7 +745,7 @@ fn main() {
                             });
                         }
                         Err(e) => {
-                            tracing::error!(error = %e, "HTTPS agent bootstrap failed — webapp integration disabled");
+                            tracing::error!(error = %e, "HTTPS agent bootstrap failed â€” webapp integration disabled");
                         }
                     }
                 });
@@ -802,12 +755,12 @@ fn main() {
             app.handle().plugin(tauri_plugin_dialog::init())?;
 
             // ==================== AUTO-UPDATE ====================
-            // Cơ chế check version / auto-update qua tauri-plugin-updater.
-            // NOTE(local-publish): việc phát hành `latest.json` ở LOCAL đã bị gỡ
+            // CÆ¡ cháº¿ check version / auto-update qua tauri-plugin-updater.
+            // NOTE(local-publish): viá»‡c phÃ¡t hÃ nh `latest.json` á»Ÿ LOCAL Ä‘Ã£ bá»‹ gá»¡
             // (`scripts/update-latest-json.mjs` + hook trong `pnpm build` + file
-            // `installers/latest.json`). Sẽ thay bằng CI phát hành theo git tag `v*`
-            // (GitLab CI/CD) tự sinh + upload `latest.json` như release artifact.
-            // Endpoint trong `tauri.conf.json` cần trỏ về GitLab release sau này.
+            // `installers/latest.json`). Sáº½ thay báº±ng CI phÃ¡t hÃ nh theo git tag `v*`
+            // (GitLab CI/CD) tá»± sinh + upload `latest.json` nhÆ° release artifact.
+            // Endpoint trong `tauri.conf.json` cáº§n trá» vá» GitLab release sau nÃ y.
 
             // Register updater plugin
             #[cfg(desktop)]
@@ -820,7 +773,7 @@ fn main() {
             {
                 let update_handle = app.handle().clone();
                 tauri::async_runtime::spawn(async move {
-                    use sapo_printer::interface::tauri::dtos::update::UpdateCheckResponse;
+                    use sapo_printer::application::dto::UpdateCheckResponse;
                     use tauri::Emitter;
 
                     // Startup check
@@ -944,3 +897,5 @@ fn main() {
             std::process::exit(1);
         });
 }
+
+

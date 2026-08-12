@@ -1,8 +1,8 @@
 use super::renderer::RenderStrategy;
 use crate::domain::print_job::PrintJobSettings;
+use crate::infrastructure::errors::InfrastructureError;
 use crate::infrastructure::integrations::pdf_engine::pdfium_loader::load_pdfium;
 use crate::infrastructure::platform::printer_api::backend::GraphicsBackend;
-use crate::shared::errors::InfrastructureError;
 use pdfium_render::prelude::*;
 
 pub struct BitmapRenderStrategy {

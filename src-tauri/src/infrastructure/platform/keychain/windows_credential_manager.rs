@@ -8,9 +8,10 @@ use windows::Win32::Security::Credentials::{
 #[cfg(target_os = "windows")]
 use windows::core::{PCWSTR, PWSTR};
 
-use crate::application::ports::SecretManager;
+use crate::application::errors::Error;
+use crate::application::ports::SecretPort;
 use crate::application::services::secret_key_service::{MAX_SECRET_SIZE, format_key, validate_key};
-use crate::shared::errors::InfrastructureError;
+use crate::infrastructure::errors::InfrastructureError;
 
 #[cfg(target_os = "windows")]
 pub struct WindowsCredentialManager;
@@ -30,8 +31,8 @@ impl WindowsCredentialManager {
 }
 
 #[cfg(target_os = "windows")]
-impl SecretManager for WindowsCredentialManager {
-    fn store(&self, key: &str, value: &str) -> Result<(), InfrastructureError> {
+impl SecretPort for WindowsCredentialManager {
+    fn store(&self, key: &str, value: &str) -> Result<(), Error> {
         tracing::info!(
             target = "sapo_printer::secrets::windows",
             key = key,
@@ -47,7 +48,8 @@ impl SecretManager for WindowsCredentialManager {
                 "Secret value too large: {} bytes (max {} bytes)",
                 value.len(),
                 MAX_SECRET_SIZE
-            )));
+            ))
+            .into());
         }
 
         let target_name = format_key(key);
@@ -58,7 +60,8 @@ impl SecretManager for WindowsCredentialManager {
             return Err(InfrastructureError::SecretStoreError(format!(
                 "Target name too long: {} chars (max 256)",
                 target_name_wide.len()
-            )));
+            ))
+            .into());
         }
 
         let value_bytes = value.as_bytes();
@@ -109,7 +112,7 @@ impl SecretManager for WindowsCredentialManager {
         Ok(())
     }
 
-    fn retrieve(&self, key: &str) -> Result<Option<String>, InfrastructureError> {
+    fn retrieve(&self, key: &str) -> Result<Option<String>, Error> {
         tracing::info!(
             target = "sapo_printer::secrets::windows",
             key = key,
@@ -149,7 +152,8 @@ impl SecretManager for WindowsCredentialManager {
                         return Err(InfrastructureError::SecretRetrieveError(format!(
                             "Credential '{}' has null blob pointer",
                             key
-                        )));
+                        ))
+                        .into());
                     }
 
                     let blob_slice = std::slice::from_raw_parts(
@@ -192,14 +196,15 @@ impl SecretManager for WindowsCredentialManager {
                             "Failed to read credential '{}': {}",
                             key,
                             e.message()
-                        )))
+                        ))
+                        .into())
                     }
                 }
             }
         }
     }
 
-    fn delete(&self, key: &str) -> Result<(), InfrastructureError> {
+    fn delete(&self, key: &str) -> Result<(), Error> {
         let target_name = format_key(key);
         let target_name_wide: Vec<u16> = target_name.encode_utf16().chain(Some(0)).collect();
 
@@ -214,7 +219,8 @@ impl SecretManager for WindowsCredentialManager {
                             "Failed to delete credential '{}': {}",
                             key,
                             e.message()
-                        )))
+                        ))
+                        .into())
                     }
                 }
             }

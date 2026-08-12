@@ -1,4 +1,4 @@
-//! `PrintService` adapter — wires the platform graphics backend to a
+//! `PrintPort` adapter — wires the platform graphics backend to a
 //! `RenderStrategy`.
 //!
 //! Lives under `platform::` because the underlying graphics backend is
@@ -9,13 +9,14 @@
 use std::path::Path;
 use std::sync::Arc;
 
-use crate::application::ports::PrintService;
+use crate::application::errors::Error;
+use crate::application::ports::PrintPort;
 use crate::domain::print_job::PrintJobSettings;
+use crate::infrastructure::errors::InfrastructureError;
 use crate::infrastructure::integrations::pdf_engine::renderer::RenderStrategy;
 use crate::infrastructure::platform::printer_api::backend::GraphicsBackendFactory;
-use crate::shared::errors::InfrastructureError;
 
-/// Default `PrintService` — creates a fresh native graphics backend per job
+/// Default `PrintPort` — creates a fresh native graphics backend per job
 /// and delegates rendering to the injected strategy.
 pub struct DefaultPrintService {
     render_strategy: Arc<dyn RenderStrategy>,
@@ -27,13 +28,13 @@ impl DefaultPrintService {
     }
 }
 
-impl PrintService for DefaultPrintService {
+impl PrintPort for DefaultPrintService {
     fn print(
         &self,
         pdf_path: &str,
         printer_name: &str,
         settings: &PrintJobSettings,
-    ) -> Result<(), InfrastructureError> {
+    ) -> Result<(), Error> {
         let mut backend = GraphicsBackendFactory::create();
         // Document lifecycle (begin_document / end_document) is managed inside
         // render() on a per-page basis so each label is a separate spooler job.
@@ -48,10 +49,11 @@ impl PrintService for DefaultPrintService {
         // reported as printed.
         backend
             .wait_all_printed()
-            .map_err(|reason| InfrastructureError::PrinterError { reason })
+            .map_err(|reason| InfrastructureError::PrinterError { reason })?;
+        Ok(())
     }
 
-    fn save_to_path(&self, pdf_path: &Path, output_path: &str) -> Result<(), InfrastructureError> {
+    fn save_to_path(&self, pdf_path: &Path, output_path: &str) -> Result<(), Error> {
         std::fs::copy(pdf_path, output_path).map_err(|e| InfrastructureError::PrinterError {
             reason: format!("Failed to save PDF to {}: {}", output_path, e),
         })?;

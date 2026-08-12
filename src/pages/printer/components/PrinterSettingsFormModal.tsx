@@ -268,6 +268,7 @@ const PrinterSettingsFormModal = ({ open, onClose, onSaved }: PrinterSettingsFor
         primaryAction={{
           content: "Lưu",
           onAction: handleSubmit(onSubmit),
+          disabled: !isDirty,
         }}
         secondaryActions={[
           {
@@ -359,7 +360,6 @@ const PrinterSettingsFormModal = ({ open, onClose, onSaved }: PrinterSettingsFor
                   onChange={(val?: number) => field.onChange(val ?? 0)}
                   suffix="mm"
                   min={0}
-                  max={100}
                   allowNegative={false}
                   error={errors.marginLeft?.message}
                 />
@@ -376,7 +376,6 @@ const PrinterSettingsFormModal = ({ open, onClose, onSaved }: PrinterSettingsFor
                   onChange={(val?: number) => field.onChange(val ?? 0)}
                   suffix="mm"
                   min={0}
-                  max={100}
                   allowNegative={false}
                   error={errors.marginRight?.message}
                 />
@@ -395,7 +394,6 @@ const PrinterSettingsFormModal = ({ open, onClose, onSaved }: PrinterSettingsFor
                   onChange={(val: number | undefined) => field.onChange(val ?? 0)}
                   suffix="mm"
                   min={0}
-                  max={100}
                   allowNegative={false}
                   error={errors.marginTop?.message}
                 />
@@ -412,7 +410,6 @@ const PrinterSettingsFormModal = ({ open, onClose, onSaved }: PrinterSettingsFor
                   onChange={(val: number | undefined) => field.onChange(val ?? 0)}
                   suffix="mm"
                   min={0}
-                  max={100}
                   allowNegative={false}
                   error={errors.marginBottom?.message}
                 />

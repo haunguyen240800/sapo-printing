@@ -1,6 +1,6 @@
 use crate::domain::print_job::PrintJobSettings;
+use crate::infrastructure::errors::InfrastructureError;
 use crate::infrastructure::platform::printer_api::backend::GraphicsBackend;
-use crate::shared::errors::InfrastructureError;
 
 pub trait RenderStrategy: Send + Sync {
     fn render(

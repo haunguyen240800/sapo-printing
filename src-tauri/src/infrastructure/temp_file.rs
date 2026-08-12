@@ -1,10 +1,11 @@
 use std::path::{Path, PathBuf};
 use std::time::{Duration, SystemTime};
 
-use crate::application::ports::{TempFileHandle, TempFileManager};
+use crate::application::errors::Error;
+use crate::application::ports::{TempFileHandle, TempFilePort};
 use crate::domain::print_job::PrintJobId;
 use crate::infrastructure::configs::db::DbPool;
-use crate::shared::errors::InfrastructureError;
+use crate::infrastructure::errors::InfrastructureError;
 
 pub const DEFAULT_RETENTION_HOURS: u32 = 24;
 
@@ -90,8 +91,8 @@ impl TempFileHandle for TempPdfFile {
     }
 }
 
-impl TempFileManager for FilesystemTempFileManager {
-    fn wrap(&self, path: PathBuf) -> Result<Box<dyn TempFileHandle>, InfrastructureError> {
+impl TempFilePort for FilesystemTempFileManager {
+    fn wrap(&self, path: PathBuf) -> Result<Box<dyn TempFileHandle>, Error> {
         let temp_file = TempPdfFile::try_new(path, &self.temp_dir)?;
         Ok(Box::new(temp_file))
     }

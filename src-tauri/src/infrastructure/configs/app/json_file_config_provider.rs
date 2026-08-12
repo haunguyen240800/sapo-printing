@@ -1,6 +1,6 @@
-use crate::application::ports::{ConfigProvider, PrintConfigSnapshot};
+use crate::application::errors::Error;
+use crate::application::ports::{ConfigPort, PrintConfigSnapshot};
 use crate::infrastructure::configs::app::app_print_config;
-use crate::shared::errors::InfrastructureError;
 
 pub struct JsonFileConfigProvider;
 
@@ -16,8 +16,8 @@ impl Default for JsonFileConfigProvider {
     }
 }
 
-impl ConfigProvider for JsonFileConfigProvider {
-    fn load_print_config(&self) -> Result<Option<PrintConfigSnapshot>, InfrastructureError> {
+impl ConfigPort for JsonFileConfigProvider {
+    fn load_print_config(&self) -> Result<Option<PrintConfigSnapshot>, Error> {
         match app_print_config::load_config() {
             Ok(Some(cfg)) => Ok(Some(PrintConfigSnapshot {
                 printer_id: cfg.printer_name,
@@ -33,7 +33,7 @@ impl ConfigProvider for JsonFileConfigProvider {
                 print_as_image: cfg.print_as_image,
             })),
             Ok(None) => Ok(None),
-            Err(msg) => Err(InfrastructureError::ValidationError(msg)),
+            Err(msg) => Err(Error::InvalidInput(msg)),
         }
     }
 }

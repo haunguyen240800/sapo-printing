@@ -1,4 +1,3 @@
-use crate::domain::common::value_object::ValueObject;
 use crate::domain::print_job::value_objects::PaperSize;
 use serde::{Deserialize, Serialize};
 
@@ -34,5 +33,3 @@ impl Default for PrintJobSettings {
         }
     }
 }
-
-impl ValueObject for PrintJobSettings {}

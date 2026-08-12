@@ -23,7 +23,7 @@ use rcgen::{
 };
 use x509_parser::prelude::*;
 
-use crate::shared::errors::InfrastructureError;
+use crate::infrastructure::errors::InfrastructureError;
 
 const CA_VALIDITY_DAYS: i64 = 3650;
 const SERVER_VALIDITY_DAYS: i64 = 397;

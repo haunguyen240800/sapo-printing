@@ -1,15 +1,15 @@
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use crate::domain::print_job::{
-    PrintJob, PrintJobError, PrintJobId, PrintJobRepository, PrintStatus, PrinterId,
+    PrintJob, PrintJobError, PrintJobId, PrintJobRepository as PrintJobRepositoryPort, PrintStatus, PrinterId,
 };
 use crate::infrastructure::configs::db::DbPool;
 
-pub struct SqlitePrintJobRepository {
+pub struct PrintJobRepository {
     pool: DbPool,
 }
 
-impl SqlitePrintJobRepository {
+impl PrintJobRepository {
     pub fn new(pool: DbPool) -> Self {
         Self { pool }
     }
@@ -21,7 +21,7 @@ impl SqlitePrintJobRepository {
     }
 }
 
-impl PrintJobRepository for SqlitePrintJobRepository {
+impl PrintJobRepositoryPort for PrintJobRepository {
     fn save(&self, job: &PrintJob) -> Result<(), PrintJobError> {
         let acquire_start = std::time::Instant::now();
         let conn = self.acquire()?;
@@ -33,7 +33,7 @@ impl PrintJobRepository for SqlitePrintJobRepository {
                 operation = "save",
                 job_id = %job.id(),
                 pool_wait_secs = acquire_duration.as_secs(),
-                "SqlitePrintJobRepository::save() - SLOW POOL ACQUIRE (waited >5s)"
+                "PrintJobRepository::save() - SLOW POOL ACQUIRE (waited >5s)"
             );
         }
 
@@ -381,3 +381,4 @@ fn completed_at_for_status(status: &PrintStatus, now: i64) -> Option<i64> {
         _ => None,
     }
 }
+

@@ -1,21 +1,21 @@
 use std::sync::Arc;
 
 use crate::application::dto::PrinterDto;
-use crate::application::errors::ApplicationError;
-use crate::application::ports::PrinterManager;
+use crate::application::errors::Error;
+use crate::application::ports::PrinterPort;
 
 pub struct ListPrintersUseCase {
-    printer_manager: Arc<dyn PrinterManager>,
+    printer_manager: Arc<dyn PrinterPort>,
 }
 
 impl ListPrintersUseCase {
-    pub fn new(printer_manager: Arc<dyn PrinterManager>) -> Self {
+    pub fn new(printer_manager: Arc<dyn PrinterPort>) -> Self {
         Self { printer_manager }
     }
 
-    pub fn execute(&self) -> Result<Vec<PrinterDto>, ApplicationError> {
-        self.printer_manager.list().map_err(|e| {
-            ApplicationError::RepositoryError(format!("Failed to list printers: {}", e))
-        })
+    pub fn execute(&self) -> Result<Vec<PrinterDto>, Error> {
+        self.printer_manager
+            .list()
+            .map_err(|e| Error::RepositoryError(format!("Failed to list printers: {}", e)))
     }
 }

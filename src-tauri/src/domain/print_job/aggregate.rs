@@ -1,20 +1,17 @@
 use serde::{Deserialize, Serialize};
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use super::entities::PrintTask;
 use super::errors::PrintJobError;
 use super::events::*;
-use super::value_objects::{PrintJobId, PrintJobSettings, PrintStatus, PrintTaskId, PrinterId};
-use crate::domain::common::aggregate::{AggregateRoot, DomainEvent as CommonDomainEvent};
+use super::value_objects::{PrintJobId, PrintJobSettings, PrintStatus, PrinterId};
 
 pub const MAX_RETRY_COUNT: u32 = 3;
 
 /// PrintJob aggregate root.
 ///
 /// Encapsulates the lifecycle of a print request and enforces all business rules:
-/// state transitions, retry limits, cancellation guards. Owns a single
-/// `PrintTask` entity carrying the document reference (1-1 today; the structure
-/// is set up for future 1-N).
+/// state transitions, retry limits, cancellation guards. Carries the document
+/// reference (`pdf_url`) and the rendered-file location (`output_path`) directly.
 ///
 /// The destination printer is referenced by **identity only** (`PrinterId`),
 /// following the DDD "Reference by Identity" rule for cross-context references.
@@ -24,14 +21,15 @@ pub struct PrintJob {
     id: PrintJobId,
     status: PrintStatus,
     retry_count: u32,
-    task: PrintTask,
+    pdf_url: String,
+    output_path: Option<String>,
     printer_id: PrinterId,
     created_at: i64,
     completed_at: Option<i64>,
     error_message: Option<String>,
     pub settings: PrintJobSettings,
     #[serde(skip)]
-    events: Vec<Box<dyn CommonDomainEvent>>,
+    events: Vec<Box<dyn DomainEvent>>,
 }
 
 impl Clone for PrintJob {
@@ -40,7 +38,8 @@ impl Clone for PrintJob {
             id: self.id.clone(),
             status: self.status.clone(),
             retry_count: self.retry_count,
-            task: self.task.clone(),
+            pdf_url: self.pdf_url.clone(),
+            output_path: self.output_path.clone(),
             printer_id: self.printer_id.clone(),
             created_at: self.created_at,
             completed_at: self.completed_at,
@@ -74,12 +73,12 @@ impl PrintJob {
     ) -> Self {
         let id = PrintJobId::new();
         let created_at = Self::now();
-        let task = PrintTask::new(pdf_url, output_path);
         let mut job = Self {
             id: id.clone(),
             status: PrintStatus::Pending,
             retry_count: 0,
-            task,
+            pdf_url,
+            output_path,
             printer_id: printer_id.clone(),
             created_at,
             completed_at: None,
@@ -89,17 +88,13 @@ impl PrintJob {
         };
         job.push_event(Box::new(PrintJobCreated::new(
             id,
-            job.task.pdf_url().to_string(),
+            job.pdf_url.clone(),
             printer_id,
         )));
         job
     }
 
     /// Reconstructs a PrintJob from persisted state (no events emitted).
-    ///
-    /// Note: `PrintTaskId` is regenerated because task identity is not persisted
-    /// separately today. When 1-N is wired, task ids will be stored alongside
-    /// the rest of the row.
     pub fn reconstruct(
         id: PrintJobId,
         status: PrintStatus,
@@ -112,12 +107,12 @@ impl PrintJob {
         output_path: Option<String>,
         settings: PrintJobSettings,
     ) -> Self {
-        let task = PrintTask::reconstruct(PrintTaskId::new(), pdf_url, output_path);
         Self {
             id,
             status,
             retry_count,
-            task,
+            pdf_url,
+            output_path,
             printer_id,
             created_at,
             completed_at,
@@ -127,7 +122,7 @@ impl PrintJob {
         }
     }
 
-    fn push_event(&mut self, event: Box<dyn CommonDomainEvent>) {
+    fn push_event(&mut self, event: Box<dyn DomainEvent>) {
         self.events.push(event);
     }
 
@@ -254,7 +249,7 @@ impl PrintJob {
 
     /// Drains the internal event buffer, returning all collected events.
     /// Called after persistence (Outbox Pattern).
-    pub fn drain_events(&mut self) -> Vec<Box<dyn CommonDomainEvent>> {
+    pub fn drain_events(&mut self) -> Vec<Box<dyn DomainEvent>> {
         std::mem::take(&mut self.events)
     }
 
@@ -272,16 +267,12 @@ impl PrintJob {
         self.retry_count
     }
 
-    pub fn task(&self) -> &PrintTask {
-        &self.task
-    }
-
     pub fn pdf_url(&self) -> &str {
-        self.task.pdf_url()
+        &self.pdf_url
     }
 
     pub fn output_path(&self) -> Option<&str> {
-        self.task.output_path()
+        self.output_path.as_deref()
     }
 
     pub fn printer_id(&self) -> &PrinterId {
@@ -302,15 +293,5 @@ impl PrintJob {
 
     pub fn pending_events_count(&self) -> usize {
         self.events.len()
-    }
-}
-
-impl AggregateRoot for PrintJob {
-    fn domain_events(&self) -> &[Box<dyn CommonDomainEvent>] {
-        &self.events
-    }
-
-    fn clear_domain_events(&mut self) {
-        self.events.clear();
     }
 }

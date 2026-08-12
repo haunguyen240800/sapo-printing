@@ -2,11 +2,11 @@ use std::path::Path;
 use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use crate::application::services::{ApiTokenManager, UseCaseFactory};
-use crate::infrastructure::configs::db::connection::DbPool;
+use crate::application::ports::event_bus::EventBus;
+use crate::application::ports::ApiTokenPort;
+use crate::application::use_cases::{CreatePrintJobUseCase, GetJobStatusUseCase};
+use crate::infrastructure::errors::InfrastructureError;
 use crate::infrastructure::platform::tls::{cert_generator::CertPaths, cert_watcher};
-use crate::shared::errors::InfrastructureError;
-use crate::shared::event_bus::EventBus;
 
 use super::server::{self, AgentMetadata};
 use super::sse::SseBroadcaster;
@@ -15,7 +15,7 @@ use super::state::HttpServerState;
 pub const JOB_STATUS_EVENTS: &[&str] = &["PrintJobCompleted", "PrintJobFailed"];
 
 pub struct BootstrapResult {
-    pub token_manager: Arc<ApiTokenManager>,
+    pub token_manager: Arc<dyn ApiTokenPort>,
     pub sse_broadcaster: Arc<SseBroadcaster>,
     pub port: u16,
 }
@@ -23,11 +23,11 @@ pub struct BootstrapResult {
 pub async fn start(
     cert_dir: &Path,
     data_dir: &Path,
-    db: DbPool,
+    token_manager: Arc<dyn ApiTokenPort>,
     event_bus: Arc<dyn EventBus>,
-    use_cases: Arc<UseCaseFactory>,
+    create_print_job_uc: Arc<CreatePrintJobUseCase>,
+    get_job_status_uc: Arc<GetJobStatusUseCase>,
     app_version: &'static str,
-    min_webapp_version: &'static str,
 ) -> Result<BootstrapResult, InfrastructureError> {
     // Cert (bao gồm CA) CHỈ được provision bởi cert-manager (elevated) lúc CÀI ĐẶT app.
     // App runtime CHỈ đọc cert ở đây — KHÔNG tự sinh CA/cert. User process không có
@@ -46,14 +46,11 @@ pub async fn start(
             paths.tls_dir().display()
         )));
     }
-
-    let token_manager = ApiTokenManager::new(db);
-
     let broadcaster = SseBroadcaster::new();
     for event_type in JOB_STATUS_EVENTS {
         event_bus.subscribe(
             event_type,
-            broadcaster.clone() as Arc<dyn crate::shared::event_bus::EventHandler>,
+            broadcaster.clone() as Arc<dyn crate::application::ports::event_bus::EventHandler>,
         );
     }
 
@@ -66,10 +63,10 @@ pub async fn start(
         move |port| HttpServerState {
             token_manager: tm_for_state,
             app_version,
-            min_webapp_version,
             agent_port: port,
             sse_broadcaster: Some(broadcaster_for_state),
-            use_cases,
+            create_print_job_uc,
+            get_job_status_uc,
         },
     )
     .await?;

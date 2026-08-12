@@ -3,7 +3,7 @@ use std::sync::OnceLock;
 
 use pdfium_render::prelude::Pdfium;
 
-use crate::shared::errors::InfrastructureError;
+use crate::infrastructure::errors::InfrastructureError;
 
 static PDFIUM_RESOURCE_DIR: OnceLock<PathBuf> = OnceLock::new();
 

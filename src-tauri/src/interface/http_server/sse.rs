@@ -13,7 +13,7 @@ use futures::stream;
 use serde::{Deserialize, Serialize};
 use tokio::sync::broadcast;
 
-use crate::shared::event_bus::EventHandler;
+use crate::application::ports::event_bus::EventHandler;
 
 use super::state::HttpServerState;
 

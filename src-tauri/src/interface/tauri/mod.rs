@@ -2,5 +2,4 @@
 // Future: Tauri commands will be registered here
 
 pub mod commands;
-pub mod dtos;
 pub mod job_status_emitter;

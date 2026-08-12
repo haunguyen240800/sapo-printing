@@ -7,8 +7,6 @@
 
 use serde::{Deserialize, Serialize};
 
-use crate::domain::common::value_object::ValueObject;
-
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "UPPERCASE")]
 pub enum PaperSize {
@@ -97,5 +95,3 @@ impl Default for PaperSize {
         PaperSize::A4
     }
 }
-
-impl ValueObject for PaperSize {}

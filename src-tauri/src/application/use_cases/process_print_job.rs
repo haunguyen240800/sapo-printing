@@ -1,21 +1,18 @@
 use std::sync::Arc;
 
-use crate::application::errors::PipelineError;
-use crate::application::ports::{
-    ConfigProvider, DocumentDownloadService, EventStore, PrintService, TempFileManager,
-};
+use crate::application::errors::Error;
+use crate::application::ports::event_bus::EventBus;
+use crate::application::ports::{ConfigPort, DownloadPort, EventStore, PrintPort, TempFilePort};
 use crate::domain::print_job::{PrintJob, PrintJobRepository, PrintJobSettings};
-use crate::shared::errors::InfrastructureError;
-use crate::shared::event_bus::EventBus;
 
 pub struct ProcessPrintJobUseCase {
     job_repo: Arc<dyn PrintJobRepository>,
     event_store: Arc<dyn EventStore>,
     event_bus: Arc<dyn EventBus>,
-    downloader: Arc<dyn DocumentDownloadService>,
-    print_service: Arc<dyn PrintService>,
-    temp_files: Arc<dyn TempFileManager>,
-    config_provider: Arc<dyn ConfigProvider>,
+    downloader: Arc<dyn DownloadPort>,
+    print_service: Arc<dyn PrintPort>,
+    temp_files: Arc<dyn TempFilePort>,
+    config_provider: Arc<dyn ConfigPort>,
 }
 
 impl ProcessPrintJobUseCase {
@@ -23,10 +20,10 @@ impl ProcessPrintJobUseCase {
         job_repo: Arc<dyn PrintJobRepository>,
         event_store: Arc<dyn EventStore>,
         event_bus: Arc<dyn EventBus>,
-        downloader: Arc<dyn DocumentDownloadService>,
-        print_service: Arc<dyn PrintService>,
-        temp_files: Arc<dyn TempFileManager>,
-        config_provider: Arc<dyn ConfigProvider>,
+        downloader: Arc<dyn DownloadPort>,
+        print_service: Arc<dyn PrintPort>,
+        temp_files: Arc<dyn TempFilePort>,
+        config_provider: Arc<dyn ConfigPort>,
     ) -> Self {
         Self {
             job_repo,
@@ -39,7 +36,7 @@ impl ProcessPrintJobUseCase {
         }
     }
 
-    pub fn execute(&self, mut job: PrintJob) -> Result<(), PipelineError> {
+    pub fn execute(&self, mut job: PrintJob) -> Result<(), Error> {
         job.queue()?;
         if let Err(e) = self.persist_and_publish(&mut job) {
             tracing::error!(
@@ -94,7 +91,7 @@ impl ProcessPrintJobUseCase {
         &self,
         job: &PrintJob,
         temp_file: &dyn crate::application::ports::TempFileHandle,
-    ) -> Result<(), PipelineError> {
+    ) -> Result<(), Error> {
         if let Some(out_path) = job.output_path() {
             tracing::info!(
                 target = "sapo_printer::application::use_case::process_print_job",
@@ -107,22 +104,15 @@ impl ProcessPrintJobUseCase {
             Ok(())
         } else {
             let pdf_path_str = temp_file.path().to_str().ok_or_else(|| {
-                PipelineError::Infrastructure(InfrastructureError::ValidationError(
-                    "Temp PDF path is not valid UTF-8".to_string(),
-                ))
+                Error::InvalidInput("Temp PDF path is not valid UTF-8".to_string())
             })?;
 
-            let settings: PrintJobSettings =
-                self.config_provider
-                    .load_print_config()
-                    .map_err(|e| {
-                        PipelineError::Infrastructure(InfrastructureError::ValidationError(
-                            format!("Failed to load print config: {}", e),
-                        ))
-                    })?
-                    .as_ref()
-                    .map(PrintJobSettings::from)
-                    .unwrap_or_default();
+            let settings: PrintJobSettings = self
+                .config_provider
+                .load_print_config()?
+                .as_ref()
+                .map(PrintJobSettings::from)
+                .unwrap_or_default();
 
             self.print_service
                 .print(pdf_path_str, job.printer_id().as_str(), &settings)?;
@@ -130,16 +120,16 @@ impl ProcessPrintJobUseCase {
         }
     }
 
-    fn persist_and_publish(&self, job: &mut PrintJob) -> Result<(), PipelineError> {
+    fn persist_and_publish(&self, job: &mut PrintJob) -> Result<(), Error> {
         let events = job.drain_events();
 
         self.event_store
             .save_all(job.id().to_string().as_str(), &events)
-            .map_err(|e| PipelineError::Persistence(format!("Failed to save events: {:?}", e)))?;
+            .map_err(|e| Error::RepositoryError(format!("Failed to save events: {:?}", e)))?;
 
         self.job_repo
             .update(job)
-            .map_err(|e| PipelineError::Persistence(format!("Failed to update job: {:?}", e)))?;
+            .map_err(|e| Error::RepositoryError(format!("Failed to update job: {:?}", e)))?;
 
         for event in &events {
             let payload = event.serialize_payload();

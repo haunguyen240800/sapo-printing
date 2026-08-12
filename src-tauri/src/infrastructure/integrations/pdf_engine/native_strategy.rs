@@ -2,7 +2,7 @@ use crate::domain::print_job::services::layout_engine::LayoutEngine;
 use crate::domain::print_job::PrintJobSettings;
 use crate::infrastructure::integrations::pdf_engine::pdfium_loader::load_pdfium;
 use crate::infrastructure::platform::printer_api::backend::{GraphicsBackend, NativeGraphicsContext};
-use crate::shared::errors::InfrastructureError;
+use crate::infrastructure::errors::InfrastructureError;
 use super::renderer::RenderStrategy;
 
 pub struct NativePdfRenderStrategy;

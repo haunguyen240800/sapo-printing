@@ -5,10 +5,11 @@ use std::sync::Mutex;
 
 use reqwest::blocking::Client;
 
-use crate::application::ports::DocumentDownloadService;
+use crate::application::errors::Error;
+use crate::application::ports::DownloadPort;
 use crate::domain::print_job::PrintJobId;
+use crate::infrastructure::errors::InfrastructureError;
 use crate::infrastructure::integrations::network::circuit_breaker::CircuitBreaker;
-use crate::shared::errors::InfrastructureError;
 
 const PDF_HEADER_SIZE: usize = 5;
 const PDF_HEADER_MAGIC: &[u8; PDF_HEADER_SIZE] = b"%PDF-";
@@ -145,8 +146,8 @@ impl Default for ReqwestDownloader {
     }
 }
 
-impl DocumentDownloadService for ReqwestDownloader {
-    fn download(&self, url: &str, job_id: &PrintJobId) -> Result<PathBuf, InfrastructureError> {
+impl DownloadPort for ReqwestDownloader {
+    fn download(&self, url: &str, job_id: &PrintJobId) -> Result<PathBuf, Error> {
         validate_url(url)?;
 
         let mut cb = self.circuit_breaker.lock().map_err(|_| {
@@ -159,7 +160,7 @@ impl DocumentDownloadService for ReqwestDownloader {
             cb.on_success();
         }
 
-        result
+        result.map_err(Error::from)
     }
 }
 
@@ -286,7 +287,7 @@ mod tests {
 
     #[test]
     fn test_reqwest_downloader_trait_object() {
-        let _downloader: std::sync::Arc<dyn DocumentDownloadService> =
+        let _downloader: std::sync::Arc<dyn DownloadPort> =
             std::sync::Arc::new(ReqwestDownloader::new());
     }
 

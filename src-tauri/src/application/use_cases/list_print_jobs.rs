@@ -1,5 +1,5 @@
 use crate::application::dto::{PrintJobDto, PrintJobFilterDto};
-use crate::application::errors::ApplicationError;
+use crate::application::errors::Error;
 use crate::domain::print_job::PrintJobRepository;
 use std::sync::Arc;
 
@@ -12,7 +12,7 @@ impl ListPrintJobsUseCase {
         Self { job_repo }
     }
 
-    pub fn execute(&self, filter: PrintJobFilterDto) -> Result<Vec<PrintJobDto>, ApplicationError> {
+    pub fn execute(&self, filter: PrintJobFilterDto) -> Result<Vec<PrintJobDto>, Error> {
         tracing::info!(
             target = "sapo_printer::application::use_case::list_print_jobs",
             status_filter = ?filter.status,
@@ -26,7 +26,7 @@ impl ListPrintJobsUseCase {
         } else {
             self.job_repo.find_all()
         }
-        .map_err(|e| ApplicationError::RepositoryError(format!("Failed to load jobs: {:?}", e)))?;
+        .map_err(|e| Error::RepositoryError(format!("Failed to load jobs: {:?}", e)))?;
 
         let mut result: Vec<PrintJobDto> = jobs
             .into_iter()
@@ -61,9 +61,7 @@ impl ListPrintJobsUseCase {
     }
 }
 
-fn parse_status(
-    status_str: &str,
-) -> Result<crate::domain::print_job::PrintStatus, ApplicationError> {
+fn parse_status(status_str: &str) -> Result<crate::domain::print_job::PrintStatus, Error> {
     use crate::domain::print_job::PrintStatus;
 
     match status_str {
@@ -75,7 +73,7 @@ fn parse_status(
         "COMPLETED" => Ok(PrintStatus::Completed),
         "FAILED" => Ok(PrintStatus::Failed),
         "CANCELLED" => Ok(PrintStatus::Cancelled),
-        _ => Err(ApplicationError::ValidationError {
+        _ => Err(Error::ValidationError {
             reason: format!("Invalid status: {}", status_str),
         }),
     }

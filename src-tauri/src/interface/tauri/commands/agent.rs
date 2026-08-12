@@ -1,22 +1,19 @@
 use std::sync::Arc;
 
-use serde::Serialize;
 use tauri::State;
 use uuid::Uuid;
 
-use crate::application::services::{ApiTokenManager, PairedOrigin};
+use crate::application::dto::AgentStatusDto;
+
+use crate::application::ports::{ApiTokenPort, PairedOrigin};
 use crate::infrastructure::platform::tls::{ipc::IpcRequest, ipc_client};
 
 pub struct AgentState {
-    pub token_manager: Arc<ApiTokenManager>,
+    pub token_manager: Arc<dyn ApiTokenPort>,
     pub agent_port: u16,
 }
 
-#[derive(Serialize)]
-pub struct AgentStatusDto {
-    pub port: u16,
-    pub paired_count: usize,
-}
+
 
 #[tauri::command]
 pub fn get_agent_port(state: State<'_, AgentState>) -> u16 {

@@ -3,7 +3,7 @@ use std::sync::Arc;
 use serde_json::Value;
 use tauri::{AppHandle, Emitter};
 
-use crate::shared::event_bus::{EventBus, EventHandler};
+use crate::application::ports::event_bus::{EventBus, EventHandler};
 
 const JOB_STATUS_EVENTS: &[&str] = &[
     "PrintJobCreated",

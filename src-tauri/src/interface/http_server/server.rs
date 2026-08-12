@@ -4,8 +4,8 @@ use std::sync::Arc;
 use axum_server::tls_rustls::RustlsConfig;
 use serde::{Deserialize, Serialize};
 
+use crate::infrastructure::errors::InfrastructureError;
 use crate::infrastructure::platform::tls::port_binder::{self, DEFAULT_PORT, FALLBACK_RANGE};
-use crate::shared::errors::InfrastructureError;
 
 use super::router;
 use super::state::HttpServerState;

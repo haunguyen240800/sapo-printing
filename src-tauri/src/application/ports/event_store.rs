@@ -1,5 +1,5 @@
-use crate::domain::common::aggregate::DomainEvent;
 use crate::domain::print_job::PrintJobError;
+use crate::domain::print_job::events::DomainEvent;
 
 #[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub struct StoredEventData {

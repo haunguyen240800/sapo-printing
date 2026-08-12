@@ -1,4 +1,4 @@
-use crate::shared::errors::InfrastructureError;
+use crate::application::errors::Error;
 
 pub const MAX_SECRET_SIZE: usize = 2560;
 
@@ -9,14 +9,12 @@ pub fn format_key(key: &str) -> String {
     format!("com.sapo.printer/{}", key)
 }
 
-pub fn validate_key(key: &str) -> Result<(), InfrastructureError> {
+pub fn validate_key(key: &str) -> Result<(), Error> {
     if key.is_empty() {
-        return Err(InfrastructureError::SecretStoreError(
-            "Key cannot be empty".to_string(),
-        ));
+        return Err(Error::InvalidInput("Key cannot be empty".to_string()));
     }
     if key.contains('/') {
-        return Err(InfrastructureError::SecretStoreError(format!(
+        return Err(Error::InvalidInput(format!(
             "Key cannot contain '/' character: {}",
             key
         )));

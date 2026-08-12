@@ -1,5 +1,4 @@
 use super::domain_event::{DomainEvent, now_unix};
-use crate::domain::common::aggregate::DomainEvent as CommonDomainEvent;
 use crate::domain::print_job::value_objects::PrintJobId;
 use serde::{Deserialize, Serialize};
 
@@ -21,17 +20,6 @@ macro_rules! define_status_event {
         }
 
         impl DomainEvent for $name {
-            fn event_type(&self) -> &str {
-                $event_type
-            }
-            fn aggregate_id(&self) -> &PrintJobId {
-                &self.job_id
-            }
-            fn serialize_payload(&self) -> String {
-                serde_json::to_string(self).unwrap_or_else(|_| "{}".to_string())
-            }
-        }
-        impl CommonDomainEvent for $name {
             fn event_name(&self) -> &'static str {
                 $event_type
             }

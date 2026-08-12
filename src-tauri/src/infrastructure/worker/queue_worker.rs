@@ -3,16 +3,16 @@ use std::sync::{Arc, Mutex};
 use std::thread::{self, JoinHandle};
 use std::time::Duration;
 
-use crate::application::handlers::job_failure_handler::JobFailureHandler;
-use crate::application::ports::QueueManager;
+use crate::application::handlers::print_job_failed_handler::PrintJobFailedHandler;
+use crate::application::ports::QueuePort;
 use crate::application::use_cases::ProcessPrintJobUseCase;
 use crate::domain::print_job::PrintJobRepository;
 
 pub struct QueueWorker {
-    queue_manager: Arc<dyn QueueManager>,
+    queue_manager: Arc<dyn QueuePort>,
     job_repo: Arc<dyn PrintJobRepository>,
     process_use_case: Arc<ProcessPrintJobUseCase>,
-    failure_handler: Arc<JobFailureHandler>,
+    failure_handler: Arc<PrintJobFailedHandler>,
 
     running: Arc<AtomicBool>,
     thread_handle: Mutex<Option<JoinHandle<()>>>,
@@ -20,10 +20,10 @@ pub struct QueueWorker {
 
 impl QueueWorker {
     pub fn new(
-        queue_manager: Arc<dyn QueueManager>,
+        queue_manager: Arc<dyn QueuePort>,
         job_repo: Arc<dyn PrintJobRepository>,
         process_use_case: Arc<ProcessPrintJobUseCase>,
-        failure_handler: Arc<JobFailureHandler>,
+        failure_handler: Arc<PrintJobFailedHandler>,
     ) -> Self {
         Self {
             queue_manager,
@@ -79,10 +79,10 @@ impl QueueWorker {
     }
 
     fn process_loop(
-        queue_manager: Arc<dyn QueueManager>,
+        queue_manager: Arc<dyn QueuePort>,
         job_repo: Arc<dyn PrintJobRepository>,
         process_use_case: Arc<ProcessPrintJobUseCase>,
-        failure_handler: Arc<JobFailureHandler>,
+        failure_handler: Arc<PrintJobFailedHandler>,
         running: Arc<AtomicBool>,
     ) {
         const POLL_INTERVAL_MS: u64 = 500;
