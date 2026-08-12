@@ -171,7 +171,12 @@ mod macos_impl {
         fn uninstall_ca(&self) -> Result<(), InfrastructureError> {
             // security delete-certificate -c "Sapo Printer Local CA" /Library/Keychains/System.keychain
             let output = Command::new("security")
-                .args(["delete-certificate", "-c", CA_FRIENDLY_NAME, SYSTEM_KEYCHAIN])
+                .args([
+                    "delete-certificate",
+                    "-c",
+                    CA_FRIENDLY_NAME,
+                    SYSTEM_KEYCHAIN,
+                ])
                 .output()
                 .map_err(|e| {
                     InfrastructureError::TlsError(format!("security spawn failed: {}", e))
@@ -192,12 +197,7 @@ mod macos_impl {
         fn is_ca_trusted(&self) -> bool {
             // security find-certificate -c "Sapo Printer Local CA" /Library/Keychains/System.keychain
             Command::new("security")
-                .args([
-                    "find-certificate",
-                    "-c",
-                    CA_FRIENDLY_NAME,
-                    SYSTEM_KEYCHAIN,
-                ])
+                .args(["find-certificate", "-c", CA_FRIENDLY_NAME, SYSTEM_KEYCHAIN])
                 .output()
                 .map(|o| o.status.success())
                 .unwrap_or(false)

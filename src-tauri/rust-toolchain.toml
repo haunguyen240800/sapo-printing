@@ -1,0 +1,6 @@
+# Pins the toolchain channel and guarantees the formatting/linting components
+# are installed for every developer and CI runner.
+[toolchain]
+channel = "stable"
+components = ["rustfmt", "clippy"]
+profile = "minimal"

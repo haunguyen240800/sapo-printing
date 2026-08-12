@@ -1,6 +1,6 @@
 use hmac::{Hmac, Mac};
-use rand::rngs::OsRng;
 use rand::RngCore;
+use rand::rngs::OsRng;
 use rusqlite::Connection;
 use serde::{Deserialize, Serialize};
 use sha2::Sha256;
@@ -22,14 +22,11 @@ pub fn compute_hmac(
     payload: &str,
     timestamp: i64,
 ) -> Result<String, PrintJobError> {
-    let message = format!(
-        "{aggregate_id}|{sequence_number}|{event_type}|{payload}|{timestamp}"
-    );
+    let message = format!("{aggregate_id}|{sequence_number}|{event_type}|{payload}|{timestamp}");
     let key_bytes = hex::decode(secret_key).map_err(|e| PrintJobError::RepositoryError {
         reason: format!("Invalid hex in signing key: {}", e),
     })?;
-    let mut mac = HmacSha256::new_from_slice(&key_bytes)
-        .expect("HMAC can take key of any size");
+    let mut mac = HmacSha256::new_from_slice(&key_bytes).expect("HMAC can take key of any size");
     mac.update(message.as_bytes());
     Ok(hex::encode(mac.finalize().into_bytes()))
 }
@@ -181,7 +178,14 @@ impl SqliteEventStore {
             .duration_since(UNIX_EPOCH)
             .unwrap()
             .as_secs() as i64;
-        let hmac_value = compute_hmac(&signing_key, aggregate_id, seq, event.event_name(), &payload, now)?;
+        let hmac_value = compute_hmac(
+            &signing_key,
+            aggregate_id,
+            seq,
+            event.event_name(),
+            &payload,
+            now,
+        )?;
 
         tx.execute(
             "INSERT INTO events (aggregate_id, sequence_number, event_type, payload, timestamp, hmac)
@@ -249,20 +253,18 @@ impl SqliteEventStore {
 
         let base_seq = self.next_sequence_number_inner(&*conn, aggregate_id)?;
 
-        let tx = conn
-            .transaction()
-            .map_err(|e| {
-                tracing::error!(
-                    target = "sapo_printer::repository::event_store",
-                    operation = "save_all",
-                    aggregate_id = aggregate_id,
-                    error = %e,
-                    "Failed to begin transaction"
-                );
-                PrintJobError::RepositoryError {
-                    reason: format!("Failed to begin transaction: {}", e),
-                }
-            })?;
+        let tx = conn.transaction().map_err(|e| {
+            tracing::error!(
+                target = "sapo_printer::repository::event_store",
+                operation = "save_all",
+                aggregate_id = aggregate_id,
+                error = %e,
+                "Failed to begin transaction"
+            );
+            PrintJobError::RepositoryError {
+                reason: format!("Failed to begin transaction: {}", e),
+            }
+        })?;
 
         for (i, event) in events.iter().enumerate() {
             let seq = base_seq + i as i64;
@@ -272,7 +274,14 @@ impl SqliteEventStore {
                 .unwrap()
                 .as_secs() as i64;
 
-            let hmac_value = compute_hmac(&signing_key, aggregate_id, seq, event.event_name(), &payload, now)?;
+            let hmac_value = compute_hmac(
+                &signing_key,
+                aggregate_id,
+                seq,
+                event.event_name(),
+                &payload,
+                now,
+            )?;
 
             if let Err(e) = tx.execute(
                 "INSERT INTO events (aggregate_id, sequence_number, event_type, payload, timestamp, hmac)

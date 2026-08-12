@@ -1,10 +1,10 @@
 //! REST handlers.
 
 use axum::{
+    Json,
     extract::{Path, State},
     http::{HeaderMap, StatusCode},
     response::{IntoResponse, Response},
-    Json,
 };
 use serde::{Deserialize, Serialize};
 
@@ -24,7 +24,11 @@ pub struct ApiError {
 }
 
 impl ApiError {
-    pub fn new(status: StatusCode, code: &'static str, message: impl Into<String>) -> ApiErrorResponse {
+    pub fn new(
+        status: StatusCode,
+        code: &'static str,
+        message: impl Into<String>,
+    ) -> ApiErrorResponse {
         ApiErrorResponse {
             status,
             body: ApiError {
@@ -76,9 +80,19 @@ pub async fn pair(
     let origin = headers
         .get("origin")
         .and_then(|v| v.to_str().ok())
-        .ok_or_else(|| ApiError::new(StatusCode::BAD_REQUEST, "missing_origin", "missing Origin header"))?;
+        .ok_or_else(|| {
+            ApiError::new(
+                StatusCode::BAD_REQUEST,
+                "missing_origin",
+                "missing Origin header",
+            )
+        })?;
     if !cors::check(origin) {
-        return Err(ApiError::new(StatusCode::FORBIDDEN, "origin_not_allowed", "origin not allowed"));
+        return Err(ApiError::new(
+            StatusCode::FORBIDDEN,
+            "origin_not_allowed",
+            "origin not allowed",
+        ));
     }
 
     match state.token_manager.request_pair(origin).await {
@@ -86,7 +100,11 @@ pub async fn pair(
             api_token: resp.api_token,
             expires_at: resp.expires_at,
         })),
-        Err(PairError::UserDenied) => Err(ApiError::new(StatusCode::FORBIDDEN, "user_denied", "user denied")),
+        Err(PairError::UserDenied) => Err(ApiError::new(
+            StatusCode::FORBIDDEN,
+            "user_denied",
+            "user denied",
+        )),
         Err(PairError::Timeout) => Err(ApiError::new(
             StatusCode::REQUEST_TIMEOUT,
             "pair_timeout",
@@ -97,7 +115,11 @@ pub async fn pair(
             "no_ui_subscriber",
             "no ui subscriber to receive pair request",
         )),
-        Err(e) => Err(ApiError::new(StatusCode::INTERNAL_SERVER_ERROR, "internal", e.to_string())),
+        Err(e) => Err(ApiError::new(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "internal",
+            e.to_string(),
+        )),
     }
 }
 
@@ -124,10 +146,20 @@ pub async fn create_job(
 
     let result = tokio::task::spawn_blocking(move || use_case.execute(request))
         .await
-        .map_err(|e| ApiError::new(StatusCode::INTERNAL_SERVER_ERROR, "task_join", e.to_string()))?;
+        .map_err(|e| {
+            ApiError::new(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "task_join",
+                e.to_string(),
+            )
+        })?;
 
     result
-        .map(|id| Json(CreateJobResponse { job_id: id.to_string() }))
+        .map(|id| {
+            Json(CreateJobResponse {
+                job_id: id.to_string(),
+            })
+        })
         .map_err(map_app_error)
 }
 
@@ -138,12 +170,22 @@ pub async fn get_job(
     let use_case = state.use_cases.get_job_status();
     let result = tokio::task::spawn_blocking(move || use_case.execute(&id))
         .await
-        .map_err(|e| ApiError::new(StatusCode::INTERNAL_SERVER_ERROR, "task_join", e.to_string()))?;
+        .map_err(|e| {
+            ApiError::new(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "task_join",
+                e.to_string(),
+            )
+        })?;
 
     let dto = result.map_err(map_app_error)?;
-    serde_json::to_value(dto)
-        .map(Json)
-        .map_err(|e| ApiError::new(StatusCode::INTERNAL_SERVER_ERROR, "serialize_error", e.to_string()))
+    serde_json::to_value(dto).map(Json).map_err(|e| {
+        ApiError::new(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "serialize_error",
+            e.to_string(),
+        )
+    })
 }
 
 fn map_app_error(e: ApplicationError) -> ApiErrorResponse {
@@ -156,15 +198,33 @@ fn map_app_error(e: ApplicationError) -> ApiErrorResponse {
         ApplicationError::PrinterNotAvailable { .. } => {
             (StatusCode::BAD_REQUEST, "printer_not_available")
         }
-        ApplicationError::CannotCancelCompleted { .. } => (StatusCode::CONFLICT, "cannot_cancel_completed"),
-        ApplicationError::CannotCancelFailed { .. } => (StatusCode::CONFLICT, "cannot_cancel_failed"),
-        ApplicationError::CannotCancelCancelled { .. } => (StatusCode::CONFLICT, "cannot_cancel_cancelled"),
-        ApplicationError::DomainRuleViolation { .. } => (StatusCode::UNPROCESSABLE_ENTITY, "domain_rule_violation"),
-        ApplicationError::RepositoryError(_) => (StatusCode::INTERNAL_SERVER_ERROR, "repository_error"),
-        ApplicationError::EventStoreError { .. } => (StatusCode::INTERNAL_SERVER_ERROR, "event_store_error"),
-        ApplicationError::EventBusError { .. } => (StatusCode::INTERNAL_SERVER_ERROR, "event_bus_error"),
-        ApplicationError::MetricsError { .. } => (StatusCode::INTERNAL_SERVER_ERROR, "metrics_error"),
-        ApplicationError::PrintJobError(_) => (StatusCode::INTERNAL_SERVER_ERROR, "print_job_error"),
+        ApplicationError::CannotCancelCompleted { .. } => {
+            (StatusCode::CONFLICT, "cannot_cancel_completed")
+        }
+        ApplicationError::CannotCancelFailed { .. } => {
+            (StatusCode::CONFLICT, "cannot_cancel_failed")
+        }
+        ApplicationError::CannotCancelCancelled { .. } => {
+            (StatusCode::CONFLICT, "cannot_cancel_cancelled")
+        }
+        ApplicationError::DomainRuleViolation { .. } => {
+            (StatusCode::UNPROCESSABLE_ENTITY, "domain_rule_violation")
+        }
+        ApplicationError::RepositoryError(_) => {
+            (StatusCode::INTERNAL_SERVER_ERROR, "repository_error")
+        }
+        ApplicationError::EventStoreError { .. } => {
+            (StatusCode::INTERNAL_SERVER_ERROR, "event_store_error")
+        }
+        ApplicationError::EventBusError { .. } => {
+            (StatusCode::INTERNAL_SERVER_ERROR, "event_bus_error")
+        }
+        ApplicationError::MetricsError { .. } => {
+            (StatusCode::INTERNAL_SERVER_ERROR, "metrics_error")
+        }
+        ApplicationError::PrintJobError(_) => {
+            (StatusCode::INTERNAL_SERVER_ERROR, "print_job_error")
+        }
     };
     ApiError::new(status, code, e.to_string())
 }

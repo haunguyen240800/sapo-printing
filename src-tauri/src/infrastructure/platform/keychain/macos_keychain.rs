@@ -17,8 +17,8 @@ use security_framework::passwords::{
     delete_generic_password, get_generic_password, set_generic_password,
 };
 
-use crate::application::services::secret_key_service::{validate_key, MAX_SECRET_SIZE};
 use crate::application::ports::SecretManager;
+use crate::application::services::secret_key_service::{MAX_SECRET_SIZE, validate_key};
 use crate::shared::errors::InfrastructureError;
 
 /// macOS Keychain implementation using Keychain Services.

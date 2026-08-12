@@ -4,10 +4,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use crate::application::services::{ApiTokenManager, UseCaseFactory};
 use crate::infrastructure::configs::db::connection::DbPool;
-use crate::infrastructure::platform::tls::{
-    cert_generator::CertPaths,
-    cert_watcher,
-};
+use crate::infrastructure::platform::tls::{cert_generator::CertPaths, cert_watcher};
 use crate::shared::errors::InfrastructureError;
 use crate::shared::event_bus::EventBus;
 
@@ -15,10 +12,7 @@ use super::server::{self, AgentMetadata};
 use super::sse::SseBroadcaster;
 use super::state::HttpServerState;
 
-pub const JOB_STATUS_EVENTS: &[&str] = &[
-    "PrintJobCompleted",
-    "PrintJobFailed",
-];
+pub const JOB_STATUS_EVENTS: &[&str] = &["PrintJobCompleted", "PrintJobFailed"];
 
 pub struct BootstrapResult {
     pub token_manager: Arc<ApiTokenManager>,
@@ -57,7 +51,10 @@ pub async fn start(
 
     let broadcaster = SseBroadcaster::new();
     for event_type in JOB_STATUS_EVENTS {
-        event_bus.subscribe(event_type, broadcaster.clone() as Arc<dyn crate::shared::event_bus::EventHandler>);
+        event_bus.subscribe(
+            event_type,
+            broadcaster.clone() as Arc<dyn crate::shared::event_bus::EventHandler>,
+        );
     }
 
     let broadcaster_for_state = broadcaster.clone();
@@ -75,7 +72,7 @@ pub async fn start(
             use_cases,
         },
     )
-        .await?;
+    .await?;
 
     AgentMetadata {
         port: handles.port,
@@ -85,7 +82,7 @@ pub async fn start(
             .map(|d| d.as_secs() as i64)
             .unwrap_or(0),
     }
-        .write(data_dir)?;
+    .write(data_dir)?;
 
     cert_watcher::spawn_watcher(
         paths.server_pem.clone(),

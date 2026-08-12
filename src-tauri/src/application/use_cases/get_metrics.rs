@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
-use crate::application::ports::{MetricsProvider, MetricsSnapshot};
 use crate::application::errors::ApplicationError;
+use crate::application::ports::{MetricsProvider, MetricsSnapshot};
 
 pub struct GetMetricsUseCase {
     metrics: Arc<dyn MetricsProvider>,
@@ -19,9 +19,12 @@ impl GetMetricsUseCase {
         );
 
         let start = std::time::Instant::now();
-        let snapshot = self.metrics.collect().map_err(|e| ApplicationError::MetricsError {
-            reason: format!("Failed to collect metrics: {}", e),
-        })?;
+        let snapshot = self
+            .metrics
+            .collect()
+            .map_err(|e| ApplicationError::MetricsError {
+                reason: format!("Failed to collect metrics: {}", e),
+            })?;
         let duration = start.elapsed();
 
         tracing::info!(

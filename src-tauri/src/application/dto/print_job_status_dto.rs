@@ -8,9 +8,9 @@ use crate::domain::print_job::PrintStatus;
 pub struct PrintJobStatusDto {
     pub job_id: String,
     pub status: String,
-    pub progress: u8,       // 0-100%
+    pub progress: u8, // 0-100%
     pub printer_name: String,
-    pub created_at: i64,    // Unix timestamp
+    pub created_at: i64, // Unix timestamp
     pub updated_at: Option<i64>,
     pub completed_at: Option<i64>,
     pub error_message: Option<String>,
@@ -45,5 +45,3 @@ pub fn status_to_string(status: &PrintStatus) -> String {
         PrintStatus::Cancelled => "CANCELLED".to_string(),
     }
 }
-
-

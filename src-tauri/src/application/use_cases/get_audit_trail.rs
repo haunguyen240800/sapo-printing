@@ -3,7 +3,7 @@ use std::sync::Arc;
 use crate::application::errors::ApplicationError;
 use crate::application::ports::{EventStore, SecretManager, StoredEventData};
 use crate::application::services::audit_service::{
-    get_audit_trail, verify_audit_trail_integrity, verify_event_integrity, AuditIntegrityReport,
+    AuditIntegrityReport, get_audit_trail, verify_audit_trail_integrity, verify_event_integrity,
 };
 
 pub struct AuditTrailResult {
@@ -18,10 +18,7 @@ pub struct GetAuditTrailUseCase {
 }
 
 impl GetAuditTrailUseCase {
-    pub fn new(
-        event_store: Arc<dyn EventStore>,
-        secret_manager: Arc<dyn SecretManager>,
-    ) -> Self {
+    pub fn new(event_store: Arc<dyn EventStore>, secret_manager: Arc<dyn SecretManager>) -> Self {
         Self {
             event_store,
             secret_manager,
@@ -60,10 +57,7 @@ impl GetAuditTrailUseCase {
             .secret_manager
             .retrieve("hmac_signing_key")
             .map_err(|e| {
-                ApplicationError::RepositoryError(format!(
-                    "Failed to retrieve signing key: {}",
-                    e
-                ))
+                ApplicationError::RepositoryError(format!("Failed to retrieve signing key: {}", e))
             })?
             .ok_or_else(|| {
                 ApplicationError::RepositoryError(
@@ -71,19 +65,14 @@ impl GetAuditTrailUseCase {
                 )
             })?;
 
-        let report =
-            verify_audit_trail_integrity(&self.event_store, job_id, &signing_key).map_err(
-                |e| ApplicationError::EventStoreError {
-                    reason: format!("Failed to verify audit trail: {}", e),
-                },
-            )?;
+        let report = verify_audit_trail_integrity(&self.event_store, job_id, &signing_key)
+            .map_err(|e| ApplicationError::EventStoreError {
+                reason: format!("Failed to verify audit trail: {}", e),
+            })?;
 
         let event_hmac_valid: Vec<bool> = events
             .iter()
-            .map(|event| {
-                verify_event_integrity(event, &signing_key)
-                    .unwrap_or(false)
-            })
+            .map(|event| verify_event_integrity(event, &signing_key).unwrap_or(false))
             .collect();
 
         tracing::debug!(

@@ -1,9 +1,9 @@
-use pdfium_render::prelude::*;
+use super::renderer::RenderStrategy;
 use crate::domain::print_job::PrintJobSettings;
 use crate::infrastructure::integrations::pdf_engine::pdfium_loader::load_pdfium;
 use crate::infrastructure::platform::printer_api::backend::GraphicsBackend;
 use crate::shared::errors::InfrastructureError;
-use super::renderer::RenderStrategy;
+use pdfium_render::prelude::*;
 
 pub struct BitmapRenderStrategy {
     pdfium: Pdfium,
@@ -11,7 +11,9 @@ pub struct BitmapRenderStrategy {
 
 impl BitmapRenderStrategy {
     pub fn new() -> Result<Self, InfrastructureError> {
-        Ok(Self { pdfium: load_pdfium()? })
+        Ok(Self {
+            pdfium: load_pdfium()?,
+        })
     }
 }
 
@@ -23,7 +25,8 @@ impl RenderStrategy for BitmapRenderStrategy {
         settings: &PrintJobSettings,
         backend: &mut dyn GraphicsBackend,
     ) -> Result<(), InfrastructureError> {
-        let document = self.pdfium
+        let document = self
+            .pdfium
             .load_pdf_from_file(pdf_path, None)
             .map_err(InfrastructureError::from)?;
 
@@ -72,13 +75,20 @@ impl RenderStrategy for BitmapRenderStrategy {
                 let mr = (settings.margin_right as f32 * mm_to_px_x) as i32;
                 let mt = (settings.margin_top as f32 * mm_to_px_y) as i32;
                 let mb = (settings.margin_bottom as f32 * mm_to_px_y) as i32;
-                ((dc_w as i32 - ml - mr).max(1), (dc_h as i32 - mt - mb).max(1), ml, mt)
+                (
+                    (dc_w as i32 - ml - mr).max(1),
+                    (dc_h as i32 - mt - mb).max(1),
+                    ml,
+                    mt,
+                )
             } else {
                 // Fallback: derive from settings paper size (macOS/Linux)
                 let pw = (paper_w_mm * dpi_x_f / 25.4
-                    - (settings.margin_left + settings.margin_right) as f32 * dpi_x_f / 25.4) as i32;
+                    - (settings.margin_left + settings.margin_right) as f32 * dpi_x_f / 25.4)
+                    as i32;
                 let ph = (paper_h_mm * dpi_y_f / 25.4
-                    - (settings.margin_top + settings.margin_bottom) as f32 * dpi_y_f / 25.4) as i32;
+                    - (settings.margin_top + settings.margin_bottom) as f32 * dpi_y_f / 25.4)
+                    as i32;
                 let ml = (settings.margin_left as f32 * dpi_x_f / 25.4) as i32;
                 let mt = (settings.margin_top as f32 * dpi_y_f / 25.4) as i32;
                 (pw.max(1), ph.max(1), ml, mt)
@@ -92,8 +102,7 @@ impl RenderStrategy for BitmapRenderStrategy {
             let pdf_h_px = height_pts * dpi_y_f / 72.0;
 
             // Scale uniformly to fit inside the printable area
-            let scale = (printable_w as f32 / pdf_w_px)
-                .min(printable_h as f32 / pdf_h_px);
+            let scale = (printable_w as f32 / pdf_w_px).min(printable_h as f32 / pdf_h_px);
 
             let render_w = (pdf_w_px * scale) as i32;
             let render_h = (pdf_h_px * scale) as i32;
@@ -119,7 +128,14 @@ impl RenderStrategy for BitmapRenderStrategy {
                 .render_with_config(&render_config)
                 .map_err(InfrastructureError::from)
                 .map(|bitmap| {
-                    backend.draw_bitmap(&bitmap.as_raw_bytes(), pos_x, pos_y, out_w as u32, out_h as u32, 32);
+                    backend.draw_bitmap(
+                        &bitmap.as_raw_bytes(),
+                        pos_x,
+                        pos_y,
+                        out_w as u32,
+                        out_h as u32,
+                        32,
+                    );
                 });
 
             backend.end_page();
@@ -127,7 +143,9 @@ impl RenderStrategy for BitmapRenderStrategy {
             match render_result {
                 // Page rendered: close the document and block until the spooler
                 // confirms it actually printed. A spooler failure fails the job.
-                Ok(()) => backend.end_document().map_err(InfrastructureError::RenderError)?,
+                Ok(()) => backend
+                    .end_document()
+                    .map_err(InfrastructureError::RenderError)?,
                 // Render failed: discard the spooler document (no point printing a
                 // blank page) and propagate the original error.
                 Err(e) => {

@@ -78,8 +78,8 @@ fn win32_status_to_str(status: u32) -> &'static str {
 
 #[cfg(target_os = "windows")]
 fn get_default_printer_name() -> String {
-    use windows::core::PWSTR;
     use windows::Win32::Graphics::Printing::GetDefaultPrinterW;
+    use windows::core::PWSTR;
 
     unsafe {
         let mut size: u32 = 0;
@@ -100,8 +100,8 @@ fn get_default_printer_name() -> String {
 
 #[cfg(target_os = "windows")]
 fn list_os_printers() -> Result<Vec<PrinterDto>, InfrastructureError> {
-    use windows::core::PCWSTR;
     use windows::Win32::Graphics::Printing::{EnumPrintersW, PRINTER_INFO_2W};
+    use windows::core::PCWSTR;
 
     // PRINTER_ENUM_LOCAL(2) | PRINTER_ENUM_CONNECTIONS(4)
     const FLAGS: u32 = 2 | 4;
@@ -112,7 +112,14 @@ fn list_os_printers() -> Result<Vec<PrinterDto>, InfrastructureError> {
 
     // First call — always returns false with ERROR_INSUFFICIENT_BUFFER; used only to get size.
     unsafe {
-        EnumPrintersW(FLAGS, PCWSTR::null(), 2, None, &mut bytes_needed, &mut count);
+        let _ = EnumPrintersW(
+            FLAGS,
+            PCWSTR::null(),
+            2,
+            None,
+            &mut bytes_needed,
+            &mut count,
+        );
     }
 
     if bytes_needed == 0 {
@@ -130,9 +137,9 @@ fn list_os_printers() -> Result<Vec<PrinterDto>, InfrastructureError> {
             &mut bytes_needed,
             &mut count,
         )
-            .map_err(|e| InfrastructureError::PrinterError {
-                reason: format!("EnumPrintersW failed: {}", e),
-            })?;
+        .map_err(|e| InfrastructureError::PrinterError {
+            reason: format!("EnumPrintersW failed: {}", e),
+        })?;
     }
 
     let mut printers = Vec::new();
@@ -141,10 +148,7 @@ fn list_os_printers() -> Result<Vec<PrinterDto>, InfrastructureError> {
         // SAFETY: EnumPrintersW packed `count` PRINTER_INFO_2W structs at the start of `buffer`;
         // string pointers inside each struct point into the tail of the same buffer.
         let info = unsafe {
-            &*(buffer
-                .as_ptr()
-                .add(i * std::mem::size_of::<PRINTER_INFO_2W>())
-                as *const PRINTER_INFO_2W)
+            &*(buffer.as_ptr().add(i * size_of::<PRINTER_INFO_2W>()) as *const PRINTER_INFO_2W)
         };
 
         if info.pPrinterName.is_null() {

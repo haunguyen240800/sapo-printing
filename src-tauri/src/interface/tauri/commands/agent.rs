@@ -24,9 +24,7 @@ pub fn get_agent_port(state: State<'_, AgentState>) -> u16 {
 }
 
 #[tauri::command]
-pub fn get_paired_origins(
-    state: State<'_, AgentState>,
-) -> Result<Vec<PairedOrigin>, String> {
+pub fn get_paired_origins(state: State<'_, AgentState>) -> Result<Vec<PairedOrigin>, String> {
     state.token_manager.list_paired().map_err(|e| e.to_string())
 }
 

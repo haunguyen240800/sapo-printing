@@ -2,9 +2,7 @@ use std::sync::Arc;
 
 use crate::application::dto::create_print_job_request::CreatePrintJobRequest;
 use crate::application::errors::ApplicationError;
-use crate::application::ports::{
-    ConfigProvider, EventStore, PrinterAvailability, PrinterManager,
-};
+use crate::application::ports::{ConfigProvider, EventStore, PrinterAvailability, PrinterManager};
 use crate::domain::print_job::{
     PrintJob, PrintJobId, PrintJobRepository, PrintJobSettings, PrinterId,
 };
@@ -76,12 +74,8 @@ impl CreatePrintJobUseCase {
             "Creating job for URL"
         );
 
-        let mut job = PrintJob::new_with_output_path(
-            request.pdf_url.clone(),
-            printer_id,
-            settings,
-            None,
-        );
+        let mut job =
+            PrintJob::new_with_output_path(request.pdf_url.clone(), printer_id, settings, None);
         let events = job.drain_events();
 
         self.job_repo.save(&job).map_err(|e| {
@@ -105,7 +99,10 @@ impl CreatePrintJobUseCase {
             })?;
 
         for event in &events {
-            if let Err(e) = self.event_bus.publish(event.event_name(), &event.serialize_payload()) {
+            if let Err(e) = self
+                .event_bus
+                .publish(event.event_name(), &event.serialize_payload())
+            {
                 tracing::warn!(
                     target = "sapo_printer::application::use_case::create_print_job",
                     event_type = %event.event_name(),
@@ -125,4 +122,3 @@ impl CreatePrintJobUseCase {
         Ok(job_id)
     }
 }
-

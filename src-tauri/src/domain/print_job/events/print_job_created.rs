@@ -1,6 +1,6 @@
-use super::domain_event::{now_unix, DomainEvent};
+use super::domain_event::{DomainEvent, now_unix};
 use crate::domain::common::aggregate::DomainEvent as CommonDomainEvent;
-use crate::domain::print_job::value_objects::{PrinterId, PrintJobId};
+use crate::domain::print_job::value_objects::{PrintJobId, PrinterId};
 use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Debug, Serialize, Deserialize)]

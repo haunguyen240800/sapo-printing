@@ -1,15 +1,15 @@
 #[cfg(target_os = "windows")]
-use windows::core::{PCWSTR, PWSTR};
-#[cfg(target_os = "windows")]
 use windows::Win32::Foundation::ERROR_NOT_FOUND;
 #[cfg(target_os = "windows")]
 use windows::Win32::Security::Credentials::{
-    CredDeleteW, CredFree, CredReadW, CredWriteW, CREDENTIALW, CRED_FLAGS,
-    CRED_PERSIST_LOCAL_MACHINE, CRED_TYPE_GENERIC,
+    CRED_FLAGS, CRED_PERSIST_LOCAL_MACHINE, CRED_TYPE_GENERIC, CREDENTIALW, CredDeleteW, CredFree,
+    CredReadW, CredWriteW,
 };
+#[cfg(target_os = "windows")]
+use windows::core::{PCWSTR, PWSTR};
 
 use crate::application::ports::SecretManager;
-use crate::application::services::secret_key_service::{format_key, validate_key, MAX_SECRET_SIZE};
+use crate::application::services::secret_key_service::{MAX_SECRET_SIZE, format_key, validate_key};
 use crate::shared::errors::InfrastructureError;
 
 #[cfg(target_os = "windows")]

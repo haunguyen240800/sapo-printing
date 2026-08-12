@@ -19,10 +19,7 @@ pub trait EventStore: Send + Sync {
         events: &[Box<dyn DomainEvent>],
     ) -> Result<(), PrintJobError>;
 
-    fn find_by_aggregate(
-        &self,
-        aggregate_id: &str,
-    ) -> Result<Vec<StoredEventData>, PrintJobError>;
+    fn find_by_aggregate(&self, aggregate_id: &str) -> Result<Vec<StoredEventData>, PrintJobError>;
 
     fn delete_events_before(&self, cutoff_timestamp: i64) -> Result<u64, PrintJobError>;
 }

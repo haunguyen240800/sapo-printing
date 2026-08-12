@@ -2,9 +2,8 @@ use std::sync::Arc;
 
 use crate::application::ports::{EventStore, SecretManager};
 use crate::domain::print_job::PrintJobRepository;
-use crate::infrastructure::configs::db::{run_migrations, DbPool};
+use crate::infrastructure::configs::db::{DbPool, run_migrations};
 use crate::infrastructure::persistence::{SqliteEventStore, SqlitePrintJobRepository};
-
 
 use crate::shared::errors::InfrastructureError;
 use crate::shared::event_bus::EventBus;
@@ -64,7 +63,8 @@ impl AppContext {
         #[cfg(target_os = "linux")]
         let secret_manager: Arc<dyn SecretManager> = Arc::new(LinuxSecretService::new()?);
 
-        let event_store: Arc<dyn EventStore> = Arc::new(SqliteEventStore::new(pool.clone(), secret_manager.clone()));
+        let event_store: Arc<dyn EventStore> =
+            Arc::new(SqliteEventStore::new(pool.clone(), secret_manager.clone()));
 
         // EventBus: in-memory for now (future: outbox pattern with persistent queue)
         let event_bus: Arc<dyn EventBus> =
@@ -73,7 +73,6 @@ impl AppContext {
         // PrinterManager and StrategySelector — platform-specific, wired in later stories
         // The following is unreachable due to todo!() above — placeholder for when PrinterManager is wired in
         #[allow(unreachable_code)]
-
         #[allow(unreachable_code)]
         Ok(Self {
             job_repo,

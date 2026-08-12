@@ -26,7 +26,7 @@ impl ListPrintJobsUseCase {
         } else {
             self.job_repo.find_all()
         }
-            .map_err(|e| ApplicationError::RepositoryError(format!("Failed to load jobs: {:?}", e)))?;
+        .map_err(|e| ApplicationError::RepositoryError(format!("Failed to load jobs: {:?}", e)))?;
 
         let mut result: Vec<PrintJobDto> = jobs
             .into_iter()
@@ -80,5 +80,3 @@ fn parse_status(
         }),
     }
 }
-
-

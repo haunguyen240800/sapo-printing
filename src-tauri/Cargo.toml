@@ -1,10 +1,30 @@
 [package]
-name = "sapo-printer"
+name = "sapo-printer-pro-max"
 version = "0.1.0"
-description = "SAPO Printer - Clean Architecture Desktop Application"
+description = "SAPO Printer"
 authors = ["SAPO Team"]
-edition = "2021"
+edition = "2024"
 default-run = "sapo-printer"
+
+# Lint policy applied to the whole crate (both binaries). Levels are "warn" so
+# they surface in `cargo build`/`cargo clippy` without breaking local builds;
+# enforce with `-D warnings` in CI. Fine-tuning of individual lints lives in
+# clippy.toml.
+[lints.rust]
+rust_2018_idioms = { level = "warn", priority = -1 }
+unused_qualifications = "warn"
+
+[lints.clippy]
+all = { level = "warn", priority = -1 }
+# Keep debug/placeholder artifacts out of shipped code.
+dbg_macro = "warn"
+todo = "warn"
+unimplemented = "warn"
+print_stdout = "warn"
+print_stderr = "warn"
+# Prefer explicit error handling over panics in non-test code
+# (tests are exempted via clippy.toml).
+unwrap_used = "warn"
 
 [build-dependencies]
 tauri-build = { version = "2.0", features = [] }

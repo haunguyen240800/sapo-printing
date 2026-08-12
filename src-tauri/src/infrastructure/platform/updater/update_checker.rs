@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 use tauri::AppHandle;
 use tauri_plugin_updater::UpdaterExt;
 
@@ -61,7 +61,9 @@ impl Default for InstallGuard {
 }
 
 pub async fn check_for_updates(app: &AppHandle) -> Result<UpdateCheckResult, String> {
-    let updater = app.updater().map_err(|e| format!("Updater init failed: {}", e))?;
+    let updater = app
+        .updater()
+        .map_err(|e| format!("Updater init failed: {}", e))?;
     match updater.check().await {
         Ok(Some(update)) => Ok(UpdateCheckResult {
             update_available: true,
@@ -78,7 +80,9 @@ pub async fn check_for_updates(app: &AppHandle) -> Result<UpdateCheckResult, Str
 }
 
 pub async fn download_and_install_update(app: &AppHandle) -> Result<(), String> {
-    let updater = app.updater().map_err(|e| format!("Updater init failed: {}", e))?;
+    let updater = app
+        .updater()
+        .map_err(|e| format!("Updater init failed: {}", e))?;
     let update = updater
         .check()
         .await

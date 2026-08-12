@@ -7,6 +7,7 @@ import { ConfirmModal } from "../../components/ConfirmModal";
 import { type JobStatusPayload, onJobStatusChanged } from "../../services/event-listener";
 import { getMetrics, getPrinterConfig, type MetricsDto } from "../../services/printer-service";
 import type { PrinterConfigDto } from "../../types";
+import { showErrorToast } from "../../utils/toast";
 
 import AppInfoModal from "./components/AppInfoModal";
 import { Overview } from "./components/Overview";
@@ -23,29 +24,21 @@ export default function PrinterPage() {
   const removalTimeoutsRef = useRef<Map<string, number>>(new Map());
 
   const loadPrinterConfig = useCallback(async () => {
-    try {
-      const config = await getPrinterConfig();
-      setPrinterConfig(config);
-    } catch (err) {
-      console.error("Failed to load printer config:", err);
-    }
+    const config = await getPrinterConfig();
+    setPrinterConfig(config);
   }, []);
 
   const loadMetrics = useCallback(async () => {
-    try {
-      const result = await getMetrics();
-      setMetrics(result);
-    } catch (err) {
-      console.error("Failed to load metrics:", err);
-    }
+    const result = await getMetrics();
+    setMetrics(result);
   }, []);
 
   useEffect(() => {
     let isMounted = true;
     const removalTimeouts = removalTimeoutsRef.current;
 
-    loadPrinterConfig().catch((err) => console.error("loadPrinterConfig error:", err));
-    loadMetrics().catch((err) => console.error("loadMetrics error:", err));
+    loadPrinterConfig().catch(() => showErrorToast("Không tải được cấu hình máy in"));
+    loadMetrics();
 
     // Start polling metrics every 5 seconds (reduced frequency to avoid deadlock)
     metricsIntervalRef.current = window.setInterval(() => {
@@ -82,8 +75,7 @@ export default function PrinterPage() {
             removalTimeouts.set(payload.job_id, timeoutId);
           }
         });
-      } catch (err) {
-        console.error("setupEventListener error:", err);
+      } catch {
         return () => {};
       }
     };
@@ -98,7 +90,7 @@ export default function PrinterPage() {
       // Clear pending job-removal timeouts
       removalTimeouts.forEach((id) => clearTimeout(id));
       removalTimeouts.clear();
-      listenerPromise.then((unlisten) => unlisten()).catch((err) => console.error("cleanup error:", err));
+      listenerPromise.then((unlisten) => unlisten()).catch(() => {});
     };
   }, [loadPrinterConfig, loadMetrics]);
 

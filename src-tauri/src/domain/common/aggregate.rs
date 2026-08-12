@@ -1,6 +1,8 @@
 pub trait DomainEvent: Send + Sync + std::fmt::Debug {
     fn event_name(&self) -> &'static str;
-    fn serialize_payload(&self) -> String { "{}".to_string() }
+    fn serialize_payload(&self) -> String {
+        "{}".to_string()
+    }
 }
 
 pub trait AggregateRoot {

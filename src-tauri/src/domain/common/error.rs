@@ -7,7 +7,9 @@ pub struct DomainValidationException {
 
 impl DomainValidationException {
     pub fn new(message: impl Into<String>) -> Self {
-        Self { message: message.into() }
+        Self {
+            message: message.into(),
+        }
     }
 }
 

@@ -20,8 +20,9 @@ pub struct AgentMetadata {
 impl AgentMetadata {
     pub fn write(&self, data_dir: &Path) -> Result<(), InfrastructureError> {
         let path = data_dir.join("agent.json");
-        let json = serde_json::to_string_pretty(self)
-            .map_err(|e| InfrastructureError::SerializationError(format!("serialize agent.json: {}", e)))?;
+        let json = serde_json::to_string_pretty(self).map_err(|e| {
+            InfrastructureError::SerializationError(format!("serialize agent.json: {}", e))
+        })?;
         std::fs::write(&path, json)?;
         Ok(())
     }
@@ -29,8 +30,9 @@ impl AgentMetadata {
     pub fn read(data_dir: &Path) -> Result<Self, InfrastructureError> {
         let path = data_dir.join("agent.json");
         let s = std::fs::read_to_string(&path)?;
-        serde_json::from_str(&s)
-            .map_err(|e| InfrastructureError::SerializationError(format!("parse agent.json: {}", e)))
+        serde_json::from_str(&s).map_err(|e| {
+            InfrastructureError::SerializationError(format!("parse agent.json: {}", e))
+        })
     }
 }
 
@@ -76,10 +78,7 @@ pub async fn start_server(
     })
 }
 
-async fn load_rustls_config(
-    cert: &Path,
-    key: &Path,
-) -> Result<RustlsConfig, InfrastructureError> {
+async fn load_rustls_config(cert: &Path, key: &Path) -> Result<RustlsConfig, InfrastructureError> {
     RustlsConfig::from_pem_file(cert, key)
         .await
         .map_err(|e| InfrastructureError::TlsError(format!("load TLS pem: {}", e)))

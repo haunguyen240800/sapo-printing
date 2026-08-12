@@ -1,0 +1,21 @@
+# Clippy configuration for the sapo-printer backend.
+# Lint *levels* live in Cargo.toml under [lints.clippy]; this file tunes the
+# behaviour of individual lints. Run: `cargo clippy --all-targets`.
+
+# Minimum supported Rust version — lets clippy avoid suggesting newer APIs.
+msrv = "1.97"
+
+# Complexity thresholds (defaults are stricter; relaxed slightly for a
+# domain-rich codebase while still flagging genuinely unwieldy code).
+cognitive-complexity-threshold = 30
+too-many-arguments-threshold = 8
+type-complexity-threshold = 250
+too-many-lines-threshold = 150
+
+# Treat these as literals that don't need underscore separators.
+literal-representation-threshold = 16384
+
+# Allow the common `expect`/`unwrap` in test code without extra annotations.
+allow-unwrap-in-tests = true
+allow-expect-in-tests = true
+allow-panic-in-tests = true

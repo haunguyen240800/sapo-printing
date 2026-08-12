@@ -5,7 +5,14 @@ pub enum NativeGraphicsContext {
 }
 
 pub trait GraphicsBackend {
-    fn begin_document(&mut self, printer_name: &str, doc_name: &str, output_path: Option<&str>, paper_width_mm: f32, paper_height_mm: f32) -> Result<(), String>;
+    fn begin_document(
+        &mut self,
+        printer_name: &str,
+        doc_name: &str,
+        output_path: Option<&str>,
+        paper_width_mm: f32,
+        paper_height_mm: f32,
+    ) -> Result<(), String>;
     fn get_dpi(&self) -> (u32, u32);
     fn get_page_pixels(&self) -> (u32, u32);
     fn begin_page(&mut self);

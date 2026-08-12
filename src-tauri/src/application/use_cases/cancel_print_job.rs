@@ -52,21 +52,15 @@ impl CancelPrintJobUseCase {
             })?;
 
         job.cancel().map_err(|e| match e {
-            PrintJobError::CannotCancelCompleted => {
-                ApplicationError::CannotCancelCompleted {
-                    job_id: job_id.to_string(),
-                }
-            }
-            PrintJobError::CannotCancelFailed => {
-                ApplicationError::CannotCancelFailed {
-                    job_id: job_id.to_string(),
-                }
-            }
-            PrintJobError::CannotCancelCancelled => {
-                ApplicationError::CannotCancelCancelled {
-                    job_id: job_id.to_string(),
-                }
-            }
+            PrintJobError::CannotCancelCompleted => ApplicationError::CannotCancelCompleted {
+                job_id: job_id.to_string(),
+            },
+            PrintJobError::CannotCancelFailed => ApplicationError::CannotCancelFailed {
+                job_id: job_id.to_string(),
+            },
+            PrintJobError::CannotCancelCancelled => ApplicationError::CannotCancelCancelled {
+                job_id: job_id.to_string(),
+            },
             _ => ApplicationError::DomainRuleViolation {
                 reason: format!("{:?}", e),
             },

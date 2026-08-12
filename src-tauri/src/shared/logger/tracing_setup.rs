@@ -2,12 +2,7 @@ use std::path::{Path, PathBuf};
 use std::sync::Once;
 
 use tracing_appender::rolling::{RollingFileAppender, Rotation};
-use tracing_subscriber::{
-    fmt,
-    layer::SubscriberExt,
-    util::SubscriberInitExt,
-    EnvFilter,
-};
+use tracing_subscriber::{EnvFilter, fmt, layer::SubscriberExt, util::SubscriberInitExt};
 
 /// Retention period for log files (days).
 const LOG_RETENTION_DAYS: u64 = 7;
@@ -40,13 +35,11 @@ pub enum InitLoggingResult {
 pub fn init_logging() -> InitLoggingResult {
     let mut result = InitLoggingResult::AlreadyInitialized;
 
-    INIT_ONCE.call_once(|| {
-        match init_logging_inner() {
-            Ok(()) => result = InitLoggingResult::Ok,
-            Err(e) => {
-                eprintln!("[sapo-printer] Failed to initialize logging: {}", e);
-                result = InitLoggingResult::Failed;
-            }
+    INIT_ONCE.call_once(|| match init_logging_inner() {
+        Ok(()) => result = InitLoggingResult::Ok,
+        Err(e) => {
+            eprintln!("[sapo-printer] Failed to initialize logging: {}", e);
+            result = InitLoggingResult::Failed;
         }
     });
 
@@ -59,9 +52,8 @@ fn init_logging_inner() -> Result<(), String> {
     let log_dir = get_log_dir()?;
 
     // Ensure log directory exists
-    std::fs::create_dir_all(&log_dir).map_err(|e| {
-        format!("Failed to create log directory {:?}: {}", log_dir, e)
-    })?;
+    std::fs::create_dir_all(&log_dir)
+        .map_err(|e| format!("Failed to create log directory {:?}: {}", log_dir, e))?;
 
     // Perform startup cleanup of old log files (before subscriber is active)
     cleanup_old_logs(&log_dir, LOG_RETENTION_DAYS);
@@ -80,8 +72,7 @@ fn init_logging_inner() -> Result<(), String> {
         .with_ansi(false);
 
     // Console layer (human-readable, compact format)
-    let env_filter = EnvFilter::try_from_default_env()
-        .unwrap_or_else(|_| EnvFilter::new("info"));
+    let env_filter = EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info"));
 
     let console_layer = fmt::layer()
         .with_target(true)
@@ -140,10 +131,11 @@ fn cleanup_old_logs(log_dir: &Path, retention_days: u64) {
                             chrono::NaiveDate::parse_from_str(date_str.as_str(), "%Y-%m-%d")
                         {
                             let file_datetime = file_date.and_hms_opt(0, 0, 0).unwrap();
-                            let file_utc = chrono::DateTime::<chrono::Utc>::from_naive_utc_and_offset(
-                                file_datetime,
-                                chrono::Utc,
-                            );
+                            let file_utc =
+                                chrono::DateTime::<chrono::Utc>::from_naive_utc_and_offset(
+                                    file_datetime,
+                                    chrono::Utc,
+                                );
 
                             if file_utc < cutoff {
                                 match std::fs::remove_file(&path) {
@@ -231,13 +223,22 @@ mod tests {
         cleanup_old_logs(&temp_dir, 7);
 
         // Today's file should still exist
-        assert!(today_path.exists(), "Today's log file should not be deleted");
+        assert!(
+            today_path.exists(),
+            "Today's log file should not be deleted"
+        );
 
         // Old file should be deleted
-        assert!(!old_path.exists(), "Old log file (>7 days) should be deleted");
+        assert!(
+            !old_path.exists(),
+            "Old log file (>7 days) should be deleted"
+        );
 
         // Other file should still exist
-        assert!(other_path.exists(), "Non-matching files should not be deleted");
+        assert!(
+            other_path.exists(),
+            "Non-matching files should not be deleted"
+        );
 
         // Cleanup temp dir
         let _ = fs::remove_dir_all(&temp_dir);
@@ -294,19 +295,14 @@ mod tests {
     /// when real operations are executed.
     #[test]
     fn test_integration_log_file_created_with_json_entries() {
-        use tracing_subscriber::{
-            fmt,
-            layer::SubscriberExt,
-            util::SubscriberInitExt,
-            EnvFilter,
-        };
+        use tracing_subscriber::{EnvFilter, fmt, layer::SubscriberExt, util::SubscriberInitExt};
 
         let temp_dir = std::env::temp_dir().join("sapo_integration_log_test");
         let _ = fs::remove_dir_all(&temp_dir);
         fs::create_dir_all(&temp_dir).unwrap();
 
         // Create a file appender targeting the temp directory
-        let file_appender = tracing_appender::rolling::RollingFileAppender::builder()
+        let file_appender = RollingFileAppender::builder()
             .rotation(Rotation::DAILY)
             .filename_prefix("app.log")
             .build(&temp_dir)
@@ -318,7 +314,12 @@ mod tests {
         // since each test runs in its own thread and the global one is set once)
         let _guard = tracing_subscriber::registry()
             .with(filter)
-            .with(fmt::layer().json().with_writer(file_appender).with_ansi(false))
+            .with(
+                fmt::layer()
+                    .json()
+                    .with_writer(file_appender)
+                    .with_ansi(false),
+            )
             .set_default();
 
         // Emit some test events

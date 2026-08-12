@@ -19,8 +19,8 @@
 #[cfg(target_os = "linux")]
 use secret_service::{Collection, EncryptionType, SecretService};
 
-use crate::application::services::secret_key_service::{validate_key, MAX_SECRET_SIZE};
 use crate::application::ports::SecretManager;
+use crate::application::services::secret_key_service::{MAX_SECRET_SIZE, validate_key};
 use crate::shared::errors::InfrastructureError;
 
 /// Linux Secret Service implementation using D-Bus API.

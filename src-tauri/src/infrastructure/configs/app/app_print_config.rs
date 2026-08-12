@@ -64,8 +64,7 @@ pub fn save_config(config: &AppPrintConfig) -> Result<(), String> {
     let json = serde_json::to_string_pretty(config)
         .map_err(|e| format!("Không thể serialize cấu hình: {}", e))?;
 
-    fs::write(&config_path, json)
-        .map_err(|e| format!("Không thể lưu cấu hình: {}", e))?;
+    fs::write(&config_path, json).map_err(|e| format!("Không thể lưu cấu hình: {}", e))?;
 
     tracing::info!(
         target = "sapo_printer::config_store",
@@ -88,11 +87,11 @@ pub fn load_config() -> Result<Option<AppPrintConfig>, String> {
         return Ok(None);
     }
 
-    let json = fs::read_to_string(&config_path)
-        .map_err(|e| format!("Không thể đọc cấu hình: {}", e))?;
+    let json =
+        fs::read_to_string(&config_path).map_err(|e| format!("Không thể đọc cấu hình: {}", e))?;
 
-    let config: AppPrintConfig = serde_json::from_str(&json)
-        .map_err(|e| format!("Không thể parse cấu hình: {}", e))?;
+    let config: AppPrintConfig =
+        serde_json::from_str(&json).map_err(|e| format!("Không thể parse cấu hình: {}", e))?;
 
     tracing::info!(
         target = "sapo_printer::config_store",

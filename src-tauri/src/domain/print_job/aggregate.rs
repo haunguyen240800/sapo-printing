@@ -4,7 +4,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use super::entities::PrintTask;
 use super::errors::PrintJobError;
 use super::events::*;
-use super::value_objects::{PrinterId, PrintJobId, PrintJobSettings, PrintStatus, PrintTaskId};
+use super::value_objects::{PrintJobId, PrintJobSettings, PrintStatus, PrintTaskId, PrinterId};
 use crate::domain::common::aggregate::{AggregateRoot, DomainEvent as CommonDomainEvent};
 
 pub const MAX_RETRY_COUNT: u32 = 3;

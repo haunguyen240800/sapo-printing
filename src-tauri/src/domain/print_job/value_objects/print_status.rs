@@ -138,7 +138,10 @@ mod tests {
     fn test_to_db_string_uses_upper_case() {
         assert_eq!(PrintStatus::Pending.to_db_string(), "PENDING");
         assert_eq!(PrintStatus::Queued.to_db_string(), "QUEUED");
-        assert_eq!(PrintStatus::SubmittedToQueue.to_db_string(), "SUBMITTED_TO_QUEUE");
+        assert_eq!(
+            PrintStatus::SubmittedToQueue.to_db_string(),
+            "SUBMITTED_TO_QUEUE"
+        );
         assert_eq!(PrintStatus::Failed.to_db_string(), "FAILED");
     }
 

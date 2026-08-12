@@ -1,0 +1,33 @@
+# Rustfmt configuration — formatting conventions for the sapo-printer backend.
+# Only stable options are active so `cargo fmt` works on the stable toolchain.
+# Run: `cargo fmt` (format) / `cargo fmt -- --check` (verify in CI).
+
+edition = "2024"
+max_width = 100
+tab_spaces = 4
+newline_style = "Unix"
+use_small_heuristics = "Default"
+
+# Imports & modules
+reorder_imports = true
+reorder_modules = true
+
+# Idiomatic shorthands
+use_field_init_shorthand = true
+use_try_shorthand = true
+
+# Trailing commas / punctuation
+match_block_trailing_comma = false
+remove_nested_parens = true
+
+# --- Nightly-only options (enable with `cargo +nightly fmt`) --------------
+# These give a stricter, more consistent style but are ignored on stable.
+# Uncomment if the team adopts a nightly rustfmt in CI:
+#
+# group_imports = "StdExternalCrate"
+# imports_granularity = "Crate"
+# wrap_comments = true
+# comment_width = 100
+# format_code_in_doc_comments = true
+# normalize_comments = true
+# normalize_doc_attributes = true

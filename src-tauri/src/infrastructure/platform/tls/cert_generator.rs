@@ -15,12 +15,12 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::time::{Duration, SystemTime};
 
+use ::time::Duration as TimeDuration;
+use ::time::OffsetDateTime;
 use rcgen::{
     BasicConstraints, CertificateParams, DistinguishedName, DnType, IsCa, KeyPair, KeyUsagePurpose,
     SanType,
 };
-use ::time::Duration as TimeDuration;
-use ::time::OffsetDateTime;
 use x509_parser::prelude::*;
 
 use crate::shared::errors::InfrastructureError;
@@ -70,9 +70,8 @@ impl CertGenerator {
     /// Idempotent: nếu file tồn tại và còn valid → load; nếu không → sinh mới.
     pub fn load_or_generate(data_dir: &Path) -> Result<CertBundle, InfrastructureError> {
         let paths = CertPaths::under(data_dir);
-        fs::create_dir_all(paths.tls_dir()).map_err(|e| {
-            InfrastructureError::TlsError(format!("Cannot create tls dir: {}", e))
-        })?;
+        fs::create_dir_all(paths.tls_dir())
+            .map_err(|e| InfrastructureError::TlsError(format!("Cannot create tls dir: {}", e)))?;
 
         if paths_all_exist(&paths) {
             match Self::load_from_disk(&paths) {
@@ -340,7 +339,7 @@ mod tests {
         let dns: Vec<_> = ext
             .iter()
             .filter_map(|n| match n {
-                x509_parser::extensions::GeneralName::DNSName(s) => Some(*s),
+                GeneralName::DNSName(s) => Some(*s),
                 _ => None,
             })
             .collect();

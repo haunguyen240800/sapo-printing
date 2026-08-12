@@ -24,21 +24,24 @@ impl MetricsCollector {
     }
 
     pub fn collect_metrics(&self) -> Result<MetricsSnapshot, InfrastructureError> {
-        let current_depth = self
-            .queue_manager
-            .queue_depth()
-            .map_err(|e| InfrastructureError::DatabaseError {
-                reason: format!("Failed to read queue depth: {}", e),
-            })?;
+        let current_depth =
+            self.queue_manager
+                .queue_depth()
+                .map_err(|e| InfrastructureError::DatabaseError {
+                    reason: format!("Failed to read queue depth: {}", e),
+                })?;
 
         tracing::debug!(
             target = "sapo_printer::metrics",
             "MetricsCollector: acquiring pooled connection"
         );
 
-        let conn = self.pool.get().map_err(|e| InfrastructureError::DatabaseError {
-            reason: format!("Failed to acquire DB connection: {}", e),
-        })?;
+        let conn = self
+            .pool
+            .get()
+            .map_err(|e| InfrastructureError::DatabaseError {
+                reason: format!("Failed to acquire DB connection: {}", e),
+            })?;
 
         tracing::debug!(
             target = "sapo_printer::metrics",
@@ -266,11 +269,11 @@ impl MetricsCollector {
                 reason: format!("Failed to prepare durations query: {}", e),
             })?;
 
-        let rows = stmt
-            .query_map([], |row| row.get(0))
-            .map_err(|e| InfrastructureError::DatabaseError {
+        let rows = stmt.query_map([], |row| row.get(0)).map_err(|e| {
+            InfrastructureError::DatabaseError {
                 reason: format!("Failed to query durations: {}", e),
-            })?;
+            }
+        })?;
 
         let mut durations = Vec::new();
         for row in rows {
@@ -374,8 +377,7 @@ mod tests {
             .unwrap()
             .as_nanos();
         let thread_id = std::thread::current().id();
-        let path = std::env::temp_dir()
-            .join(format!("sapo_metrics_test_{nanos}_{thread_id:?}.db"));
+        let path = std::env::temp_dir().join(format!("sapo_metrics_test_{nanos}_{thread_id:?}.db"));
         let pool = DbPool::new(path.to_str().unwrap()).unwrap();
         {
             let mut conn = pool.get().unwrap();
@@ -421,15 +423,78 @@ mod tests {
         let (pool, qm) = setup();
         {
             let c = pool.get().unwrap();
-            insert_job_with_status(&c, "00000000-0000-0000-0000-000000000001", "HP", "PENDING", 1000, None);
-            insert_job_with_status(&c, "00000000-0000-0000-0000-000000000002", "HP", "QUEUED", 1000, None);
-            insert_job_with_status(&c, "00000000-0000-0000-0000-000000000003", "HP", "DOWNLOADED", 1000, None);
-            insert_job_with_status(&c, "00000000-0000-0000-0000-000000000004", "HP", "SUBMITTED_TO_QUEUE", 1000, None);
-            insert_job_with_status(&c, "00000000-0000-0000-0000-000000000005", "HP", "PRINTING", 1000, None);
-            insert_job_with_status(&c, "00000000-0000-0000-0000-000000000006", "HP", "COMPLETED", 1000, Some(2000));
-            insert_job_with_status(&c, "00000000-0000-0000-0000-000000000007", "HP", "COMPLETED", 1000, Some(2000));
-            insert_job_with_status(&c, "00000000-0000-0000-0000-000000000008", "HP", "FAILED", 1000, None);
-            insert_job_with_status(&c, "00000000-0000-0000-0000-000000000009", "HP", "CANCELLED", 1000, None);
+            insert_job_with_status(
+                &c,
+                "00000000-0000-0000-0000-000000000001",
+                "HP",
+                "PENDING",
+                1000,
+                None,
+            );
+            insert_job_with_status(
+                &c,
+                "00000000-0000-0000-0000-000000000002",
+                "HP",
+                "QUEUED",
+                1000,
+                None,
+            );
+            insert_job_with_status(
+                &c,
+                "00000000-0000-0000-0000-000000000003",
+                "HP",
+                "DOWNLOADED",
+                1000,
+                None,
+            );
+            insert_job_with_status(
+                &c,
+                "00000000-0000-0000-0000-000000000004",
+                "HP",
+                "SUBMITTED_TO_QUEUE",
+                1000,
+                None,
+            );
+            insert_job_with_status(
+                &c,
+                "00000000-0000-0000-0000-000000000005",
+                "HP",
+                "PRINTING",
+                1000,
+                None,
+            );
+            insert_job_with_status(
+                &c,
+                "00000000-0000-0000-0000-000000000006",
+                "HP",
+                "COMPLETED",
+                1000,
+                Some(2000),
+            );
+            insert_job_with_status(
+                &c,
+                "00000000-0000-0000-0000-000000000007",
+                "HP",
+                "COMPLETED",
+                1000,
+                Some(2000),
+            );
+            insert_job_with_status(
+                &c,
+                "00000000-0000-0000-0000-000000000008",
+                "HP",
+                "FAILED",
+                1000,
+                None,
+            );
+            insert_job_with_status(
+                &c,
+                "00000000-0000-0000-0000-000000000009",
+                "HP",
+                "CANCELLED",
+                1000,
+                None,
+            );
         }
 
         let collector = MetricsCollector::new(pool.clone(), qm);
@@ -474,8 +539,22 @@ mod tests {
         let (pool, qm) = setup();
         {
             let c = pool.get().unwrap();
-            insert_job_with_status(&c, "00000000-0000-0000-0000-000000000001", "HP", "PENDING", 1000, None);
-            insert_job_with_status(&c, "00000000-0000-0000-0000-000000000002", "HP", "QUEUED", 1000, None);
+            insert_job_with_status(
+                &c,
+                "00000000-0000-0000-0000-000000000001",
+                "HP",
+                "PENDING",
+                1000,
+                None,
+            );
+            insert_job_with_status(
+                &c,
+                "00000000-0000-0000-0000-000000000002",
+                "HP",
+                "QUEUED",
+                1000,
+                None,
+            );
         }
 
         let collector = MetricsCollector::new(pool.clone(), qm);
@@ -523,11 +602,46 @@ mod tests {
         let (pool, qm) = setup();
         {
             let c = pool.get().unwrap();
-            insert_job_with_status(&c, "00000000-0000-0000-0000-000000000001", "PrinterA", "COMPLETED", 1000, Some(2000));
-            insert_job_with_status(&c, "00000000-0000-0000-0000-000000000002", "PrinterA", "COMPLETED", 1000, Some(2000));
-            insert_job_with_status(&c, "00000000-0000-0000-0000-000000000003", "PrinterA", "FAILED", 1000, None);
-            insert_job_with_status(&c, "00000000-0000-0000-0000-000000000004", "PrinterB", "COMPLETED", 1000, Some(2000));
-            insert_job_with_status(&c, "00000000-0000-0000-0000-000000000005", "PrinterB", "COMPLETED", 1000, Some(2000));
+            insert_job_with_status(
+                &c,
+                "00000000-0000-0000-0000-000000000001",
+                "PrinterA",
+                "COMPLETED",
+                1000,
+                Some(2000),
+            );
+            insert_job_with_status(
+                &c,
+                "00000000-0000-0000-0000-000000000002",
+                "PrinterA",
+                "COMPLETED",
+                1000,
+                Some(2000),
+            );
+            insert_job_with_status(
+                &c,
+                "00000000-0000-0000-0000-000000000003",
+                "PrinterA",
+                "FAILED",
+                1000,
+                None,
+            );
+            insert_job_with_status(
+                &c,
+                "00000000-0000-0000-0000-000000000004",
+                "PrinterB",
+                "COMPLETED",
+                1000,
+                Some(2000),
+            );
+            insert_job_with_status(
+                &c,
+                "00000000-0000-0000-0000-000000000005",
+                "PrinterB",
+                "COMPLETED",
+                1000,
+                Some(2000),
+            );
         }
 
         let collector = MetricsCollector::new(pool.clone(), qm);
@@ -536,12 +650,18 @@ mod tests {
         let printers = &snapshot.printer_metrics.printers;
         assert_eq!(printers.len(), 2);
 
-        let a = printers.iter().find(|p| p.printer_name == "PrinterA").unwrap();
+        let a = printers
+            .iter()
+            .find(|p| p.printer_name == "PrinterA")
+            .unwrap();
         assert_eq!(a.total_jobs, 3);
         assert_eq!(a.completed_jobs, 2);
         assert!((a.utilization_percent - 66.666).abs() < 0.1);
 
-        let b = printers.iter().find(|p| p.printer_name == "PrinterB").unwrap();
+        let b = printers
+            .iter()
+            .find(|p| p.printer_name == "PrinterB")
+            .unwrap();
         assert_eq!(b.total_jobs, 2);
         assert_eq!(b.completed_jobs, 2);
         assert!((b.utilization_percent - 100.0).abs() < f64::EPSILON);

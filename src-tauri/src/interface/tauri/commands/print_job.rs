@@ -1,4 +1,5 @@
-﻿use crate::application::dto::cancel_print_job_request::CancelPrintJobRequest;
+use crate::AppContextState;
+use crate::application::dto::cancel_print_job_request::CancelPrintJobRequest;
 use crate::application::dto::create_print_job_request::CreatePrintJobRequest;
 use crate::application::dto::{PrintJobDto, PrintJobFilterDto};
 use crate::application::errors::ApplicationError;
@@ -6,7 +7,6 @@ use crate::application::use_cases::cancel_print_job::CancelPrintJobUseCase;
 use crate::application::use_cases::create_print_job::CreatePrintJobUseCase;
 use crate::application::use_cases::list_print_jobs::ListPrintJobsUseCase;
 use crate::domain::print_job::PrintJobId;
-use crate::AppContextState;
 use std::str::FromStr;
 
 #[derive(serde::Deserialize)]
@@ -103,7 +103,10 @@ pub fn execute_list_jobs(
         .map_err(|e| format!("Láº¥y danh sĂ¡ch job tháº¥t báº¡i: {:?}", e))
 }
 
-pub fn execute_get_job_status(job_id: String, ctx: &AppContextState) -> Result<PrintJobDto, String> {
+pub fn execute_get_job_status(
+    job_id: String,
+    ctx: &AppContextState,
+) -> Result<PrintJobDto, String> {
     let job_id = PrintJobId::from_str(&job_id)
         .map_err(|_| format!("Job ID khĂ´ng há»£p lá»‡: {}", job_id))?;
 

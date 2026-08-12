@@ -1,5 +1,5 @@
-use crate::domain::print_job::{PrintJob, PrintJobId, PrintStatus, PrinterId};
 use crate::application::ports::{QueueError, QueueManager};
+use crate::domain::print_job::{PrintJob, PrintJobId, PrintStatus, PrinterId};
 use crate::infrastructure::configs::db::{DbPool, SqliteConn};
 use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -13,9 +13,9 @@ impl SqliteQueueManager {
     }
 
     fn acquire(&self) -> Result<SqliteConn, QueueError> {
-        self.pool
-            .get()
-            .map_err(|e| QueueError::RepositoryError(format!("Failed to acquire DB connection: {}", e)))
+        self.pool.get().map_err(|e| {
+            QueueError::RepositoryError(format!("Failed to acquire DB connection: {}", e))
+        })
     }
 }
 
@@ -42,7 +42,7 @@ impl QueueManager for SqliteQueueManager {
 
         match result {
             Err(rusqlite::Error::QueryReturnedNoRows) => {
-                return Err(QueueError::JobNotFound(id_str))
+                return Err(QueueError::JobNotFound(id_str));
             }
             Err(e) => return Err(QueueError::RepositoryError(e.to_string())),
             Ok(status) if status != PrintStatus::Pending.to_db_string() => {
@@ -50,7 +50,7 @@ impl QueueManager for SqliteQueueManager {
                     "Expected {}, got {}",
                     PrintStatus::Pending.to_db_string(),
                     status
-                )))
+                )));
             }
             Ok(_) => {} // PENDING — proceed
         }
@@ -110,34 +110,35 @@ impl QueueManager for SqliteQueueManager {
             let result = stmt.query_row(
                 rusqlite::params![PrintStatus::Queued.to_db_string(), now],
                 |row| {
-                let id_str: String = row.get(0)?;
-                let printer_id_raw: String = row.get(1)?;
-                let document_url: String = row.get(2)?;
-                let retry_count: i64 = row.get(3)?;
-                let output_path: Option<String> = row.get(4)?;
+                    let id_str: String = row.get(0)?;
+                    let printer_id_raw: String = row.get(1)?;
+                    let document_url: String = row.get(2)?;
+                    let retry_count: i64 = row.get(3)?;
+                    let output_path: Option<String> = row.get(4)?;
 
-                let id: PrintJobId = id_str.parse().map_err(|e: uuid::Error| {
-                    rusqlite::Error::InvalidColumnType(
-                        0,
-                        e.to_string(),
-                        rusqlite::types::Type::Text,
-                    )
-                })?;
+                    let id: PrintJobId = id_str.parse().map_err(|e: uuid::Error| {
+                        rusqlite::Error::InvalidColumnType(
+                            0,
+                            e.to_string(),
+                            rusqlite::types::Type::Text,
+                        )
+                    })?;
 
-                // Reconstruct with status = Pending (since we're about to update it to Pending)
-                Ok(PrintJob::reconstruct(
-                    id,
-                    PrintStatus::Pending,
-                    retry_count as u32,
-                    document_url,
-                    PrinterId::new(printer_id_raw),
-                    0, // created_at not needed for queue pop
-                    None, // completed_at not needed for queue pop
-                    None, // error_message not needed for queue pop
-                    output_path,
-                    crate::domain::print_job::PrintJobSettings::default(),
-                ))
-            });
+                    // Reconstruct with status = Pending (since we're about to update it to Pending)
+                    Ok(PrintJob::reconstruct(
+                        id,
+                        PrintStatus::Pending,
+                        retry_count as u32,
+                        document_url,
+                        PrinterId::new(printer_id_raw),
+                        0,    // created_at not needed for queue pop
+                        None, // completed_at not needed for queue pop
+                        None, // error_message not needed for queue pop
+                        output_path,
+                        crate::domain::print_job::PrintJobSettings::default(),
+                    ))
+                },
+            );
 
             match result {
                 Ok(job) => Some(job),
@@ -160,7 +161,11 @@ impl QueueManager for SqliteQueueManager {
 
             tx.execute(
                 "UPDATE print_jobs SET status = ?1, updated_at = ?2 WHERE id = ?3",
-                rusqlite::params![PrintStatus::Pending.to_db_string(), now, job.id().to_string()],
+                rusqlite::params![
+                    PrintStatus::Pending.to_db_string(),
+                    now,
+                    job.id().to_string()
+                ],
             )
             .map_err(|e| QueueError::RepositoryError(e.to_string()))?;
         } else {
@@ -196,7 +201,12 @@ impl QueueManager for SqliteQueueManager {
 
         conn.execute(
             "UPDATE print_jobs SET status = ?1, scheduled_at = ?2, updated_at = ?3 WHERE id = ?4",
-            rusqlite::params![PrintStatus::Queued.to_db_string(), scheduled_at, now, id_str],
+            rusqlite::params![
+                PrintStatus::Queued.to_db_string(),
+                scheduled_at,
+                now,
+                id_str
+            ],
         )
         .map_err(|e| QueueError::RepositoryError(e.to_string()))?;
 
@@ -231,8 +241,7 @@ mod tests {
             .unwrap()
             .as_nanos();
         let thread_id = std::thread::current().id();
-        let path = std::env::temp_dir()
-            .join(format!("sapo_queue_test_{nanos}_{thread_id:?}.db"));
+        let path = std::env::temp_dir().join(format!("sapo_queue_test_{nanos}_{thread_id:?}.db"));
         let pool = DbPool::new(path.to_str().unwrap()).unwrap();
         {
             let mut conn = pool.get().unwrap();
@@ -259,12 +268,7 @@ mod tests {
         .unwrap();
     }
 
-    fn insert_job_with_timestamp(
-        pool: &DbPool,
-        job_id: &str,
-        status: &str,
-        created_at: i64,
-    ) {
+    fn insert_job_with_timestamp(pool: &DbPool, job_id: &str, status: &str, created_at: i64) {
         let conn = pool.get().unwrap();
         conn.execute(
             "INSERT INTO print_jobs (id, printer_name, document_url, status, retry_count, created_at, updated_at)

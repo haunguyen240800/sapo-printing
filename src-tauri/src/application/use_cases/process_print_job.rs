@@ -1,7 +1,9 @@
 use std::sync::Arc;
 
 use crate::application::errors::PipelineError;
-use crate::application::ports::{ConfigProvider, DocumentDownloadService, EventStore, PrintService, TempFileManager};
+use crate::application::ports::{
+    ConfigProvider, DocumentDownloadService, EventStore, PrintService, TempFileManager,
+};
 use crate::domain::print_job::{PrintJob, PrintJobRepository, PrintJobSettings};
 use crate::shared::errors::InfrastructureError;
 use crate::shared::event_bus::EventBus;
@@ -100,7 +102,8 @@ impl ProcessPrintJobUseCase {
                 out_path = out_path,
                 "Virtual PDF printer detected, bypassing spooler"
             );
-            self.print_service.save_to_path(temp_file.path(), out_path)?;
+            self.print_service
+                .save_to_path(temp_file.path(), out_path)?;
             Ok(())
         } else {
             let pdf_path_str = temp_file.path().to_str().ok_or_else(|| {
@@ -109,17 +112,17 @@ impl ProcessPrintJobUseCase {
                 ))
             })?;
 
-            let settings: PrintJobSettings = self
-                .config_provider
-                .load_print_config()
-                .map_err(|e| {
-                    PipelineError::Infrastructure(InfrastructureError::ValidationError(
-                        format!("Failed to load print config: {}", e),
-                    ))
-                })?
-                .as_ref()
-                .map(PrintJobSettings::from)
-                .unwrap_or_default();
+            let settings: PrintJobSettings =
+                self.config_provider
+                    .load_print_config()
+                    .map_err(|e| {
+                        PipelineError::Infrastructure(InfrastructureError::ValidationError(
+                            format!("Failed to load print config: {}", e),
+                        ))
+                    })?
+                    .as_ref()
+                    .map(PrintJobSettings::from)
+                    .unwrap_or_default();
 
             self.print_service
                 .print(pdf_path_str, job.printer_id().as_str(), &settings)?;

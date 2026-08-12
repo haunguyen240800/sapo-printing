@@ -1,4 +1,4 @@
-﻿use std::fs::{self, File};
+use std::fs::{self, File};
 use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
@@ -38,7 +38,11 @@ impl ReqwestDownloader {
         }
     }
 
-    fn download_internal(&self, url: &str, job_id: &PrintJobId) -> Result<PathBuf, InfrastructureError> {
+    fn download_internal(
+        &self,
+        url: &str,
+        job_id: &PrintJobId,
+    ) -> Result<PathBuf, InfrastructureError> {
         let temp_path = temp_file_path(job_id, "tmp")?;
         let final_path = temp_file_path(job_id, "pdf")?;
 

@@ -1,6 +1,6 @@
-use std::process::Command;
 use std::fs;
 use std::path::PathBuf;
+use std::process::Command;
 
 use super::backend::{GraphicsBackend, NativeGraphicsContext};
 
@@ -29,7 +29,14 @@ impl LinuxGraphicsBackend {
 }
 
 impl GraphicsBackend for LinuxGraphicsBackend {
-    fn begin_document(&mut self, printer_name: &str, doc_name: &str, _output_path: Option<&str>, paper_width_mm: f32, paper_height_mm: f32) -> Result<(), String> {
+    fn begin_document(
+        &mut self,
+        printer_name: &str,
+        doc_name: &str,
+        _output_path: Option<&str>,
+        paper_width_mm: f32,
+        paper_height_mm: f32,
+    ) -> Result<(), String> {
         self.printer_name = printer_name.to_string();
         self.doc_name = doc_name.to_string();
         self.current_page = 0;
@@ -37,7 +44,8 @@ impl GraphicsBackend for LinuxGraphicsBackend {
         self.paper_width_mm = paper_width_mm;
         self.paper_height_mm = paper_height_mm;
 
-        let temp_dir = std::env::temp_dir().join(format!("sapo_print_linux_{}", uuid::Uuid::new_v4()));
+        let temp_dir =
+            std::env::temp_dir().join(format!("sapo_print_linux_{}", uuid::Uuid::new_v4()));
         fs::create_dir_all(&temp_dir)
             .map_err(|e| format!("Failed to create temp dir for printing: {}", e))?;
         self.temp_dir = Some(temp_dir);
@@ -64,10 +72,15 @@ impl GraphicsBackend for LinuxGraphicsBackend {
                     if line.to_lowercase().contains("resolution") {
                         if let Some(start) = line.find('*') {
                             let rest = &line[start + 1..];
-                            let end = rest.find(' ').or_else(|| rest.find("dpi")).unwrap_or(rest.len());
+                            let end = rest
+                                .find(' ')
+                                .or_else(|| rest.find("dpi"))
+                                .unwrap_or(rest.len());
                             let parts: Vec<&str> = rest[..end].split('x').collect();
                             if parts.len() == 2 {
-                                if let (Ok(x), Ok(y)) = (parts[0].parse::<u32>(), parts[1].parse::<u32>()) {
+                                if let (Ok(x), Ok(y)) =
+                                    (parts[0].parse::<u32>(), parts[1].parse::<u32>())
+                                {
                                     return (x, y);
                                 }
                             } else if let Ok(dpi) = rest[..end].parse::<u32>() {
@@ -93,15 +106,23 @@ impl GraphicsBackend for LinuxGraphicsBackend {
     }
 
     fn draw_bitmap(&mut self, data: &[u8], _x: i32, _y: i32, width: u32, height: u32, bpp: u16) {
-        let Some(temp_dir) = &self.temp_dir else { return };
+        let Some(temp_dir) = &self.temp_dir else {
+            return;
+        };
         let path = temp_dir.join(format!("page_{}.png", self.current_page));
 
         // PDFium returns BGRx (32bpp, 4 bytes/pixel) or BGR (24bpp, 3 bytes/pixel).
         // image::RgbImage expects RGB — convert by swapping B and R and dropping the
         // padding byte for 32bpp.
         let rgb: Vec<u8> = match bpp {
-            32 => data.chunks(4).flat_map(|px| [px[2], px[1], px[0]]).collect(),
-            24 => data.chunks(3).flat_map(|px| [px[2], px[1], px[0]]).collect(),
+            32 => data
+                .chunks(4)
+                .flat_map(|px| [px[2], px[1], px[0]])
+                .collect(),
+            24 => data
+                .chunks(3)
+                .flat_map(|px| [px[2], px[1], px[0]])
+                .collect(),
             _ => return,
         };
 
@@ -130,8 +151,7 @@ impl GraphicsBackend for LinuxGraphicsBackend {
         if self.paper_width_mm > 0.0 && self.paper_height_mm > 0.0 {
             cmd.arg("-o").arg(format!(
                 "media=Custom.{}x{}mm",
-                self.paper_width_mm as u32,
-                self.paper_height_mm as u32,
+                self.paper_width_mm as u32, self.paper_height_mm as u32,
             ));
         }
 

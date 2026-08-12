@@ -17,8 +17,8 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use sapo_printer::infrastructure::platform::tls::{
-    cert_checker, cert_generator::CertGenerator, cert_installer::CertInstaller, ipc::IPC_ENDPOINT,
-    IpcRequest, IpcResponse, PlatformInstaller, RenewalStatus,
+    IpcRequest, IpcResponse, PlatformInstaller, RenewalStatus, cert_checker,
+    cert_generator::CertGenerator, cert_installer::CertInstaller, ipc::IPC_ENDPOINT,
 };
 use serde_json::Value;
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
@@ -38,10 +38,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             let bundle = CertGenerator::load_or_generate(&data_dir)?;
             let paths = sapo_printer::infrastructure::platform::tls::CertPaths::under(&data_dir);
             PlatformInstaller::default().install_ca(&paths.ca_pem)?;
-            tracing::info!(
-                newly_generated = bundle.is_newly_generated,
-                "CA installed"
-            );
+            tracing::info!(newly_generated = bundle.is_newly_generated, "CA installed");
             return Ok(());
         }
         Some("--uninstall-ca") => {
@@ -56,9 +53,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
         Some("--check") => {
             let bundle = CertGenerator::load_or_generate(&data_dir)?;
-            let status = sapo_printer::infrastructure::platform::tls::cert_checker::needs_renewal(
-                &bundle,
-            );
+            let status = cert_checker::needs_renewal(&bundle);
             println!("{:?}", status);
             return Ok(());
         }

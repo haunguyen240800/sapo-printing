@@ -57,5 +57,3 @@ fn status_to_string(status: &PrintStatus) -> String {
         PrintStatus::Cancelled => "CANCELLED".to_string(),
     }
 }
-
-

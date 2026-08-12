@@ -41,7 +41,10 @@ impl PaperSize {
             PaperSize::Cm10x18 => (100.0, 180.0),
             PaperSize::K80 => (80.0, 297.0),
             PaperSize::K58 => (58.0, 297.0),
-            PaperSize::Custom { width_mm, height_mm } => (*width_mm as f32, *height_mm as f32),
+            PaperSize::Custom {
+                width_mm,
+                height_mm,
+            } => (*width_mm as f32, *height_mm as f32),
         }
     }
 
@@ -64,7 +67,10 @@ impl PaperSize {
             },
             // Unknown name with explicit dimensions → treat as custom size.
             _ => match (width_mm, height_mm) {
-                (Some(w), Some(h)) => PaperSize::Custom { width_mm: w, height_mm: h },
+                (Some(w), Some(h)) => PaperSize::Custom {
+                    width_mm: w,
+                    height_mm: h,
+                },
                 _ => PaperSize::A4,
             },
         }

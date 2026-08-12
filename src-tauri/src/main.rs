@@ -4,32 +4,32 @@
 // Prevents additional console window on Windows in release builds
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
-use sapo_printer::infrastructure::configs::db::{run_migrations, DbPool};
-use sapo_printer::infrastructure::persistence::{SqliteEventStore, SqlitePrintJobRepository};
-use sapo_printer::infrastructure::integrations::network::ReqwestDownloader;
-use sapo_printer::infrastructure::integrations::pdf_engine::bitmap_strategy::BitmapRenderStrategy;
-use sapo_printer::infrastructure::integrations::pdf_engine::pdfium_loader;
-use sapo_printer::infrastructure::telemetry::metrics::MetricsCollector;
+use sapo_printer::AppContextState;
+use sapo_printer::application::dto::create_print_job_request::CreatePrintJobRequest;
+use sapo_printer::application::errors::ApplicationError;
 use sapo_printer::application::ports::{
     ConfigProvider, EventStore, MetricsProvider, PrinterManager, QueueManager, SecretManager,
     TempFileManager,
 };
+use sapo_printer::application::use_cases::create_print_job::CreatePrintJobUseCase;
 use sapo_printer::infrastructure::configs::app::JsonFileConfigProvider;
+use sapo_printer::infrastructure::configs::db::{DbPool, run_migrations};
+use sapo_printer::infrastructure::integrations::network::ReqwestDownloader;
+use sapo_printer::infrastructure::integrations::pdf_engine::bitmap_strategy::BitmapRenderStrategy;
+use sapo_printer::infrastructure::integrations::pdf_engine::pdfium_loader;
 use sapo_printer::infrastructure::persistence::SqliteQueueManager;
+use sapo_printer::infrastructure::persistence::{SqliteEventStore, SqlitePrintJobRepository};
 use sapo_printer::infrastructure::platform::printer_api::SystemPrinterManager;
 use sapo_printer::infrastructure::platform::printing::DefaultPrintService;
+use sapo_printer::infrastructure::telemetry::metrics::MetricsCollector;
 use sapo_printer::infrastructure::temp_file::{self, FilesystemTempFileManager};
 use sapo_printer::infrastructure::worker::QueueWorker;
-use sapo_printer::interface::tauri::job_status_emitter::JobStatusEmitter;
 use sapo_printer::interface::tauri::dtos::printer_dto::{
     PrinterConfigDto, PrinterDto, PrinterStatusDto,
 };
-use sapo_printer::application::dto::create_print_job_request::CreatePrintJobRequest;
-use sapo_printer::application::use_cases::create_print_job::CreatePrintJobUseCase;
-use sapo_printer::application::errors::ApplicationError;
+use sapo_printer::interface::tauri::job_status_emitter::JobStatusEmitter;
 use sapo_printer::shared::event_bus::EventBus;
 use sapo_printer::shared::logger::init_logging;
-use sapo_printer::AppContextState;
 use std::sync::Arc;
 use tauri::Manager;
 
@@ -79,10 +79,7 @@ async fn create_print_job(
                 printer_manager,
             };
 
-            tracing::info!(
-                target = "sapo_printer::tauri_command",
-                "Executing use case"
-            );
+            tracing::info!(target = "sapo_printer::tauri_command", "Executing use case");
 
             let mut job_ids: Vec<String> = Vec::with_capacity(payload.pdf_urls.len());
             for url in payload.pdf_urls {
@@ -267,7 +264,6 @@ fn restart_app() -> Result<(), String> {
 #[cfg(target_os = "windows")]
 use sapo_printer::infrastructure::platform::keychain::WindowsCredentialManager;
 
-
 #[cfg(target_os = "macos")]
 use sapo_printer::infrastructure::platform::keychain::MacOSKeychain;
 
@@ -299,7 +295,7 @@ fn list_printers(ctx: tauri::State<'_, AppContextState>) -> Result<Vec<PrinterDt
 #[tauri::command]
 fn save_printer_config(
     config: PrinterConfigDto,
-    _app_ctx: tauri::State<AppContextState>,
+    _app_ctx: tauri::State<'_, AppContextState>,
 ) -> Result<(), String> {
     use sapo_printer::infrastructure::configs::app::app_print_config;
 
@@ -406,7 +402,7 @@ fn save_printer_config(
 /// Get printer configuration (global app config)
 #[tauri::command]
 fn get_printer_config(
-    _app_ctx: tauri::State<AppContextState>,
+    _app_ctx: tauri::State<'_, AppContextState>,
 ) -> Result<PrinterConfigDto, String> {
     use sapo_printer::infrastructure::configs::app::app_print_config;
 
@@ -448,10 +444,10 @@ fn get_printer_config(
 
 /// Get current printer status
 #[tauri::command]
-fn get_printer_status(
-    _name: String,
-) -> Result<PrinterStatusDto, String> {
-    Ok(PrinterStatusDto { status: "Online".to_string() })
+fn get_printer_status(_name: String) -> Result<PrinterStatusDto, String> {
+    Ok(PrinterStatusDto {
+        status: "Online".to_string(),
+    })
 }
 
 #[derive(serde::Serialize)]
@@ -466,7 +462,7 @@ struct PrinterCategoryResult {
 #[tauri::command]
 fn detect_printer_category(printer_name: String) -> Result<PrinterCategoryResult, String> {
     let printer_lower = printer_name.to_lowercase();
-    
+
     let pdf_patterns = [
         "microsoft print to pdf",
         "print to pdf",
@@ -478,7 +474,7 @@ fn detect_printer_category(printer_name: String) -> Result<PrinterCategoryResult
         "cutepdf writer",
         "dopdf",
     ];
-    
+
     let virtual_patterns = [
         "microsoft xps document writer",
         "microsoft print to image",
@@ -486,10 +482,10 @@ fn detect_printer_category(printer_name: String) -> Result<PrinterCategoryResult
         "onenote",
         "send to onenote",
     ];
-    
+
     let is_pdf = pdf_patterns.iter().any(|&p| printer_lower.contains(p));
     let is_virtual = virtual_patterns.iter().any(|&p| printer_lower.contains(p));
-    
+
     if is_pdf {
         Ok(PrinterCategoryResult {
             category: "pdf".to_string(),
@@ -514,14 +510,9 @@ fn detect_printer_category(printer_name: String) -> Result<PrinterCategoryResult
     }
 }
 
-
-
 fn main() {
     // Initialize structured logging FIRST, before any other operations
     init_logging();
-
-
-
 
     // 1. Ensure ~/.sapo-printer/ data directory exists
     let home = std::env::var("USERPROFILE")
@@ -540,11 +531,13 @@ fn main() {
     });
 
     let db_path = data_dir.join("config.db");
-    let db_path_str = db_path.to_str().unwrap_or_else(|| {
-        eprintln!("Database path contains non-UTF-8 characters");
-        std::process::exit(1);
-    })
-    .to_string();
+    let db_path_str = db_path
+        .to_str()
+        .unwrap_or_else(|| {
+            eprintln!("Database path contains non-UTF-8 characters");
+            std::process::exit(1);
+        })
+        .to_string();
 
     // 2. Start Tauri — all dependency init moved into .setup() to access AppHandle
     tauri::Builder::default()
@@ -842,7 +835,7 @@ fn main() {
                                 version = ?result.version,
                                 "Update available on startup"
                             );
-                            let state = update_handle.state::<sapo_printer::AppContextState>();
+                            let state = update_handle.state::<AppContextState>();
                             let mut last_emitted = state.last_emitted_update_version.lock().unwrap();
                             if result.version != *last_emitted {
                                 let dto = UpdateCheckResponse {
@@ -880,7 +873,7 @@ fn main() {
                                     version = ?result.version,
                                     "Update available (periodic check)"
                                 );
-                                let state = update_handle.state::<sapo_printer::AppContextState>();
+                                let state = update_handle.state::<AppContextState>();
                                 let mut last_emitted = state.last_emitted_update_version.lock().unwrap();
                                 if result.version != *last_emitted {
                                     let dto = UpdateCheckResponse {

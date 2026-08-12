@@ -11,9 +11,5 @@ pub trait PrintService: Send + Sync {
         settings: &PrintJobSettings,
     ) -> Result<(), InfrastructureError>;
 
-    fn save_to_path(
-        &self,
-        pdf_path: &Path,
-        output_path: &str,
-    ) -> Result<(), InfrastructureError>;
+    fn save_to_path(&self, pdf_path: &Path, output_path: &str) -> Result<(), InfrastructureError>;
 }

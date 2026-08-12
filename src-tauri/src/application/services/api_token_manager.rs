@@ -6,7 +6,7 @@ use rand::RngCore;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use subtle::ConstantTimeEq;
-use tokio::sync::{oneshot, Mutex};
+use tokio::sync::{Mutex, oneshot};
 use uuid::Uuid;
 
 use crate::infrastructure::configs::db::connection::DbPool;
@@ -73,10 +73,7 @@ impl ApiTokenManager {
     }
 
     /// UI (Tauri) đăng ký nhận pair requests.
-    pub async fn set_ui_sink(
-        &self,
-        sink: tokio::sync::mpsc::UnboundedSender<PendingPairRequest>,
-    ) {
+    pub async fn set_ui_sink(&self, sink: tokio::sync::mpsc::UnboundedSender<PendingPairRequest>) {
         *self.ui_sink.lock().await = Some(sink);
     }
 
@@ -119,10 +116,7 @@ impl ApiTokenManager {
             return Err(PairError::UserDenied);
         }
 
-        let (plaintext, response) = self
-            .issue_token(origin)
-            .await
-            .map_err(PairError::Db)?;
+        let (plaintext, response) = self.issue_token(origin).await.map_err(PairError::Db)?;
         tracing::info!(origin, "Token issued");
         drop(plaintext); // shadow-clarify: response.api_token already carries it
         Ok(response)
@@ -131,11 +125,12 @@ impl ApiTokenManager {
     /// UI resolve pair request. `approved=false` → deny.
     pub async fn resolve_pair(&self, request_id: Uuid, approved: bool) -> bool {
         let mut pending = self.pending.lock().await;
-        if let Some(tx) = pending.remove(&request_id) {
-            let _ = tx.send(approved);
-            true
-        } else {
-            false
+        match pending.remove(&request_id) {
+            Some(tx) => {
+                let _ = tx.send(approved);
+                true
+            }
+            _ => false,
         }
     }
 
@@ -233,9 +228,9 @@ impl ApiTokenManager {
             "UPDATE api_tokens SET is_active = 0 WHERE token_hash = ?1",
             rusqlite::params![token_hash],
         )
-            .map_err(|e| InfrastructureError::DatabaseError {
-                reason: e.to_string(),
-            })?;
+        .map_err(|e| InfrastructureError::DatabaseError {
+            reason: e.to_string(),
+        })?;
         Ok(())
     }
 
@@ -353,7 +348,7 @@ mod tests {
         let mgr = ApiTokenManager::new(pool);
         let (_p, resp) = mgr.issue_token("https://a.mysapo.net").await.unwrap();
         let before = mgr.list_paired().unwrap()[0].expires_at;
-        std::thread::sleep(std::time::Duration::from_secs(1));
+        std::thread::sleep(Duration::from_secs(1));
         let _ = mgr.verify_token(&resp.api_token).unwrap();
         let after = mgr.list_paired().unwrap()[0].expires_at;
         assert!(after >= before);

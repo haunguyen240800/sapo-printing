@@ -10,7 +10,7 @@ pub use api_token_manager::{
 };
 
 pub use audit_service::{
-    cleanup_old_events, get_audit_trail, verify_audit_trail_integrity, verify_event_integrity,
-    AuditIntegrityReport,
+    AuditIntegrityReport, cleanup_old_events, get_audit_trail, verify_audit_trail_integrity,
+    verify_event_integrity,
 };
-pub use secret_key_service::{format_key, validate_key, MAX_SECRET_SIZE};
+pub use secret_key_service::{MAX_SECRET_SIZE, format_key, validate_key};

@@ -38,7 +38,8 @@ impl PrintService for DefaultPrintService {
         // Document lifecycle (begin_document / end_document) is managed inside
         // render() on a per-page basis so each label is a separate spooler job.
         // render() only spools; it does not wait for physical printing.
-        self.render_strategy.render(pdf_path, printer_name, settings, &mut *backend)?;
+        self.render_strategy
+            .render(pdf_path, printer_name, settings, &mut *backend)?;
 
         // Block until the spooler confirms every spooled label actually printed.
         // Batching the wait here (rather than per page inside render) keeps a
@@ -50,11 +51,7 @@ impl PrintService for DefaultPrintService {
             .map_err(|reason| InfrastructureError::PrinterError { reason })
     }
 
-    fn save_to_path(
-        &self,
-        pdf_path: &Path,
-        output_path: &str,
-    ) -> Result<(), InfrastructureError> {
+    fn save_to_path(&self, pdf_path: &Path, output_path: &str) -> Result<(), InfrastructureError> {
         std::fs::copy(pdf_path, output_path).map_err(|e| InfrastructureError::PrinterError {
             reason: format!("Failed to save PDF to {}: {}", output_path, e),
         })?;

@@ -1,9 +1,9 @@
+use crate::AppContextState;
 use crate::application::use_cases::GetMetricsUseCase;
 use crate::interface::tauri::dtos::metrics::{
     JobMetricsDto, MetricsDto, PerformanceMetricsDto, PrinterMetricsDto, PrinterUsageDto,
     QueueMetricsDto,
 };
-use crate::AppContextState;
 
 pub fn execute_get_metrics(ctx: &AppContextState) -> Result<MetricsDto, String> {
     let use_case = GetMetricsUseCase::new(ctx.metrics_provider.clone());

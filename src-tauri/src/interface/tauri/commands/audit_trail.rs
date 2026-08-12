@@ -1,6 +1,6 @@
+use crate::AppContextState;
 use crate::application::use_cases::get_audit_trail::GetAuditTrailUseCase;
 use crate::interface::tauri::dtos::audit_trail::{AuditEventDto, AuditTrailResponse};
-use crate::AppContextState;
 
 pub fn execute_get_job_audit_trail(
     job_id: String,

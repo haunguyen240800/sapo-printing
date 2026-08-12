@@ -6,11 +6,7 @@ use url::Url;
 pub fn build_layer() -> CorsLayer {
     CorsLayer::new()
         .allow_origin(AllowOrigin::predicate(is_allowed_origin))
-        .allow_methods([
-            Method::GET,
-            Method::POST,
-            Method::OPTIONS,
-        ])
+        .allow_methods([Method::GET, Method::POST, Method::OPTIONS])
         .allow_headers([
             HeaderName::from_static("content-type"),
             HeaderName::from_static("authorization"),

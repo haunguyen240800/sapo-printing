@@ -122,14 +122,17 @@ impl QueueWorker {
                             error = %e,
                             "QueueWorker: job processing failed"
                         );
-                        if let Ok(Some(failed_job)) = job_repo.find_by_id(&job_id) {
-                            failure_handler.handle(e, failed_job);
-                        } else {
-                            tracing::error!(
-                                target = "sapo_printer::queue_worker",
-                                job_id = %job_id,
-                                "QueueWorker: Could not load job for failure handling"
-                            );
+                        match job_repo.find_by_id(&job_id) {
+                            Ok(Some(failed_job)) => {
+                                failure_handler.handle(e, failed_job);
+                            }
+                            _ => {
+                                tracing::error!(
+                                    target = "sapo_printer::queue_worker",
+                                    job_id = %job_id,
+                                    "QueueWorker: Could not load job for failure handling"
+                                );
+                            }
                         }
                     } else {
                         tracing::info!(

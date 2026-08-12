@@ -132,7 +132,7 @@ pub fn load_retention(pool: &DbPool) -> Duration {
             .ok()?;
         value.parse::<u32>().ok()
     })()
-        .unwrap_or(DEFAULT_RETENTION_HOURS);
+    .unwrap_or(DEFAULT_RETENTION_HOURS);
 
     Duration::from_secs(hours as u64 * 3600)
 }
@@ -296,13 +296,13 @@ mod tests {
 
         let old_time = SystemTime::UNIX_EPOCH
             + Duration::from_secs(
-            SystemTime::now()
-                .duration_since(SystemTime::UNIX_EPOCH)
-                .unwrap()
-                .as_secs()
-                - TEST_RETENTION.as_secs()
-                - 3600,
-        );
+                SystemTime::now()
+                    .duration_since(SystemTime::UNIX_EPOCH)
+                    .unwrap()
+                    .as_secs()
+                    - TEST_RETENTION.as_secs()
+                    - 3600,
+            );
         filetime::set_file_mtime(&old_pdf, filetime::FileTime::from_system_time(old_time)).unwrap();
 
         startup_cleanup(&dir, TEST_RETENTION);
@@ -411,14 +411,14 @@ mod tests {
                 "UPDATE app_settings SET value = '48' WHERE key = 'temp_file_retention_hours'",
                 [],
             )
-                .unwrap();
+            .unwrap();
         }
 
         let retention = load_retention(&pool);
         assert_eq!(retention, Duration::from_secs(48 * 3600));
 
         drop(pool);
-        let _ = std::fs::remove_file(&path);
+        let _ = fs::remove_file(&path);
     }
 
     #[test]
@@ -436,7 +436,7 @@ mod tests {
                 "DELETE FROM app_settings WHERE key = 'temp_file_retention_hours'",
                 [],
             )
-                .unwrap();
+            .unwrap();
         }
 
         let retention = load_retention(&pool);
@@ -446,6 +446,6 @@ mod tests {
         );
 
         drop(pool);
-        let _ = std::fs::remove_file(&path);
+        let _ = fs::remove_file(&path);
     }
 }

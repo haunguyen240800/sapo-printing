@@ -2,16 +2,15 @@ use std::ffi::OsStr;
 use std::os::windows::ffi::OsStrExt;
 use windows::Win32::Foundation::{HANDLE, HWND};
 use windows::Win32::Graphics::Gdi::{
-    CreateDCW, DeleteDC, StretchDIBits, GetDeviceCaps,
-    BITMAPINFO, BITMAPINFOHEADER, BI_RGB, DIB_RGB_COLORS, HDC, SRCCOPY,
-    LOGPIXELSX, LOGPIXELSY, HORZRES, VERTRES, HORZSIZE, VERTSIZE,
-    DEVMODEW, DEVMODE_FIELD_FLAGS,
+    BI_RGB, BITMAPINFO, BITMAPINFOHEADER, CreateDCW, DEVMODE_FIELD_FLAGS, DEVMODEW, DIB_RGB_COLORS,
+    DeleteDC, GetDeviceCaps, HDC, HORZRES, HORZSIZE, LOGPIXELSX, LOGPIXELSY, SRCCOPY,
+    StretchDIBits, VERTRES, VERTSIZE,
 };
-use windows::Win32::Graphics::Printing::{ClosePrinter, DocumentPropertiesW, GetJobW, OpenPrinterW, JOB_INFO_2W};
-use windows::Win32::Storage::Xps::{
-    StartDocW, StartPage, EndPage, EndDoc, AbortDoc, DOCINFOW,
+use windows::Win32::Graphics::Printing::{
+    ClosePrinter, DocumentPropertiesW, GetJobW, JOB_INFO_2W, OpenPrinterW,
 };
-use windows::core::{PCWSTR, HSTRING};
+use windows::Win32::Storage::Xps::{AbortDoc, DOCINFOW, EndDoc, EndPage, StartDocW, StartPage};
+use windows::core::{HSTRING, PCWSTR};
 
 use super::backend::{GraphicsBackend, NativeGraphicsContext};
 
@@ -80,7 +79,8 @@ impl WindowsGraphicsBackend {
             // job that most likely succeeded (matches prior "spool == success").
             tracing::warn!(
                 "wait_for_all: OpenPrinterW failed for '{}', assuming {} job(s) printed",
-                printer_name, job_ids.len()
+                printer_name,
+                job_ids.len()
             );
             return Ok(());
         }
@@ -95,17 +95,23 @@ impl WindowsGraphicsBackend {
                 JobQuery::Status(status) => {
                     if status & JS_PRINTED != 0 {
                         false // confirmed printed → done
-                    } else if status & (JS_ERROR | JS_DELETED | JS_PAPEROUT | JS_OFFLINE | JS_BLOCKED_DEVQ) != 0 {
-                        failure.get_or_insert_with(|| format!(
-                            "spooler reported failure for job {} (status=0x{:08X})",
-                            job_id, status
-                        ));
+                    } else if status
+                        & (JS_ERROR | JS_DELETED | JS_PAPEROUT | JS_OFFLINE | JS_BLOCKED_DEVQ)
+                        != 0
+                    {
+                        failure.get_or_insert_with(|| {
+                            format!(
+                                "spooler reported failure for job {} (status=0x{:08X})",
+                                job_id, status
+                            )
+                        });
                         false
                     } else {
                         if status & JS_USER_INTERVENTION != 0 {
                             tracing::warn!(
                                 "wait_for_all: job {} needs user intervention (status=0x{:08X})",
-                                job_id, status
+                                job_id,
+                                status
                             );
                         }
                         true // still printing
@@ -125,14 +131,17 @@ impl WindowsGraphicsBackend {
             } else if last_progress.elapsed() >= SPOOL_STALL_TIMEOUT {
                 break Err(format!(
                     "timed out: {} job(s) not printed after {}s of no progress",
-                    job_ids.len(), SPOOL_STALL_TIMEOUT.as_secs()
+                    job_ids.len(),
+                    SPOOL_STALL_TIMEOUT.as_secs()
                 ));
             }
 
             std::thread::sleep(SPOOL_POLL_INTERVAL);
         };
 
-        unsafe { let _ = ClosePrinter(hprinter); }
+        unsafe {
+            let _ = ClosePrinter(hprinter);
+        }
         result
     }
 
@@ -186,14 +195,8 @@ impl WindowsGraphicsBackend {
             let mut hprinter = HANDLE::default();
             if OpenPrinterW(printer_pcwstr, &mut hprinter, None).is_ok() {
                 // First call: pass fMode=0 to retrieve required buffer size.
-                let size = DocumentPropertiesW(
-                    HWND::default(),
-                    hprinter,
-                    printer_pcwstr,
-                    None,
-                    None,
-                    0,
-                );
+                let size =
+                    DocumentPropertiesW(HWND::default(), hprinter, printer_pcwstr, None, None, 0);
                 if size > 0 {
                     let mut buf = vec![0u8; size as usize];
                     let ok = DocumentPropertiesW(
@@ -228,20 +231,22 @@ impl WindowsGraphicsBackend {
         }
 
         // Fallback: minimal DEVMODEW with portrait orientation.
-        tracing::warn!("DocumentPropertiesW failed for '{}', using fallback DEVMODEW", printer_name);
+        tracing::warn!(
+            "DocumentPropertiesW failed for '{}', using fallback DEVMODEW",
+            printer_name
+        );
         const DM_ORIENTATION: u32 = 0x0001;
         const DMORIENT_PORTRAIT: i16 = 1;
         let mut dm: DEVMODEW = unsafe { std::mem::zeroed() };
-        dm.dmSize = std::mem::size_of::<DEVMODEW>() as u16;
+        dm.dmSize = size_of::<DEVMODEW>() as u16;
         dm.dmSpecVersion = 0x0401;
-        dm.dmFields = DEVMODE_FIELD_FLAGS(DM_ORIENTATION | DM_PAPERSIZE | DM_PAPERLENGTH | DM_PAPERWIDTH);
-        unsafe {
-            dm.Anonymous1.Anonymous1.dmOrientation = DMORIENT_PORTRAIT;
-            dm.Anonymous1.Anonymous1.dmPaperSize = DMPAPER_USER;
-            dm.Anonymous1.Anonymous1.dmPaperWidth = (paper_width_mm * 10.0) as i16;
-            dm.Anonymous1.Anonymous1.dmPaperLength = (paper_height_mm * 10.0) as i16;
-        }
-        let dm_size = std::mem::size_of::<DEVMODEW>();
+        dm.dmFields =
+            DEVMODE_FIELD_FLAGS(DM_ORIENTATION | DM_PAPERSIZE | DM_PAPERLENGTH | DM_PAPERWIDTH);
+        dm.Anonymous1.Anonymous1.dmOrientation = DMORIENT_PORTRAIT;
+        dm.Anonymous1.Anonymous1.dmPaperSize = DMPAPER_USER;
+        dm.Anonymous1.Anonymous1.dmPaperWidth = (paper_width_mm * 10.0) as i16;
+        dm.Anonymous1.Anonymous1.dmPaperLength = (paper_height_mm * 10.0) as i16;
+        let dm_size = size_of::<DEVMODEW>();
         let mut buf = vec![0u8; dm_size];
         unsafe {
             std::ptr::copy_nonoverlapping(&dm as *const _ as *const u8, buf.as_mut_ptr(), dm_size);
@@ -251,7 +256,14 @@ impl WindowsGraphicsBackend {
 }
 
 impl GraphicsBackend for WindowsGraphicsBackend {
-    fn begin_document(&mut self, printer_name: &str, doc_name: &str, output_path: Option<&str>, paper_width_mm: f32, paper_height_mm: f32) -> Result<(), String> {
+    fn begin_document(
+        &mut self,
+        printer_name: &str,
+        doc_name: &str,
+        output_path: Option<&str>,
+        paper_width_mm: f32,
+        paper_height_mm: f32,
+    ) -> Result<(), String> {
         let printer_hstr = HSTRING::from(printer_name);
 
         // Get the driver's full DEVMODE and patch only the paper size.
@@ -270,7 +282,10 @@ impl GraphicsBackend for WindowsGraphicsBackend {
         };
 
         if hdc.is_invalid() {
-            return Err(format!("Failed to create Device Context for printer '{}'", printer_name));
+            return Err(format!(
+                "Failed to create Device Context for printer '{}'",
+                printer_name
+            ));
         }
 
         self.hdc = Some(hdc);
@@ -278,11 +293,13 @@ impl GraphicsBackend for WindowsGraphicsBackend {
         // 2. Start Document
         let doc_name_w = Self::to_wstring(doc_name);
         let output_w = output_path.map(Self::to_wstring);
-        
+
         let doc_info = DOCINFOW {
-            cbSize: std::mem::size_of::<DOCINFOW>() as i32,
+            cbSize: size_of::<DOCINFOW>() as i32,
             lpszDocName: PCWSTR(doc_name_w.as_ptr()),
-            lpszOutput: output_w.as_ref().map_or(PCWSTR::null(), |w| PCWSTR(w.as_ptr())),
+            lpszOutput: output_w
+                .as_ref()
+                .map_or(PCWSTR::null(), |w| PCWSTR(w.as_ptr())),
             lpszDatatype: PCWSTR::null(),
             fwType: 0,
         };
@@ -314,12 +331,27 @@ impl GraphicsBackend for WindowsGraphicsBackend {
                 let horz_size = GetDeviceCaps(hdc, HORZSIZE); // in mm
                 let vert_size = GetDeviceCaps(hdc, VERTSIZE); // in mm
 
-                let phys_dpi_x = if horz_size > 0 { (horz_res as f64 / (horz_size as f64 / 25.4)).round() as u32 } else { log_x as u32 };
-                let phys_dpi_y = if vert_size > 0 { (vert_res as f64 / (vert_size as f64 / 25.4)).round() as u32 } else { log_y as u32 };
+                let phys_dpi_x = if horz_size > 0 {
+                    (horz_res as f64 / (horz_size as f64 / 25.4)).round() as u32
+                } else {
+                    log_x as u32
+                };
+                let phys_dpi_y = if vert_size > 0 {
+                    (vert_res as f64 / (vert_size as f64 / 25.4)).round() as u32
+                } else {
+                    log_y as u32
+                };
 
                 tracing::info!(
                     "Printer DC metrics: LOGPIXELS={}x{}, HORZRES={}x{}, SIZE={}x{}mm, PHYS_DPI={}x{}",
-                    log_x, log_y, horz_res, vert_res, horz_size, vert_size, phys_dpi_x, phys_dpi_y
+                    log_x,
+                    log_y,
+                    horz_res,
+                    vert_res,
+                    horz_size,
+                    vert_size,
+                    phys_dpi_x,
+                    phys_dpi_y
                 );
 
                 (phys_dpi_x, phys_dpi_y)
@@ -379,7 +411,7 @@ impl GraphicsBackend for WindowsGraphicsBackend {
 
             let bmi = BITMAPINFO {
                 bmiHeader: BITMAPINFOHEADER {
-                    biSize: std::mem::size_of::<BITMAPINFOHEADER>() as u32,
+                    biSize: size_of::<BITMAPINFOHEADER>() as u32,
                     biWidth: width as i32,
                     biHeight: height as i32, // positive = bottom-up = universally supported
                     biPlanes: 1,
@@ -391,7 +423,12 @@ impl GraphicsBackend for WindowsGraphicsBackend {
                     biClrUsed: 0,
                     biClrImportant: 0,
                 },
-                bmiColors: [windows::Win32::Graphics::Gdi::RGBQUAD { rgbBlue: 0, rgbGreen: 0, rgbRed: 0, rgbReserved: 0 }; 1],
+                bmiColors: [windows::Win32::Graphics::Gdi::RGBQUAD {
+                    rgbBlue: 0,
+                    rgbGreen: 0,
+                    rgbRed: 0,
+                    rgbReserved: 0,
+                }; 1],
             };
 
             unsafe {

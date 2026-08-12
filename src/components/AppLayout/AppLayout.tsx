@@ -19,24 +19,20 @@ export function AppLayout() {
     let unlistenReady: UnlistenFn | undefined;
 
     async function setup() {
-      try {
-        unlistenAvailable = await onUpdateAvailable((payload) => {
-          if (!cancelled) {
-            setUpdateInfo(payload);
-            setShowUpdatePopup(true);
-          }
-        });
-        unlistenReady = await onUpdateReadyToApply(() => {
-          if (!cancelled) {
-            setUpdateReady(true);
-          }
-        });
-      } catch (err) {
-        console.error("AppLayout: setup update listeners failed:", err);
-      }
+      unlistenAvailable = await onUpdateAvailable((payload) => {
+        if (!cancelled) {
+          setUpdateInfo(payload);
+          setShowUpdatePopup(true);
+        }
+      });
+      unlistenReady = await onUpdateReadyToApply(() => {
+        if (!cancelled) {
+          setUpdateReady(true);
+        }
+      });
     }
 
-    setup();
+    setup().catch(() => {});
 
     return () => {
       cancelled = true;

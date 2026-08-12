@@ -108,22 +108,25 @@ const PrinterSettingsFormModal = ({ open, onClose, onSaved }: PrinterSettingsFor
 
   useEffect(() => {
     // Load printers
-    listPrinters()
-      .then((result) => {
+    const loadPrinters = async () => {
+      try {
+        const result = await listPrinters();
         setPrinters(result);
         const defaultPrinter = result.find((p) => p.is_default) || result[0];
         if (defaultPrinter) {
           setValue("printerName", defaultPrinter.name);
         }
-      })
-      .catch((err) => {
-        console.error("Failed to load printers:", err);
-      })
-      .finally(() => setLoadingPrinters(false));
+      } catch {
+        showErrorToast("Không tải được danh sách máy in");
+      } finally {
+        setLoadingPrinters(false);
+      }
+    };
 
     // Load existing config
-    getPrinterConfig()
-      .then((config) => {
+    const loadConfig = async () => {
+      try {
+        const config = await getPrinterConfig();
         if (config && config.printer_name) {
           reset({
             printerName: config.printer_name,
@@ -140,10 +143,13 @@ const PrinterSettingsFormModal = ({ open, onClose, onSaved }: PrinterSettingsFor
             imageFormat: config.color_mode,
           });
         }
-      })
-      .catch((err) => {
-        console.error("Failed to load config:", err);
-      });
+      } catch {
+        showErrorToast("Không tải được cấu hình máy in");
+      }
+    };
+
+    loadPrinters();
+    loadConfig();
   }, [setValue, reset]);
 
   const printerOptions = useMemo(() => {

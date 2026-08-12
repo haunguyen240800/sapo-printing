@@ -143,8 +143,8 @@ export const UpdatePopup: React.FC<Props> = ({ isOpen, onClose, updateInfo, read
             <h3 style={{ margin: "0 0 8px 0", fontSize: "14px", fontWeight: 600 }}>Có gì mới</h3>
             {releaseNotesBullets.length > 0 ? (
               <ul style={{ margin: 0, paddingLeft: "20px" }}>
-                {releaseNotesBullets.map((bullet, i) => (
-                  <li key={i} style={{ marginBottom: "4px", fontSize: "14px", color: "#333" }}>
+                {releaseNotesBullets.map((bullet) => (
+                  <li key={bullet} style={{ marginBottom: "4px", fontSize: "14px", color: "#333" }}>
                     {bullet}
                   </li>
                 ))}

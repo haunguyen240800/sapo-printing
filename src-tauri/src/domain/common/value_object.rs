@@ -1,5 +1,5 @@
-use super::rule::DomainRule;
 use super::error::DomainValidationException;
+use super::rule::DomainRule;
 
 pub trait ValueObject: PartialEq {
     fn check_rule(&self, rule: &dyn DomainRule) -> Result<(), DomainValidationException> {

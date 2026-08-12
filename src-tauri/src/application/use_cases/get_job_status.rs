@@ -20,9 +20,12 @@ impl GetJobStatusUseCase {
             "GetJobStatusUseCase: starting"
         );
 
-        let job_id_parsed = job_id.parse::<PrintJobId>().map_err(|_| ApplicationError::InvalidJobId {
-            job_id: job_id.to_string(),
-        })?;
+        let job_id_parsed =
+            job_id
+                .parse::<PrintJobId>()
+                .map_err(|_| ApplicationError::InvalidJobId {
+                    job_id: job_id.to_string(),
+                })?;
 
         let job = self
             .job_repo

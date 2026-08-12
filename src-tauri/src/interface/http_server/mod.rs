@@ -7,6 +7,6 @@ pub mod server;
 pub mod sse;
 pub mod state;
 
-pub use bootstrap::{start as start_bootstrap, BootstrapResult, JOB_STATUS_EVENTS};
-pub use server::{start_server, AgentMetadata};
+pub use bootstrap::{BootstrapResult, JOB_STATUS_EVENTS, start as start_bootstrap};
+pub use server::{AgentMetadata, start_server};
 pub use state::HttpServerState;

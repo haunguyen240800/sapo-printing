@@ -37,12 +37,11 @@ impl DbPool {
             Ok(())
         });
 
-        let pool = Pool::builder()
-            .max_size(8)
-            .build(manager)
-            .map_err(|e| DatabaseError::ConnectionFailed {
+        let pool = Pool::builder().max_size(8).build(manager).map_err(|e| {
+            DatabaseError::ConnectionFailed {
                 reason: e.to_string(),
-            })?;
+            }
+        })?;
 
         Ok(Self(pool))
     }

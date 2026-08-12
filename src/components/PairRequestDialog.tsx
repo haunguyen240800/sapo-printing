@@ -5,6 +5,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { listen, UnlistenFn } from "@tauri-apps/api/event";
 
 import ConnectingIcon from "../assests/connecting.svg";
+import { showErrorToast } from "../utils/toast";
 
 interface PairRequestPayload {
   request_id: string;
@@ -19,7 +20,6 @@ export const PairRequestDialog: React.FC = () => {
 
     const setupListener = async () => {
       unlisten = await listen<PairRequestPayload>("agent-pair-request", (event) => {
-        console.log("Pair request received:", event.payload);
         setRequest(event.payload);
       });
     };
@@ -38,8 +38,8 @@ export const PairRequestDialog: React.FC = () => {
         requestId: request.request_id,
         approved: allow,
       });
-    } catch (err) {
-      console.error("Failed to resolve pair request", err);
+    } catch {
+      showErrorToast("Không xử lý được yêu cầu ghép nối");
     } finally {
       setRequest(null);
     }

@@ -6,10 +6,10 @@ use std::time::Duration;
 
 use axum::extract::{Query, State};
 use axum::http::{HeaderMap, StatusCode};
-use axum::response::sse::{Event, KeepAlive, Sse};
 use axum::response::IntoResponse;
-use futures::stream;
+use axum::response::sse::{Event, KeepAlive, Sse};
 use futures::StreamExt;
+use futures::stream;
 use serde::{Deserialize, Serialize};
 use tokio::sync::broadcast;
 
