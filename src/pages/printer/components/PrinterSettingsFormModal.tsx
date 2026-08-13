@@ -12,7 +12,7 @@ import {
   PaperSizeOptions,
 } from "../../../constants/printer";
 import { getPrinterConfig, listPrinters, savePrinterConfig } from "../../../services/printer-service";
-import { PrinterConfigDto, PrinterDto } from "../../../types";
+import { PrinterConfig, Printer } from "../../../types";
 import { showErrorToast, showToast } from "../../../utils/toast";
 
 const validationSchema = yup.object().shape({
@@ -89,7 +89,7 @@ interface PrinterSettingsFormProps {
 }
 
 const PrinterSettingsFormModal = ({ open, onClose, onSaved }: PrinterSettingsFormProps) => {
-  const [printers, setPrinters] = useState<PrinterDto[]>([]);
+  const [printers, setPrinters] = useState<Printer[]>([]);
   const [loadingPrinters, setLoadingPrinters] = useState(true);
   const [modalName, setModalName] = useState<"cancel" | "restore">();
   const closeModal = () => setModalName(undefined);
@@ -184,7 +184,7 @@ const PrinterSettingsFormModal = ({ open, onClose, onSaved }: PrinterSettingsFor
 
   const onSubmit = async (data: PrinterSettingsFormData) => {
     try {
-      const config: PrinterConfigDto = {
+      const config: PrinterConfig = {
         printer_name: data.printerName,
         paper_size: data.paperSize,
         paper_width: data.width ?? undefined,

@@ -1,4 +1,4 @@
-export interface PrinterDto {
+export interface Printer {
   name: string;
   device_id: string;
   status: string;
@@ -6,7 +6,7 @@ export interface PrinterDto {
   is_default?: boolean;
 }
 
-export interface PrinterConfigDto {
+export interface PrinterConfig {
   printer_name?: string;
   paper_size?: string;
   paper_width?: number;
@@ -22,7 +22,7 @@ export interface PrinterConfigDto {
   buffer_size_kb?: number;
 }
 
-export interface PrinterStatusDto {
+export interface PrinterStatus {
   status: string;
 }
 

@@ -1,7 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
 
-import type { PrinterConfigDto, PrinterDto, PrinterStatusDto } from "../types";
-import type { JobDto, JobFilterDto } from "../types/print-job";
+import type { PrinterConfig, Printer, PrinterStatus } from "../types";
+import type { Job, JobFilter } from "../types/print-job";
 import { detectPrinterCategory, showPrintToFileDialog } from "../utils/print-dialog";
 
 export interface MetricsDto {
@@ -11,20 +11,20 @@ export interface MetricsDto {
   avg_print_time_secs: number;
 }
 
-export async function listPrinters(): Promise<PrinterDto[]> {
-  return invoke<PrinterDto[]>("list_printers");
+export async function listPrinters(): Promise<Printer[]> {
+  return invoke<Printer[]>("list_printers");
 }
 
-export async function savePrinterConfig(config: PrinterConfigDto): Promise<void> {
+export async function savePrinterConfig(config: PrinterConfig): Promise<void> {
   return invoke("save_printer_config", { config });
 }
 
-export async function getPrinterConfig(): Promise<PrinterConfigDto> {
-  return invoke<PrinterConfigDto>("get_printer_config");
+export async function getPrinterConfig(): Promise<PrinterConfig> {
+  return invoke<PrinterConfig>("get_printer_config");
 }
 
-export async function getPrinterStatus(name: string): Promise<PrinterStatusDto> {
-  return invoke<PrinterStatusDto>("get_printer_status", { name });
+export async function getPrinterStatus(name: string): Promise<PrinterStatus> {
+  return invoke<PrinterStatus>("get_printer_status", { name });
 }
 
 export async function createPrintJob(pdfUrls: string[], printerName: string): Promise<string[]> {
@@ -58,12 +58,12 @@ export async function cancelPrintJob(jobId: string): Promise<void> {
   });
 }
 
-export async function listJobs(filter: JobFilterDto): Promise<JobDto[]> {
-  return invoke<JobDto[]>("list_jobs", { filter });
+export async function listJobs(filter: JobFilter): Promise<Job[]> {
+  return invoke<Job[]>("list_jobs", { filter });
 }
 
-export async function getJobStatus(jobId: string): Promise<JobDto> {
-  return invoke<JobDto>("get_job_status", { job_id: jobId });
+export async function getJobStatus(jobId: string): Promise<Job> {
+  return invoke<Job>("get_job_status", { job_id: jobId });
 }
 
 export async function getMetrics(): Promise<MetricsDto> {

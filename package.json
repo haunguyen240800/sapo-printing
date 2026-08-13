@@ -28,14 +28,17 @@
     "react-dom": "^18.3.1",
     "react-hook-form": "^7.79.0",
     "react-router-dom": "^7.18.0",
+    "react-transition-group": "^4.4.5",
     "yup": "^1.7.1"
   },
   "devDependencies": {
     "@sapo/eslint-plugin": "^3.0.0",
     "@sapo/prettier-config": "^0.1.0",
     "@tauri-apps/cli": "^2.0.0",
+    "@types/node": "^26.2.0",
     "@types/react": "^18.3.12",
     "@types/react-dom": "^18.3.1",
+    "@types/react-transition-group": "^4.4.12",
     "@vitejs/plugin-react": "^5.0.0",
     "eslint": "^9.39.5",
     "eslint-plugin-react-refresh": "^0.5.4",

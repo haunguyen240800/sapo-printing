@@ -1,11 +1,10 @@
 import React, { useEffect, useState } from "react";
+import ConnectingIcon from "@assets/connecting.svg";
 import { BlockStack, Icon, InlineStack, Modal, Text } from "@sapo/ui-components";
 import { WarningIcon } from "@sapo/ui-icons";
 import { invoke } from "@tauri-apps/api/core";
 import { listen, UnlistenFn } from "@tauri-apps/api/event";
-
-import ConnectingIcon from "../assests/connecting.svg";
-import { showErrorToast } from "../utils/toast";
+import { showErrorToast } from "@utils/toast";
 
 interface PairRequestPayload {
   request_id: string;

@@ -1,23 +1,16 @@
-/**
- * DTO cho print job từ backend (Rust).
- * Matches: src-tauri/src/application/dto/job_dto.rs::JobDto
- */
-export interface JobDto {
+export interface Job {
   job_id: string;
   printer_name: string;
   status: string;
-  progress: number; // 0-100
-  created_at: number; // Unix timestamp
+  progress: number;
+  created_at: number;
   error_message?: string;
 }
 
-/**
- * DTO cho filtering danh sách jobs.
- * Matches: src-tauri/src/application/dto/job_dto.rs::JobFilterDto
- */
-export interface JobFilterDto {
+export interface JobFilter {
   status?: string;
   printer_name?: string;
-  from_date?: number; // Unix timestamp
-  to_date?: number; // Unix timestamp
+  from_date?: number;
+  to_date?: number;
 }
+

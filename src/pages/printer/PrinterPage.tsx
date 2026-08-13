@@ -6,7 +6,7 @@ import { ActionListButton } from "../../components/ActionListButton";
 import { ConfirmModal } from "../../components/ConfirmModal";
 import { type JobStatusPayload, onJobStatusChanged } from "../../services/event-listener";
 import { getMetrics, getPrinterConfig, type MetricsDto } from "../../services/printer-service";
-import type { PrinterConfigDto } from "../../types";
+import type { PrinterConfig } from "../../types";
 import { showErrorToast } from "../../utils/toast";
 
 import AppInfoModal from "./components/AppInfoModal";
@@ -17,7 +17,7 @@ import { SupportModal } from "./components/SupportModal";
 export default function PrinterPage() {
   const [modalName, setModalName] = useState<undefined | "config" | "clear-cache" | "app-info" | "support">();
 
-  const [printerConfig, setPrinterConfig] = useState<PrinterConfigDto>();
+  const [printerConfig, setPrinterConfig] = useState<PrinterConfig>();
   const [metrics, setMetrics] = useState<MetricsDto | null>(null);
   const [activeJobs, setActiveJobs] = useState<Map<string, JobStatusPayload>>(new Map());
   const metricsIntervalRef = useRef<number | null>(null);
@@ -99,9 +99,7 @@ export default function PrinterPage() {
     total: metrics?.total_jobs || 0,
     success: metrics?.completed || 0,
     failed: metrics?.failed || 0,
-    printTime: metrics?.avg_print_time_secs
-      ? `${metrics.avg_print_time_secs.toFixed(1)}s`
-      : null,
+    printTime: metrics?.avg_print_time_secs ? `${metrics.avg_print_time_secs.toFixed(1)}s` : null,
     downloadProgress: calculateDownloadProgress(),
     printProgress: calculatePrintProgress(),
   };
@@ -203,4 +201,11 @@ const ButtonGroupStyled = styled.div`
   padding: ${(p) => p.theme.spacing("4")};
   background-color: #eff7fe;
   border-bottom: 1px solid #d2d6db;
+
+  button,
+  a,
+  span {
+    color: #4d5761 !important;
+    font-weight: 550 !important;
+  }
 `;
