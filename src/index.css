@@ -1,0 +1,6 @@
+:root {
+  /* AppProvider đo scrollbar = 10px và gán inline trên <html>, nhưng webview dùng
+     overlay scrollbar (0px thật), khiến StyledMain bị trừ dư -> lộ dải trắng ở cạnh.
+     Ép về 0px; cần !important để thắng inline style do AppProvider set. */
+  --ui-app-provider-scrollbar-width: 0px !important;
+}

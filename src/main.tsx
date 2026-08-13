@@ -6,6 +6,8 @@ import translations from "@sapo/ui-components/locales/vi.json";
 
 import { router } from "./routes";
 
+import "./index.css";
+
 ReactDOM.createRoot(document.getElementById("root")!).render(
   <React.StrictMode>
     <AppProvider i18n={translations}>
