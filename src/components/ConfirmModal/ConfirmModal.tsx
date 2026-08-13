@@ -1,8 +1,9 @@
+import React from "react";
 import { type ComplexAction, Modal, type ModalProps } from "@sapo/ui-components";
 
 interface Props {
   /** Tiểu đề của modal */
-  title: string;
+  title: React.ReactNode;
   /** Nội dung modal */
   body: React.ReactNode;
   open: boolean;

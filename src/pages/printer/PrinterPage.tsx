@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import styled from "@emotion/styled";
-import { Box, Button } from "@sapo/ui-components";
+import { Box, Button, Icon, InlineStack, Text } from "@sapo/ui-components";
+import { WarningIcon } from "@sapo/ui-icons";
 import { ActionListButton } from "src/components/ActionListButton";
 import { ConfirmModal } from "src/components/ConfirmModal";
 import { type JobStatusPayload, onJobStatusChanged } from "src/services/event-listener";
@@ -145,7 +146,12 @@ export default function PrinterPage() {
   const clearCacheConfirmModal = modalName === "clear-cache" && (
     <ConfirmModal
       open
-      title="⚠️ Xóa cache dữ liệu?"
+      title={
+        <InlineStack gap="2" blockAlign="center">
+          <Text as="span" variant="headingLg"><Icon source={WarningIcon} tone="warning" /></Text>
+          <Text as="span" variant="headingLg">Xóa cache dữ liệu?</Text>
+        </InlineStack>
+      }
       body="Bạn có xác nhận xóa cache dữ liệu không?"
       onDismiss={() => setModalName(undefined)}
       confirmAction={{

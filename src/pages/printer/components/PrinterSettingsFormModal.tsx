@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
 import { Controller, useForm } from "react-hook-form";
 import { yupResolver } from "@hookform/resolvers/yup";
-import { Checkbox, FormLayout, Modal, NumberField, Select2 } from "@sapo/ui-components";
+import { Checkbox, FormLayout, Icon, InlineStack, Modal, NumberField, Select2, Text } from "@sapo/ui-components";
+import { WarningIcon } from "@sapo/ui-icons";
 import { ConfirmModal } from "src/components/ConfirmModal";
 import {
   DefaultPrintConfig,
@@ -233,7 +234,12 @@ const PrinterSettingsFormModal = ({ open, onClose, onSaved }: PrinterSettingsFor
   const cancelConfirmModal = modalName === "cancel" && (
     <ConfirmModal
       open
-      title="Hủy chỉnh sửa"
+      title={
+        <InlineStack gap="2" blockAlign="center">
+          <Text as="span" variant="headingLg"><Icon source={WarningIcon} tone="warning" /></Text>
+          <Text as="span" variant="headingLg">Hủy chỉnh sửa?</Text>
+        </InlineStack>
+      }
       body="Thông tin thay đổi của bạn sẽ mất. Bạn có xác nhận thay đổi?"
       onDismiss={closeModal}
       confirmAction={{
@@ -246,7 +252,12 @@ const PrinterSettingsFormModal = ({ open, onClose, onSaved }: PrinterSettingsFor
   const restoreConfirmModal = modalName === "restore" && (
     <ConfirmModal
       open
-      title="Khôi phục cài đặt"
+      title={
+        <InlineStack gap="2" blockAlign="center">
+          <Text as="span" variant="headingLg"><Icon source={WarningIcon} tone="warning" /></Text>
+          <Text as="span" variant="headingLg">Khôi phục cài đặt?</Text>
+        </InlineStack>
+      }
       body="Bạn có xác nhận thiết lập lại cài đặt về mặc định không?"
       onDismiss={closeModal}
       confirmAction={{
