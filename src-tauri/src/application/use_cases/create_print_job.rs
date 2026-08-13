@@ -1,6 +1,6 @@
-use std::sync::Arc;
+﻿use std::sync::Arc;
 
-use crate::application::dto::create_print_job_request::CreatePrintJobRequest;
+use crate::application::models::PrintJobCreateRequest;
 use crate::application::errors::Error;
 use crate::application::ports::event_bus::EventBus;
 use crate::application::ports::{ConfigPort, EventStore, PrinterAvailability, PrinterPort};
@@ -17,7 +17,7 @@ pub struct CreatePrintJobUseCase {
 }
 
 impl CreatePrintJobUseCase {
-    pub fn execute(&self, request: CreatePrintJobRequest) -> Result<PrintJobId, Error> {
+    pub fn execute(&self, request: PrintJobCreateRequest) -> Result<PrintJobId, Error> {
         tracing::info!(
             target = "sapo_printer::application::use_case::create_print_job",
             url = request.pdf_url,

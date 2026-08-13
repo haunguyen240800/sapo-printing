@@ -1,4 +1,4 @@
 #[derive(Debug, Clone)]
-pub struct CreatePrintJobRequest {
+pub struct PrintJobCreateRequest {
     pub pdf_url: String,
 }

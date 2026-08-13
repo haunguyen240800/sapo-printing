@@ -1,5 +1,3 @@
-pub mod agent;
-pub mod audit_trail;
-pub mod metrics;
-pub mod print_job;
-pub mod update;
+pub mod auth_command;
+pub mod metrics_command;
+pub mod update_command;

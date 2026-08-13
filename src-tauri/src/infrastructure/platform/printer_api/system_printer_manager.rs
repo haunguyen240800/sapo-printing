@@ -1,7 +1,7 @@
 use std::sync::Mutex;
 use std::time::{Duration, Instant};
 
-use crate::application::dto::PrinterDto;
+use crate::application::models::PrinterResponse;
 use crate::application::errors::Error;
 use crate::application::ports::{PrinterAvailability, PrinterPort};
 use crate::infrastructure::errors::InfrastructureError;
@@ -9,7 +9,7 @@ use crate::infrastructure::errors::InfrastructureError;
 const LIST_CACHE_TTL: Duration = Duration::from_secs(5);
 
 pub struct SystemPrinterManager {
-    cache: Mutex<Option<(Instant, Vec<PrinterDto>)>>,
+    cache: Mutex<Option<(Instant, Vec<PrinterResponse>)>>,
 }
 
 impl SystemPrinterManager {
@@ -19,7 +19,7 @@ impl SystemPrinterManager {
         }
     }
 
-    fn list_cached(&self) -> Result<Vec<PrinterDto>, InfrastructureError> {
+    fn list_cached(&self) -> Result<Vec<PrinterResponse>, InfrastructureError> {
         {
             let cache = self.cache.lock().unwrap_or_else(|p| p.into_inner());
             if let Some((cached_at, printers)) = cache.as_ref() {
@@ -44,7 +44,7 @@ impl Default for SystemPrinterManager {
 }
 
 impl PrinterPort for SystemPrinterManager {
-    fn list(&self) -> Result<Vec<PrinterDto>, Error> {
+    fn list(&self) -> Result<Vec<PrinterResponse>, Error> {
         self.list_cached().map_err(Error::from)
     }
 
@@ -100,7 +100,7 @@ fn get_default_printer_name() -> String {
 }
 
 #[cfg(target_os = "windows")]
-fn list_os_printers() -> Result<Vec<PrinterDto>, InfrastructureError> {
+fn list_os_printers() -> Result<Vec<PrinterResponse>, InfrastructureError> {
     use windows::Win32::Graphics::Printing::{EnumPrintersW, PRINTER_INFO_2W};
     use windows::core::PCWSTR;
 
@@ -162,7 +162,7 @@ fn list_os_printers() -> Result<Vec<PrinterDto>, InfrastructureError> {
         }
 
         let is_default = name == default_printer;
-        printers.push(PrinterDto {
+        printers.push(PrinterResponse {
             id: name.clone(),
             name,
             status: win32_status_to_str(info.Status).to_string(),
@@ -175,7 +175,7 @@ fn list_os_printers() -> Result<Vec<PrinterDto>, InfrastructureError> {
 }
 
 #[cfg(not(target_os = "windows"))]
-fn list_os_printers() -> Result<Vec<PrinterDto>, InfrastructureError> {
+fn list_os_printers() -> Result<Vec<PrinterResponse>, InfrastructureError> {
     use std::process::Command;
 
     let default_printer = Command::new("lpstat")
@@ -215,12 +215,12 @@ fn list_os_printers() -> Result<Vec<PrinterDto>, InfrastructureError> {
                 };
                 let is_default = name == default_printer;
 
-                printers.push(PrinterDto {
+                printers.push(PrinterResponse {
                     id: name.clone(),
                     name,
                     status: status.to_string(),
                     printer_type: "Local".to_string(),
-                    is_default,
+                    is_default: Some(is_default),
                 });
             }
         }

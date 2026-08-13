@@ -3,14 +3,14 @@ use serde::Serialize;
 use crate::application::ports::metrics_port::MetricsSnapshot;
 
 #[derive(Clone, Debug, Serialize)]
-pub struct MetricsDto {
+pub struct MetricsResponse {
     pub total_jobs: u64,
     pub completed: u64,
     pub failed: u64,
     pub avg_print_time_secs: f64,
 }
 
-impl From<MetricsSnapshot> for MetricsDto {
+impl From<MetricsSnapshot> for MetricsResponse {
     fn from(snapshot: MetricsSnapshot) -> Self {
         Self {
             total_jobs: snapshot.job_metrics.total_jobs,

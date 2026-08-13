@@ -33,7 +33,7 @@ export const PairRequestDialog: React.FC = () => {
   const handleResolve = async (allow: boolean) => {
     if (!request) return;
     try {
-      await invoke("resolve_pair", {
+      await invoke("approve_pairing_request", {
         requestId: request.request_id,
         approved: allow,
       });

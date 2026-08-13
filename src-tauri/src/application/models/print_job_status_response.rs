@@ -1,51 +1,39 @@
-use crate::domain::print_job::PrintJob;
-use crate::domain::print_job::PrintStatus;
 use serde::{Deserialize, Serialize};
 
+use crate::application::models::print_job_response::calculate_progress;
+use crate::domain::print_job::PrintJob;
+use crate::domain::print_job::PrintStatus;
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct PrintJobDto {
+pub struct PrintJobStatusResponse {
     pub job_id: String,
-    pub printer_name: String,
     pub status: String,
     pub progress: u8, // 0-100%
-    pub created_at: i64,
+    pub printer_name: String,
+    pub created_at: i64, // Unix timestamp
+    pub updated_at: Option<i64>,
+    pub completed_at: Option<i64>,
     pub error_message: Option<String>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct PrintJobFilterDto {
-    pub status: Option<String>,
-    pub printer_name: Option<String>,
-    pub from_date: Option<i64>, // Unix timestamp
-    pub to_date: Option<i64>,
-}
-
-impl From<PrintJob> for PrintJobDto {
+impl From<PrintJob> for PrintJobStatusResponse {
     fn from(job: PrintJob) -> Self {
+        let status = status_to_string(job.status());
+
         Self {
             job_id: job.id().to_string(),
-            printer_name: job.printer_id().to_string(),
-            status: status_to_string(job.status()),
+            status,
             progress: calculate_progress(job.status()),
+            printer_name: job.printer_id().to_string(),
             created_at: job.created_at(),
+            updated_at: None, // PrintJob doesn't track updated_at yet
+            completed_at: job.completed_at(),
             error_message: job.error_message().cloned(),
         }
     }
 }
 
-pub(crate) fn calculate_progress(status: &PrintStatus) -> u8 {
-    match status {
-        PrintStatus::Pending => 0,
-        PrintStatus::Queued => 10,
-        PrintStatus::Downloaded => 40,
-        PrintStatus::SubmittedToQueue => 60,
-        PrintStatus::Printing => 80,
-        PrintStatus::Completed => 100,
-        PrintStatus::Failed | PrintStatus::Cancelled => 0,
-    }
-}
-
-fn status_to_string(status: &PrintStatus) -> String {
+pub fn status_to_string(status: &PrintStatus) -> String {
     match status {
         PrintStatus::Pending => "PENDING".to_string(),
         PrintStatus::Queued => "QUEUED".to_string(),

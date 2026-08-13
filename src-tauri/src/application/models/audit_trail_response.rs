@@ -3,15 +3,15 @@ use serde::Serialize;
 use crate::application::use_cases::get_audit_trail::AuditTrailResult;
 
 #[derive(Clone, Debug, Serialize)]
-pub struct AuditTrailDto {
+pub struct AuditTrailResponse {
     pub job_id: String,
-    pub events: Vec<AuditEventDto>,
+    pub events: Vec<AuditEventResponse>,
     pub chain_valid: bool,
     pub tampered_count: u64,
 }
 
 #[derive(Clone, Debug, Serialize)]
-pub struct AuditEventDto {
+pub struct AuditEventResponse {
     pub sequence_number: i64,
     pub event_type: String,
     pub payload: String,
@@ -19,13 +19,13 @@ pub struct AuditEventDto {
     pub hmac_valid: bool,
 }
 
-impl AuditTrailDto {
+impl AuditTrailResponse {
     pub fn from_result(job_id: String, result: AuditTrailResult) -> Self {
-        let events: Vec<AuditEventDto> = result
+        let events: Vec<AuditEventResponse> = result
             .events
             .iter()
             .enumerate()
-            .map(|(i, event)| AuditEventDto {
+            .map(|(i, event)| AuditEventResponse {
                 sequence_number: event.sequence_number,
                 event_type: event.event_type.clone(),
                 payload: event.payload.clone(),

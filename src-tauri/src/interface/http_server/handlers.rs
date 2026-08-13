@@ -1,4 +1,4 @@
-//! REST handlers.
+﻿//! REST handlers.
 
 use axum::{
     Json,
@@ -8,7 +8,7 @@ use axum::{
 };
 use serde::{Deserialize, Serialize};
 
-use crate::application::dto::create_print_job_request::CreatePrintJobRequest;
+use crate::application::models::PrintJobCreateRequest;
 use crate::application::errors::Error;
 use crate::application::ports::PairError;
 
@@ -140,7 +140,7 @@ pub async fn create_job(
     Json(body): Json<CreateJobRequest>,
 ) -> Result<Json<CreateJobResponse>, ApiErrorResponse> {
     let use_case = state.create_print_job_uc.clone();
-    let request = CreatePrintJobRequest {
+    let request = PrintJobCreateRequest {
         pdf_url: body.document_url,
     };
 

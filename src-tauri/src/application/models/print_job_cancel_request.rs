@@ -1,4 +1,4 @@
 #[derive(Debug, Clone)]
-pub struct CancelPrintJobRequest {
+pub struct PrintJobCancelRequest {
     pub job_id: String,
 }

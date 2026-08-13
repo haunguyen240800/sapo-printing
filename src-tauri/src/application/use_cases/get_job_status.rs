@@ -1,6 +1,6 @@
-use std::sync::Arc;
+﻿use std::sync::Arc;
 
-use crate::application::dto::print_job_status_dto::PrintJobStatusDto;
+use crate::application::models::PrintJobStatusResponse;
 use crate::application::errors::Error;
 use crate::domain::print_job::{PrintJobId, PrintJobRepository};
 
@@ -13,7 +13,7 @@ impl GetJobStatusUseCase {
         Self { job_repo }
     }
 
-    pub fn execute(&self, job_id: &str) -> Result<PrintJobStatusDto, Error> {
+    pub fn execute(&self, job_id: &str) -> Result<PrintJobStatusResponse, Error> {
         tracing::info!(
             target = "sapo_printer::application::use_case::get_job_status",
             job_id = job_id,
@@ -34,7 +34,7 @@ impl GetJobStatusUseCase {
                 job_id: job_id.to_string(),
             })?;
 
-        let dto = PrintJobStatusDto::from(job);
+        let dto = PrintJobStatusResponse::from(job);
 
         tracing::debug!(
             target = "sapo_printer::application::use_case::get_job_status",

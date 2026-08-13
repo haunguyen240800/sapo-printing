@@ -18,11 +18,11 @@ const JOB_STATUS_EVENTS: &[&str] = &[
 
 const TAURI_EVENT_NAME: &str = "job_status_changed";
 
-pub struct JobStatusEmitter {
+pub struct PrintJobEventEmitter {
     app_handle: AppHandle,
 }
 
-impl JobStatusEmitter {
+impl PrintJobEventEmitter {
     pub fn new(app_handle: AppHandle) -> Self {
         Self { app_handle }
     }
@@ -36,7 +36,7 @@ impl JobStatusEmitter {
     }
 }
 
-impl EventHandler for JobStatusEmitter {
+impl EventHandler for PrintJobEventEmitter {
     fn handle(&self, event_type: &str, payload: &str) {
         let parsed: Value = match serde_json::from_str(payload) {
             Ok(v) => v,
@@ -45,7 +45,7 @@ impl EventHandler for JobStatusEmitter {
                     target = "sapo_printer::ui_presenter",
                     event_type,
                     error = %e,
-                    "JobStatusEmitter: invalid JSON payload, skipping emit"
+                    "PrintJobEventEmitter: invalid JSON payload, skipping emit"
                 );
                 return;
             }
@@ -56,7 +56,7 @@ impl EventHandler for JobStatusEmitter {
             tracing::warn!(
                 target = "sapo_printer::ui_presenter",
                 event_type,
-                "JobStatusEmitter: missing job_id in payload, skipping emit"
+                "PrintJobEventEmitter: missing job_id in payload, skipping emit"
             );
             return;
         }
@@ -77,7 +77,7 @@ impl EventHandler for JobStatusEmitter {
                 target = "sapo_printer::ui_presenter",
                 event_type,
                 error = %e,
-                "JobStatusEmitter: Tauri emit failed"
+                "PrintJobEventEmitter: Tauri emit failed"
             );
         }
     }

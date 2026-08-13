@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { Outlet } from "react-router-dom";
+import styled from "@emotion/styled";
 import { Frame } from "@sapo/ui-components";
 import { UnlistenFn } from "@tauri-apps/api/event";
 import { onUpdateAvailable, onUpdateReadyToApply, UpdateCheckResponse } from "src/services/update-service";
@@ -42,17 +43,26 @@ export function AppLayout() {
   }, []);
 
   return (
-    <Frame>
-      <ToastProvider>
-        <Outlet />
-        <UpdatePopup
-          isOpen={showUpdatePopup}
-          onClose={() => setShowUpdatePopup(false)}
-          updateInfo={updateInfo}
-          readyToApply={updateReady}
-        />
-        <PairRequestDialog />
-      </ToastProvider>
-    </Frame>
+    <FrameHost>
+      <Frame>
+        <ToastProvider>
+          <Outlet />
+          <UpdatePopup
+            isOpen={showUpdatePopup}
+            onClose={() => setShowUpdatePopup(false)}
+            updateInfo={updateInfo}
+            readyToApply={updateReady}
+          />
+          <PairRequestDialog />
+        </ToastProvider>
+      </Frame>
+    </FrameHost>
   );
 }
+
+const FrameHost = styled.div`
+  display: contents;
+  & > div {
+    display: contents;
+  }
+`;

@@ -4,8 +4,8 @@
 use std::sync::Arc;
 
 use application::use_cases::{
-    CancelPrintJobUseCase, CreatePrintJobUseCase, GetAuditTrailUseCase, GetJobStatusUseCase,
-    GetMetricsUseCase, ListPrintJobsUseCase, ListPrintersUseCase,
+    CreatePrintJobUseCase, GetAuditTrailUseCase,
+    GetJobStatusUseCase, GetMetricsUseCase, ListPrintersUseCase,
 };
 
 // Interface Layer - External-facing APIs
@@ -28,8 +28,6 @@ pub mod infrastructure;
 /// repositories or infrastructure ports directly.
 pub struct AppContextState {
     pub create_print_job_uc: Arc<CreatePrintJobUseCase>,
-    pub cancel_print_job_uc: Arc<CancelPrintJobUseCase>,
-    pub list_print_jobs_uc: Arc<ListPrintJobsUseCase>,
     pub get_job_status_uc: Arc<GetJobStatusUseCase>,
     pub get_metrics_uc: Arc<GetMetricsUseCase>,
     pub get_audit_trail_uc: Arc<GetAuditTrailUseCase>,

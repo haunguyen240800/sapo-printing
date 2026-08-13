@@ -1,6 +1,6 @@
-use std::sync::Arc;
+﻿use std::sync::Arc;
 
-use crate::application::dto::PrinterDto;
+use crate::application::models::PrinterResponse;
 use crate::application::errors::Error;
 use crate::application::ports::PrinterPort;
 
@@ -13,7 +13,7 @@ impl ListPrintersUseCase {
         Self { printer_manager }
     }
 
-    pub fn execute(&self) -> Result<Vec<PrinterDto>, Error> {
+    pub fn execute(&self) -> Result<Vec<PrinterResponse>, Error> {
         self.printer_manager
             .list()
             .map_err(|e| Error::RepositoryError(format!("Failed to list printers: {}", e)))
