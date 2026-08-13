@@ -29,5 +29,3 @@ export async function showPrintToFileDialog(): Promise<string | null> {
 
   return filePath;
 }
-
-

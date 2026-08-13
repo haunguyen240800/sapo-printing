@@ -1,13 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import styled from "@emotion/styled";
 import { Box, Button } from "@sapo/ui-components";
-
-import { ActionListButton } from "../../components/ActionListButton";
-import { ConfirmModal } from "../../components/ConfirmModal";
-import { type JobStatusPayload, onJobStatusChanged } from "../../services/event-listener";
-import { getMetrics, getPrinterConfig, type MetricsDto } from "../../services/printer-service";
-import type { PrinterConfig } from "../../types";
-import { showErrorToast } from "../../utils/toast";
+import { ActionListButton } from "src/components/ActionListButton";
+import { ConfirmModal } from "src/components/ConfirmModal";
+import { type JobStatusPayload, onJobStatusChanged } from "src/services/event-listener";
+import { getMetrics, getPrinterConfig, type MetricsDto } from "src/services/printer-service";
+import type { PrinterConfig } from "src/types/printer";
+import { showErrorToast } from "src/utils/toast";
 
 import AppInfoModal from "./components/AppInfoModal";
 import { Overview } from "./components/Overview";
@@ -76,7 +75,7 @@ export default function PrinterPage() {
           }
         });
       } catch {
-        return () => { };
+        return () => {};
       }
     };
 
@@ -90,7 +89,7 @@ export default function PrinterPage() {
       // Clear pending job-removal timeouts
       removalTimeouts.forEach((id) => clearTimeout(id));
       removalTimeouts.clear();
-      listenerPromise.then((unlisten) => unlisten()).catch(() => { });
+      listenerPromise.then((unlisten) => unlisten()).catch(() => {});
     };
   }, [loadPrinterConfig, loadMetrics]);
 

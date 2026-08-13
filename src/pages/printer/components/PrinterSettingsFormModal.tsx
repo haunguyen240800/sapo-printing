@@ -2,18 +2,17 @@ import { useEffect, useMemo, useState } from "react";
 import { Controller, useForm } from "react-hook-form";
 import { yupResolver } from "@hookform/resolvers/yup";
 import { Checkbox, FormLayout, Modal, NumberField, Select2 } from "@sapo/ui-components";
-import * as yup from "yup";
-
-import { ConfirmModal } from "../../../components/ConfirmModal";
+import { ConfirmModal } from "src/components/ConfirmModal";
 import {
   DefaultPrintConfig,
   getDimensionsByPaperSize,
   ImageFormatOptions,
   PaperSizeOptions,
-} from "../../../constants/printer";
-import { getPrinterConfig, listPrinters, savePrinterConfig } from "../../../services/printer-service";
-import { PrinterConfig, Printer } from "../../../types";
-import { showErrorToast, showToast } from "../../../utils/toast";
+} from "src/constants/printer";
+import { getPrinterConfig, listPrinters, savePrinterConfig } from "src/services/printer-service";
+import { Printer, PrinterConfig } from "src/types";
+import { showErrorToast, showToast } from "src/utils/toast";
+import * as yup from "yup";
 
 const validationSchema = yup.object().shape({
   printerName: yup.string().required("Tên máy in không được để trống"),

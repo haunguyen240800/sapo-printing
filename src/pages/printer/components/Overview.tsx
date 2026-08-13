@@ -1,9 +1,8 @@
 import styled from "@emotion/styled";
 import { BlockStack, Box, Divider, InlineGrid, Text } from "@sapo/ui-components";
-
-import { PaperSizeOptions } from "../../../constants/printer";
-import type { PrinterConfig } from "../../../types";
-import { ProgressBar } from "../../../components/ProgressBar";
+import { ProgressBar } from "src/components/ProgressBar";
+import { PaperSizeOptions } from "src/constants/printer";
+import type { PrinterConfig } from "src/types";
 
 type Props = {
   printerConfig?: PrinterConfig;

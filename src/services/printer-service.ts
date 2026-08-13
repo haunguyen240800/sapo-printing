@@ -1,6 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 
-import type { PrinterConfig, Printer, PrinterStatus } from "../types";
+import type { Printer, PrinterConfig, PrinterStatus } from "../types";
 import type { Job, JobFilter } from "../types/print-job";
 import { detectPrinterCategory, showPrintToFileDialog } from "../utils/print-dialog";
 
@@ -68,4 +68,12 @@ export async function getJobStatus(jobId: string): Promise<Job> {
 
 export async function getMetrics(): Promise<MetricsDto> {
   return invoke<MetricsDto>("get_metrics");
+}
+
+export async function getAutostartEnabled(): Promise<boolean> {
+  return invoke<boolean>("get_autostart_enabled");
+}
+
+export async function setAutostartEnabled(enabled: boolean): Promise<void> {
+  return invoke("set_autostart_enabled", { enabled });
 }

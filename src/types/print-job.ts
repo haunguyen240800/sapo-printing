@@ -13,4 +13,3 @@ export interface JobFilter {
   from_date?: number;
   to_date?: number;
 }
-

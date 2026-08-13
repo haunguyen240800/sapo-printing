@@ -1,8 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { Banner, Button, Spinner } from "@sapo/ui-components";
 import { getVersion } from "@tauri-apps/api/app";
-
-import { checkForUpdates, installUpdate, restartApp, UpdateCheckResponse } from "../services/update-service";
+import { checkForUpdates, installUpdate, restartApp, UpdateCheckResponse } from "src/services/update-service";
 
 interface Props {
   isOpen: boolean;

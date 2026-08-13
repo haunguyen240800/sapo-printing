@@ -2,7 +2,7 @@ import { CSSProperties, useRef } from "react";
 import { Transition, type TransitionStatus } from "react-transition-group";
 import styled from "@emotion/styled";
 import { useTheme } from "@sapo/ui-components";
-import { visuallyHidden } from "../../utils/styles";
+import { visuallyHidden } from "src/utils/styles";
 
 type Tone = "primary" | "success" | "critical";
 
@@ -74,7 +74,7 @@ const StyledProgressBar = styled.div<{
 }>`
   overflow: hidden;
   width: 100%;
-  background-color: #D2D6DB;
+  background-color: #d2d6db;
   border-radius: ${(p) => p.theme.shape.borderRadius("base")};
   height: ${(p) => (p.size === "small" ? p.theme.spacing(2) : p.theme.spacing(4))};
 `;

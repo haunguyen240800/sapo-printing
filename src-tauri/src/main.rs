@@ -203,6 +203,25 @@ fn restart_app() -> Result<(), String> {
     sapo_printer::interface::tauri::commands::update::execute_restart_app()
 }
 
+/// Tauri command: kiểm tra app có đang bật khởi động cùng OS hay không.
+#[tauri::command]
+fn get_autostart_enabled(app: tauri::AppHandle) -> Result<bool, String> {
+    use tauri_plugin_autostart::ManagerExt;
+    app.autolaunch().is_enabled().map_err(|e| e.to_string())
+}
+
+/// Tauri command: bật/tắt khởi động cùng OS.
+#[tauri::command]
+fn set_autostart_enabled(app: tauri::AppHandle, enabled: bool) -> Result<(), String> {
+    use tauri_plugin_autostart::ManagerExt;
+    let manager = app.autolaunch();
+    if enabled {
+        manager.enable().map_err(|e| e.to_string())
+    } else {
+        manager.disable().map_err(|e| e.to_string())
+    }
+}
+
 #[cfg(target_os = "windows")]
 use sapo_printer::infrastructure::platform::keychain::WindowsCredentialManager;
 
@@ -754,6 +773,84 @@ fn main() {
             // Register dialog plugin for native file dialogs
             app.handle().plugin(tauri_plugin_dialog::init())?;
 
+            // Register autostart plugin (khởi động cùng OS). Mặc định KHÔNG bật;
+            // user tự bật/tắt trong Settings qua command get/set_autostart_enabled.
+            #[cfg(desktop)]
+            app.handle().plugin(tauri_plugin_autostart::init(
+                tauri_plugin_autostart::MacosLauncher::LaunchAgent,
+                Some(vec!["--minimized"]),
+            ))?;
+
+            // ==================== SYSTEM TRAY ====================
+            // Cho phép app chạy ngầm khi đóng cửa sổ. Bấm X sẽ ẩn xuống tray
+            // (xem on_window_event), thoát hẳn qua menu "Thoát" của tray.
+            {
+                use tauri::menu::{MenuBuilder, MenuItemBuilder};
+                use tauri::tray::{TrayIconBuilder, TrayIconEvent};
+                use tauri::Manager;
+
+                let show_item = MenuItemBuilder::with_id("show", "Hiển thị").build(app)?;
+                let quit_item = MenuItemBuilder::with_id("quit", "Thoát").build(app)?;
+                let tray_menu = MenuBuilder::new(app)
+                    .item(&show_item)
+                    .separator()
+                    .item(&quit_item)
+                    .build()?;
+
+                let mut tray_builder = TrayIconBuilder::with_id("main-tray")
+                    .tooltip("Sapo Printer Pro Max")
+                    .menu(&tray_menu)
+                    .show_menu_on_left_click(false)
+                    .on_menu_event(|app, event| match event.id().as_ref() {
+                        "show" => {
+                            if let Some(window) = app.get_webview_window("main") {
+                                let _ = window.show();
+                                let _ = window.unminimize();
+                                let _ = window.set_focus();
+                            }
+                        }
+                        "quit" => {
+                            // Dừng queue worker gracefully trước khi thoát hẳn.
+                            let state = app.state::<AppContextState>();
+                            if let Err(e) = state.queue_worker.stop() {
+                                eprintln!("Warning: Failed to stop queue worker gracefully: {e}");
+                            }
+                            app.exit(0);
+                        }
+                        _ => {}
+                    })
+                    .on_tray_icon_event(|tray, event| {
+                        // Click trái vào icon -> hiện lại cửa sổ.
+                        if let TrayIconEvent::Click {
+                            button: tauri::tray::MouseButton::Left,
+                            button_state: tauri::tray::MouseButtonState::Up,
+                            ..
+                        } = event
+                        {
+                            let app = tray.app_handle();
+                            if let Some(window) = app.get_webview_window("main") {
+                                let _ = window.show();
+                                let _ = window.unminimize();
+                                let _ = window.set_focus();
+                            }
+                        }
+                    });
+
+                if let Some(icon) = app.default_window_icon().cloned() {
+                    tray_builder = tray_builder.icon(icon);
+                }
+
+                tray_builder.build(app)?;
+
+                // Khi được auto-start cùng OS (cờ --minimized), khởi động ẩn
+                // xuống tray để chạy hoàn toàn ngầm.
+                if std::env::args().any(|arg| arg == "--minimized") {
+                    if let Some(window) = app.get_webview_window("main") {
+                        let _ = window.hide();
+                    }
+                }
+            }
+
             // ==================== AUTO-UPDATE ====================
             // CÆ¡ cháº¿ check version / auto-update qua tauri-plugin-updater.
             // NOTE(local-publish): viá»‡c phÃ¡t hÃ nh `latest.json` á»Ÿ LOCAL Ä‘Ã£ bá»‹ gá»¡
@@ -873,6 +970,8 @@ fn main() {
             check_for_updates,
             install_update,
             restart_app,
+            get_autostart_enabled,
+            set_autostart_enabled,
             sapo_printer::interface::tauri::commands::agent::get_agent_port,
             sapo_printer::interface::tauri::commands::agent::get_paired_origins,
             sapo_printer::interface::tauri::commands::agent::revoke_token,
@@ -881,13 +980,12 @@ fn main() {
             sapo_printer::interface::tauri::commands::agent::get_agent_status,
         ])
         .on_window_event(|window, event| {
-            if let tauri::WindowEvent::CloseRequested { .. } = event {
-                let state = window.state::<AppContextState>();
-                if let Err(e) = state.queue_worker.stop() {
-                    eprintln!("Warning: Failed to stop queue worker gracefully: {}", e);
-                } else {
-                    println!("Queue worker stopped gracefully");
-                }
+            // Bấm X không thoát app mà thu nhỏ xuống system tray; queue worker
+            // vẫn chạy ngầm để tiếp tục xử lý job in. Thoát hẳn qua menu "Thoát"
+            // của tray (nơi worker được dừng gracefully trước khi app.exit).
+            if let tauri::WindowEvent::CloseRequested { api, .. } = event {
+                api.prevent_close();
+                let _ = window.hide();
             }
         })
         .run(tauri::generate_context!())

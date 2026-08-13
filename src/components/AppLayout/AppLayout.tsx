@@ -2,9 +2,9 @@ import { useEffect, useState } from "react";
 import { Outlet } from "react-router-dom";
 import { Frame } from "@sapo/ui-components";
 import { UnlistenFn } from "@tauri-apps/api/event";
+import { onUpdateAvailable, onUpdateReadyToApply, UpdateCheckResponse } from "src/services/update-service";
+import { ToastProvider } from "src/utils/toast";
 
-import { onUpdateAvailable, onUpdateReadyToApply, UpdateCheckResponse } from "../../services/update-service";
-import { ToastProvider } from "../../utils/toast/ToastProvider";
 import { PairRequestDialog } from "../PairRequestDialog";
 import { UpdatePopup } from "../UpdatePopup";
 
