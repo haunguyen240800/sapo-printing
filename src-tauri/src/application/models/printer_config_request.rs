@@ -14,5 +14,5 @@ pub struct PrinterConfigRequest {
     pub print_as_image: bool,        // true = render as image before printing
     pub color_mode: String,          // "RGB" | "ARGB" | "BGR" | "GRAY" | "BINARY"
     pub enable_buffer: bool,         // true = enable printing buffer
-    pub buffer_size_kb: u32,         // KB, 1-1024, required when enable_buffer = true (validated as not null)
+    pub buffer_size_kb: Option<u32>,  // KB, optional
 }

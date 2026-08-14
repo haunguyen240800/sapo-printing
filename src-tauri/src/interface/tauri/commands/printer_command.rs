@@ -39,35 +39,21 @@ pub fn save_printer_config(
         }
     }
 
-    if config.margin_left > 100 {
-        return Err("Lề trái phải trong khoảng 0-100mm".to_string());
-    }
-    if config.margin_right > 100 {
-        return Err("Lề phải phải trong khoảng 0-100mm".to_string());
-    }
-    if config.margin_top > 100 {
-        return Err("Lề trên phải trong khoảng 0-100mm".to_string());
-    }
-    if config.margin_bottom > 100 {
-        return Err("Lề dưới phải trong khoảng 0-100mm".to_string());
-    }
+    // if config.margin_left > 100 {
+    //     return Err("Lề trái phải trong khoảng 0-100mm".to_string());
+    // }
+    // if config.margin_right > 100 {
+    //     return Err("Lề phải phải trong khoảng 0-100mm".to_string());
+    // }
+    // if config.margin_top > 100 {
+    //     return Err("Lề trên phải trong khoảng 0-100mm".to_string());
+    // }
+    // if config.margin_bottom > 100 {
+    //     return Err("Lề dưới phải trong khoảng 0-100mm".to_string());
+    // }
 
     if config.printer_name.is_empty() {
         return Err("Tên máy in không được để trống".to_string());
-    }
-
-    if config.enable_buffer {
-        if config.buffer_size_kb == 0 {
-            return Err("Kích thước buffer bắt buộc khi bật buffer".to_string());
-        }
-        if !(1..=1024).contains(&config.buffer_size_kb) {
-            return Err(format!(
-                "Kích thước buffer phải trong khoảng 1-1024 KB (nhận được: {} KB)",
-                config.buffer_size_kb
-            ));
-        }
-    } else if config.buffer_size_kb > 0 {
-        return Err("Không thể đặt kích thước buffer khi buffer đã tắt".to_string());
     }
 
     let valid_color_modes = ["RGB", "ARGB", "BGR", "GRAY", "BINARY"];
@@ -91,7 +77,7 @@ pub fn save_printer_config(
         color_mode: config.color_mode,
         print_as_image: config.print_as_image,
         enable_buffer: config.enable_buffer,
-        buffer_size_kb: Some(config.buffer_size_kb),
+        buffer_size_kb: config.buffer_size_kb,
     };
 
     app_print_config::save_config(&print_config)?;

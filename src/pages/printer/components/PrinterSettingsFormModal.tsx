@@ -27,8 +27,7 @@ const validationSchema = yup.object().shape({
       then: (schema) =>
         schema
           .required("Chiều rộng bắt buộc khi chọn khổ Custom")
-          .min(50, "Chiều rộng phải trong khoảng 50-500mm")
-          .max(500, "Chiều rộng phải trong khoảng 50-500mm"),
+          .min(50, "Chiều rộng phải tối thiểu 50mm"),
       otherwise: (schema) => schema.defined(),
     }),
   height: yup
@@ -40,34 +39,29 @@ const validationSchema = yup.object().shape({
       then: (schema) =>
         schema
           .required("Chiều cao bắt buộc khi chọn khổ Custom")
-          .min(50, "Chiều cao phải trong khoảng 50-500mm")
-          .max(500, "Chiều cao phải trong khoảng 50-500mm"),
+          .min(50, "Chiều cao phải tối thiểu 50mm"),
       otherwise: (schema) => schema.defined(),
     }),
   marginLeft: yup
     .number()
     .transform((value, original) => (original === "" ? 0 : value))
     .required("Lề trái không được để trống")
-    .min(0, "Lề trái phải trong khoảng 0-100mm")
-    .max(100, "Lề trái phải trong khoảng 0-100mm"),
+    .min(0, "Lề trái không được âm"),
   marginRight: yup
     .number()
     .transform((value, original) => (original === "" ? 0 : value))
     .required("Lề phải không được để trống")
-    .min(0, "Lề phải phải trong khoảng 0-100mm")
-    .max(100, "Lề phải phải trong khoảng 0-100mm"),
+    .min(0, "Lề phải không được âm"),
   marginTop: yup
     .number()
     .transform((value, original) => (original === "" ? 0 : value))
     .required("Lề trên không được để trống")
-    .min(0, "Lề trên phải trong khoảng 0-100mm")
-    .max(100, "Lề trên phải trong khoảng 0-100mm"),
+    .min(0, "Lề trên không được âm"),
   marginBottom: yup
     .number()
     .transform((value, original) => (original === "" ? 0 : value))
     .required("Lề dưới không được để trống")
-    .min(0, "Lề dưới phải trong khoảng 0-100mm")
-    .max(100, "Lề dưới phải trong khoảng 0-100mm"),
+    .min(0, "Lề dưới không được âm"),
   landscape: yup.boolean().required(),
   printingBuffer: yup.boolean().required(),
   printImage: yup.boolean().required(),
@@ -170,15 +164,14 @@ const PrinterSettingsFormModal = ({ open, onClose, onSaved }: PrinterSettingsFor
   const printImage = watch("printImage");
 
   const handlePaperSizeChange = (value: string) => {
-    setValue("paperSize", value);
+    setValue("paperSize", value, { shouldDirty: true });
     const dimensions = getDimensionsByPaperSize(value);
     if (dimensions) {
-      setValue("width", parseFloat(dimensions.width));
-      setValue("height", parseFloat(dimensions.height));
+      setValue("width", parseFloat(dimensions.width), { shouldDirty: true });
+      setValue("height", parseFloat(dimensions.height), { shouldDirty: true });
     } else if (value === "Custom") {
-      // Clear values for custom size
-      setValue("width", undefined);
-      setValue("height", undefined);
+      setValue("width", undefined, { shouldDirty: true });
+      setValue("height", undefined, { shouldDirty: true });
     }
   };
 
