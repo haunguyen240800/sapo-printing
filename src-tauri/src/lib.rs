@@ -1,27 +1,15 @@
-// Library root — declares 4-layer Clean Architecture modules + bootstrap
-
 pub mod bootstrap;
-
-// Interface Layer
 pub mod interface;
-
-// Application Layer
 pub mod application;
-
-// Domain Layer
 pub mod domain;
-
-// Infrastructure Layer
 pub mod infrastructure;
 
-use std::sync::Arc;
 use application::use_cases::{
     CreatePrintJobUseCase, GetAuditTrailUseCase,
     GetJobStatusUseCase, GetMetricsUseCase, ListPrintersUseCase,
 };
+use std::sync::Arc;
 
-/// Shared state registered with Tauri via `.manage()`.
-/// Commands access this via `tauri::State<'_, AppContextState>`.
 pub struct AppContextState {
     pub create_print_job_uc: Arc<CreatePrintJobUseCase>,
     pub get_job_status_uc: Arc<GetJobStatusUseCase>,
@@ -36,10 +24,9 @@ pub struct AppContextState {
 
 pub fn run() {
     use infrastructure::telemetry::logger::init_logging;
-    use tauri::Manager;
     use interface::tauri::commands::{
-        autostart_command::{get_autostart_enabled, set_autostart_enabled},
         auth_command::approve_pairing_request,
+        autostart_command::{get_autostart_enabled, set_autostart_enabled},
         metrics_command::get_metrics,
         printer_command::{
             detect_printer_category, get_printer_config, get_printer_status,
@@ -47,8 +34,16 @@ pub fn run() {
         },
         update_command::{check_for_updates, install_update, restart_app},
     };
+    use tauri::Manager;
 
     init_logging();
+
+    if rustls::crypto::aws_lc_rs::default_provider()
+        .install_default()
+        .is_err()
+    {
+        tracing::debug!("rustls CryptoProvider already installed");
+    }
 
     let dirs = bootstrap::dirs::init_directories();
 

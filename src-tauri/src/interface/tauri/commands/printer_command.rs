@@ -39,19 +39,6 @@ pub fn save_printer_config(
         }
     }
 
-    // if config.margin_left > 100 {
-    //     return Err("Lề trái phải trong khoảng 0-100mm".to_string());
-    // }
-    // if config.margin_right > 100 {
-    //     return Err("Lề phải phải trong khoảng 0-100mm".to_string());
-    // }
-    // if config.margin_top > 100 {
-    //     return Err("Lề trên phải trong khoảng 0-100mm".to_string());
-    // }
-    // if config.margin_bottom > 100 {
-    //     return Err("Lề dưới phải trong khoảng 0-100mm".to_string());
-    // }
-
     if config.printer_name.is_empty() {
         return Err("Tên máy in không được để trống".to_string());
     }
