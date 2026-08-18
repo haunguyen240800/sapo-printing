@@ -41,17 +41,18 @@ if [ ! -f "$CONF" ]; then
 fi
 
 read_config_field() {
-  node -e '
-    const fs = require("fs");
-    const config = JSON.parse(fs.readFileSync(process.argv[1], "utf8"));
-    const value = config[process.argv[2]];
-    if (typeof value !== "string" || value.trim() === "") process.exit(1);
-    process.stdout.write(value);
-  ' "$CONF" "$1"
+  local field="$1"
+  sed -nE \
+    's/^[[:space:]]*"'"$field"'"[[:space:]]*:[[:space:]]*"([^"]+)"[[:space:]]*,?[[:space:]]*$/\1/p' \
+    "$CONF" | head -n 1
 }
 
 if ! PRODUCT_NAME="$(read_config_field productName)"; then
   echo "ERROR: could not parse productName from tauri.conf.json" >&2
+  exit 1
+fi
+if [ -z "$PRODUCT_NAME" ]; then
+  echo "ERROR: productName resolved to an empty value from tauri.conf.json" >&2
   exit 1
 fi
 if ! VERSION="$(read_config_field version)"; then
@@ -59,7 +60,7 @@ if ! VERSION="$(read_config_field version)"; then
   exit 1
 fi
 if [ -z "$VERSION" ]; then
-  echo "ERROR: could not parse version from tauri.conf.json" >&2
+  echo "ERROR: version resolved to an empty value from tauri.conf.json" >&2
   exit 1
 fi
 TAG="v$VERSION"
