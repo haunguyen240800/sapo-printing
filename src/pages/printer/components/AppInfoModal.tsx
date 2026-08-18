@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import {
   Banner,
   BlockStack,
+  Button,
   InlineGrid,
   InlineStack,
   Link,
@@ -20,8 +21,9 @@ type Props = {
 };
 
 const AppInfoModal = ({ open, onClose }: Props) => {
-  const { state, checkUpdate, installUpdate, isChecking, isInstalling, isBusy } = useAppUpdate();
+  const { state, checkUpdate, installUpdate, isInstalling } = useAppUpdate();
   const [version, setVersion] = useState("");
+  const [installationStarted, setInstallationStarted] = useState(false);
 
   useEffect(() => {
     getVersion()
@@ -29,50 +31,39 @@ const AppInfoModal = ({ open, onClose }: Props) => {
       .catch(() => setVersion(""));
   }, []);
 
+  useEffect(() => {
+    if (open) {
+      setInstallationStarted(false);
+      checkUpdate();
+    }
+  }, [open, checkUpdate]);
+
+  const handleInstallUpdate = () => {
+    setInstallationStarted(true);
+    installUpdate();
+  };
+
+  const handleClose = () => {
+    if (!isInstalling) {
+      onClose();
+    }
+  };
+
   const renderBanner = () => {
     switch (state.status) {
       case "idle":
-        return (
-          <Banner tone="info" hideDismiss>
-            Phiên bản mới nhất đã được cập nhật
-          </Banner>
-        );
-
       case "checking":
-        return (
-          <Banner tone="info" hideDismiss>
-            <InlineStack gap="2" blockAlign="center">
-              <Text as="span">Đang kiểm tra phiên bản mới...</Text>
-            </InlineStack>
-          </Banner>
-        );
-
       case "up-to-date":
-        return (
-          <Banner tone="success" hideDismiss>
-            <BlockStack gap="1">
-              <Text as="p" fontWeight="medium">
-                Phiên bản mới nhất đã được cập nhật
-              </Text>
-              <Text as="p" tone="subdued">
-                Bạn đang dùng phiên bản {version || state.version}
-              </Text>
-            </BlockStack>
-          </Banner>
-        );
+        return null;
 
       case "update-available":
         return (
-          <Banner tone="warning" hideDismiss>
-            <BlockStack gap="1">
-              <Text as="p" fontWeight="medium">
-                Có phiên bản mới: {state.result.version}
-              </Text>
-              {state.result.release_notes && (
-                <Text as="p" tone="subdued">
-                  {state.result.release_notes}
-                </Text>
-              )}
+          <Banner tone="info" hideDismiss>
+            <BlockStack gap="2">
+              <Text as="p">Đã có phiên bản mới ver [{state.result.version}]. Vui lòng xác nhận để cập nhật</Text>
+              <InlineStack>
+                <Button onClick={handleInstallUpdate}>Cập nhật</Button>
+              </InlineStack>
             </BlockStack>
           </Banner>
         );
@@ -93,6 +84,10 @@ const AppInfoModal = ({ open, onClose }: Props) => {
         );
 
       case "error":
+        if (!installationStarted) {
+          return null;
+        }
+
         return (
           <Banner tone="critical" hideDismiss>
             <BlockStack gap="1">
@@ -108,35 +103,17 @@ const AppInfoModal = ({ open, onClose }: Props) => {
     }
   };
 
-  const renderPrimaryAction = () => {
-    if (state.status === "update-available") {
-      return {
-        content: "Tải và cài đặt",
-        onAction: installUpdate,
-        disabled: isBusy,
-      };
-    }
-
-    return {
-      content: isChecking ? "Đang kiểm tra..." : "Kiểm tra phiên bản",
-      onAction: checkUpdate,
-      disabled: isBusy,
-      loading: isChecking,
-    };
-  };
-
   return (
     <Modal
       open={open}
-      onClose={onClose}
+      onClose={handleClose}
       title="Thông tin"
       size="small"
       sectioned
-      primaryAction={renderPrimaryAction()}
       secondaryActions={[
         {
           content: "Đóng",
-          onAction: onClose,
+          onAction: handleClose,
           disabled: isInstalling,
         },
       ]}
