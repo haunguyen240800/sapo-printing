@@ -6,15 +6,19 @@ use serde::{Deserialize, Serialize};
 pub struct PrintJobFailed {
     pub job_id: PrintJobId,
     pub reason: String,
+    /// Stable machine-readable error code (see `application::errors::Error::code`).
+    /// Lets the frontend branch/record the failure without parsing `reason`.
+    pub error_code: String,
     pub retry_count: u32,
     pub timestamp: u64,
 }
 
 impl PrintJobFailed {
-    pub fn new(job_id: PrintJobId, reason: String, retry_count: u32) -> Self {
+    pub fn new(job_id: PrintJobId, reason: String, error_code: String, retry_count: u32) -> Self {
         Self {
             job_id,
             reason,
+            error_code,
             retry_count,
             timestamp: now_unix(),
         }

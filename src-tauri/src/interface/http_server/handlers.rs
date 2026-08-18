@@ -189,30 +189,28 @@ pub async fn get_job(
 }
 
 fn map_app_error(e: Error) -> ApiErrorResponse {
-    let (status, code) = match &e {
-        Error::EmptyJobList => (StatusCode::BAD_REQUEST, "empty_job_list"),
-        Error::TooManyJobs { .. } => (StatusCode::BAD_REQUEST, "too_many_jobs"),
-        Error::InvalidJobId { .. } => (StatusCode::BAD_REQUEST, "invalid_job_id"),
-        Error::ValidationError { .. } => (StatusCode::BAD_REQUEST, "validation_error"),
-        Error::JobNotFound { .. } => (StatusCode::NOT_FOUND, "not_found"),
-        Error::PrinterNotAvailable { .. } => (StatusCode::BAD_REQUEST, "printer_not_available"),
-        Error::CannotCancelCompleted { .. } => (StatusCode::CONFLICT, "cannot_cancel_completed"),
-        Error::CannotCancelFailed { .. } => (StatusCode::CONFLICT, "cannot_cancel_failed"),
-        Error::CannotCancelCancelled { .. } => (StatusCode::CONFLICT, "cannot_cancel_cancelled"),
-        Error::DomainRuleViolation { .. } => {
-            (StatusCode::UNPROCESSABLE_ENTITY, "domain_rule_violation")
-        }
-        Error::RepositoryError(_) => (StatusCode::INTERNAL_SERVER_ERROR, "repository_error"),
-        Error::EventStoreError { .. } => (StatusCode::INTERNAL_SERVER_ERROR, "event_store_error"),
-        Error::EventBusError { .. } => (StatusCode::INTERNAL_SERVER_ERROR, "event_bus_error"),
-        Error::MetricsError { .. } => (StatusCode::INTERNAL_SERVER_ERROR, "metrics_error"),
-        Error::PrintJobError(_) => (StatusCode::INTERNAL_SERVER_ERROR, "print_job_error"),
+    let status = match &e {
+        Error::EmptyJobList => StatusCode::BAD_REQUEST,
+        Error::TooManyJobs { .. } => StatusCode::BAD_REQUEST,
+        Error::InvalidJobId { .. } => StatusCode::BAD_REQUEST,
+        Error::ValidationError { .. } => StatusCode::BAD_REQUEST,
+        Error::JobNotFound { .. } => StatusCode::NOT_FOUND,
+        Error::PrinterNotAvailable { .. } => StatusCode::BAD_REQUEST,
+        Error::CannotCancelCompleted { .. } => StatusCode::CONFLICT,
+        Error::CannotCancelFailed { .. } => StatusCode::CONFLICT,
+        Error::CannotCancelCancelled { .. } => StatusCode::CONFLICT,
+        Error::DomainRuleViolation { .. } => StatusCode::UNPROCESSABLE_ENTITY,
+        Error::RepositoryError(_) => StatusCode::INTERNAL_SERVER_ERROR,
+        Error::EventStoreError { .. } => StatusCode::INTERNAL_SERVER_ERROR,
+        Error::EventBusError { .. } => StatusCode::INTERNAL_SERVER_ERROR,
+        Error::MetricsError { .. } => StatusCode::INTERNAL_SERVER_ERROR,
+        Error::PrintJobError(_) => StatusCode::INTERNAL_SERVER_ERROR,
         // Port / infrastructure errors (e.g. download timeout, invalid input from infra)
-        Error::NotFound(_) => (StatusCode::NOT_FOUND, "not_found"),
-        Error::InvalidInput(_) => (StatusCode::BAD_REQUEST, "invalid_input"),
-        Error::Unavailable(_) => (StatusCode::SERVICE_UNAVAILABLE, "service_unavailable"),
-        Error::Timeout(_) => (StatusCode::GATEWAY_TIMEOUT, "timeout"),
-        Error::Operation(_) => (StatusCode::INTERNAL_SERVER_ERROR, "operation_error"),
+        Error::NotFound(_) => StatusCode::NOT_FOUND,
+        Error::InvalidInput(_) => StatusCode::BAD_REQUEST,
+        Error::Unavailable(_) => StatusCode::SERVICE_UNAVAILABLE,
+        Error::Timeout(_) => StatusCode::GATEWAY_TIMEOUT,
+        Error::Operation(_) => StatusCode::INTERNAL_SERVER_ERROR,
     };
-    ApiError::new(status, code, e.to_string())
+    ApiError::new(status, e.code(), e.to_string())
 }

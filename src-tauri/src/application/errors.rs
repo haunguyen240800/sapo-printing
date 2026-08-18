@@ -67,6 +67,35 @@ pub enum Error {
     },
 }
 
+impl Error {
+    /// Stable, machine-readable error code for the frontend to record and branch
+    /// on. These strings are part of the API contract — keep them in sync with the
+    /// HTTP status mapping in `interface::http_server::handlers::map_app_error`.
+    pub fn code(&self) -> &'static str {
+        match self {
+            Self::NotFound(_) | Self::JobNotFound { .. } => "not_found",
+            Self::Unavailable(_) => "service_unavailable",
+            Self::InvalidInput(_) => "invalid_input",
+            Self::Timeout(_) => "timeout",
+            Self::Operation(_) => "operation_error",
+            Self::TooManyJobs { .. } => "too_many_jobs",
+            Self::EmptyJobList => "empty_job_list",
+            Self::PrinterNotAvailable { .. } => "printer_not_available",
+            Self::PrintJobError(_) => "print_job_error",
+            Self::RepositoryError(_) => "repository_error",
+            Self::InvalidJobId { .. } => "invalid_job_id",
+            Self::CannotCancelCompleted { .. } => "cannot_cancel_completed",
+            Self::CannotCancelFailed { .. } => "cannot_cancel_failed",
+            Self::CannotCancelCancelled { .. } => "cannot_cancel_cancelled",
+            Self::DomainRuleViolation { .. } => "domain_rule_violation",
+            Self::EventStoreError { .. } => "event_store_error",
+            Self::EventBusError { .. } => "event_bus_error",
+            Self::ValidationError { .. } => "validation_error",
+            Self::MetricsError { .. } => "metrics_error",
+        }
+    }
+}
+
 impl fmt::Display for Error {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {

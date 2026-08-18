@@ -5,6 +5,7 @@ export interface JobStatusPayload {
   status: string;
   progress: number;
   error_message?: string;
+  error_code?: string;
 }
 
 type JobStatusHandler = (payload: JobStatusPayload) => void;

@@ -64,12 +64,14 @@ impl EventHandler for PrintJobEventEmitter {
         let status = event_type_to_status(event_type);
         let progress = status_to_progress(status);
         let error_message = parsed.get("reason").and_then(|v| v.as_str());
+        let error_code = parsed.get("error_code").and_then(|v| v.as_str());
 
         let ui_payload = serde_json::json!({
             "job_id": job_id,
             "status": status,
             "progress": progress,
             "error_message": error_message,
+            "error_code": error_code,
         });
 
         if let Err(e) = self.app_handle.emit(TAURI_EVENT_NAME, ui_payload) {

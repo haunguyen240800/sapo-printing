@@ -28,8 +28,9 @@ impl PrintJobFailedHandler {
     /// Jobs are never retried — any pipeline error is a permanent failure.
     pub fn handle(&self, error: Error, mut job: PrintJob) {
         let error_msg = error.to_string();
+        let error_code = error.code().to_string();
 
-        if let Err(e) = job.fail(error_msg.clone()) {
+        if let Err(e) = job.fail(error_msg.clone(), error_code) {
             tracing::error!(
                 target = "sapo_printer::application::handler::print_job_failed",
                 job_id = %job.id(),

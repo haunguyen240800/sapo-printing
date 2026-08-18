@@ -45,7 +45,7 @@ impl ProcessPrintJobUseCase {
                 error = %e,
                 "Initial persist failed, marking job as Failed"
             );
-            let _ = job.fail(format!("Initial persist failed: {}", e));
+            let _ = job.fail(format!("Initial persist failed: {}", e), e.code().to_string());
             let _ = self.job_repo.update(&job);
             return Err(e);
         }

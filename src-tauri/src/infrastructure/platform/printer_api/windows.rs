@@ -174,6 +174,25 @@ impl WindowsGraphicsBackend {
             .collect()
     }
 
+    /// Maps common Win32 print error codes to a human-readable Vietnamese hint so
+    /// the failure reason shown on the web is actionable instead of a raw number.
+    fn describe_win32_error(code: u32) -> &'static str {
+        match code {
+            5 => "Không có quyền truy cập máy in (ERROR_ACCESS_DENIED)",
+            6 => "Handle thiết bị không hợp lệ (ERROR_INVALID_HANDLE)",
+            8 => "Không đủ bộ nhớ (ERROR_NOT_ENOUGH_MEMORY)",
+            63 => "Tác vụ in đã bị hủy (ERROR_PRINT_CANCELLED)",
+            87 => "Tham số không hợp lệ — driver có thể không hỗ trợ khổ giấy tùy chỉnh (ERROR_INVALID_PARAMETER)",
+            112 => "Ổ đĩa spooler đầy (ERROR_DISK_FULL)",
+            1722 => "Dịch vụ Print Spooler không chạy (RPC_S_SERVER_UNAVAILABLE)",
+            1801 => "Tên máy in không hợp lệ (ERROR_INVALID_PRINTER_NAME)",
+            1905 => "Máy in đã bị xóa/gỡ khỏi hệ thống (ERROR_PRINTER_DELETED)",
+            1906 => "Máy in đang ở trạng thái không hợp lệ, có thể offline hoặc bị tạm dừng (ERROR_INVALID_PRINTER_STATE)",
+            3004 => "Spooler báo chưa gọi StartDoc (ERROR_SPL_NO_STARTDOC)",
+            _ => "Lỗi Win32 không xác định",
+        }
+    }
+
     /// Returns the printer's full DEVMODE (from DocumentPropertiesW) with only
     /// the paper-size fields patched. Preserves orientation, print-direction, and
     /// all other driver-specific settings — this is why browser print works and a
@@ -306,9 +325,18 @@ impl GraphicsBackend for WindowsGraphicsBackend {
 
         let result = unsafe { StartDocW(hdc, &doc_info) };
         if result <= 0 {
+            let os_err = std::io::Error::last_os_error();
             unsafe { DeleteDC(hdc) };
             self.hdc = None;
-            return Err("Failed to start document (StartDocW returned error)".to_string());
+            let code = os_err.raw_os_error().unwrap_or(-1);
+            return Err(format!(
+                "Không thể bắt đầu in trên máy in '{}': {} [StartDocW={}, GetLastError={}: {}]",
+                printer_name,
+                Self::describe_win32_error(code as u32),
+                result,
+                code,
+                os_err
+            ));
         }
 
         // StartDocW's positive return value is the spooler job identifier. Keep

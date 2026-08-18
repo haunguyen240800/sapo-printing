@@ -4,13 +4,10 @@ use std::sync::Once;
 use tracing_appender::rolling::{RollingFileAppender, Rotation};
 use tracing_subscriber::{EnvFilter, fmt, layer::SubscriberExt, util::SubscriberInitExt};
 
-/// Retention period for log files (days).
 const LOG_RETENTION_DAYS: u64 = 7;
 
-/// Guard to ensure logging is initialized only once, even across repeated calls.
 static INIT_ONCE: Once = Once::new();
 
-/// Result of initializing logging.
 #[derive(Debug)]
 pub enum InitLoggingResult {
     /// Logging was initialized successfully.
@@ -21,17 +18,6 @@ pub enum InitLoggingResult {
     Failed,
 }
 
-/// Initialize structured logging with tracing.
-///
-/// Sets up:
-/// - JSON-formatted file output to `~/.sapo-printer/logs/` with daily rotation
-/// - Console output (human-readable) for development
-/// - Log level control via `RUST_LOG` env var (defaults to INFO)
-/// - Automatic cleanup of log files older than 7 days
-///
-/// This function is idempotent — repeated calls are safe no-ops.
-/// Returns `InitLoggingResult::Failed` if initialization cannot complete,
-/// allowing the caller to detect that logging is non-functional.
 pub fn init_logging() -> InitLoggingResult {
     let mut result = InitLoggingResult::AlreadyInitialized;
 
@@ -46,8 +32,6 @@ pub fn init_logging() -> InitLoggingResult {
     result
 }
 
-/// Internal initialization — only called once via `INIT_ONCE`.
-/// Returns `Err` if any critical step fails (file appender creation, subscriber init).
 fn init_logging_inner() -> Result<(), String> {
     let log_dir = get_log_dir()?;
 
@@ -89,8 +73,6 @@ fn init_logging_inner() -> Result<(), String> {
     Ok(())
 }
 
-/// Get the log directory path: `~/.sapo-printer/logs/`
-/// Returns `Err` if neither `USERPROFILE` nor `HOME` is set.
 fn get_log_dir() -> Result<PathBuf, String> {
     let home = std::env::var("USERPROFILE")
         .or_else(|_| std::env::var("HOME"))
@@ -100,12 +82,6 @@ fn get_log_dir() -> Result<PathBuf, String> {
     Ok(PathBuf::from(&home).join(".sapo-printer").join("logs"))
 }
 
-/// Clean up log files older than `retention_days` days.
-///
-/// Scans the log directory for files matching `app.log.YYYY-MM-DD` pattern
-/// and removes those older than the retention period.
-/// NOTE: `tracing::` calls here are no-ops since this runs before subscriber init.
-/// Uses `eprintln!` for startup diagnostics instead.
 fn cleanup_old_logs(log_dir: &Path, retention_days: u64) {
     let now = chrono::Utc::now();
     let cutoff = now - chrono::Duration::days(retention_days as i64);

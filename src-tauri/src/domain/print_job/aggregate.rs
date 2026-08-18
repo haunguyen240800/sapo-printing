@@ -196,7 +196,11 @@ impl PrintJob {
     }
 
     /// Transition to FAILED (from QUEUED or PRINTING).
-    pub fn fail(&mut self, reason: String) -> Result<(), PrintJobError> {
+    ///
+    /// `error_code` is a stable machine-readable classifier (see
+    /// `application::errors::Error::code`) carried through the `PrintJobFailed`
+    /// event for the frontend; it is not persisted on the aggregate.
+    pub fn fail(&mut self, reason: String, error_code: String) -> Result<(), PrintJobError> {
         if !self.status.can_transition_to(&PrintStatus::Failed) {
             return Err(PrintJobError::InvalidStateTransition {
                 from: format!("{:?}", self.status),
@@ -209,6 +213,7 @@ impl PrintJob {
         self.push_event(Box::new(PrintJobFailed::new(
             self.id.clone(),
             reason,
+            error_code,
             self.retry_count,
         )));
         Ok(())
