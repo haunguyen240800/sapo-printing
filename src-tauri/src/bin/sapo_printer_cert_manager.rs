@@ -16,19 +16,18 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
 
+#[cfg(windows)]
+use sapo_printer::infrastructure::platform::agent_config::SERVICE_NAME;
+use sapo_printer::infrastructure::platform::agent_config::{APP_EXE_NAME, IPC_ENDPOINT};
 use sapo_printer::infrastructure::platform::tls::{
     IpcRequest, IpcResponse, PlatformInstaller, RenewalStatus, cert_checker,
-    cert_generator::CertGenerator, cert_installer::CertInstaller, ipc::IPC_ENDPOINT,
+    cert_generator::CertGenerator, cert_installer::CertInstaller,
 };
 use sapo_printer::infrastructure::platform::updater::service_updater;
 use serde_json::Value;
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 
 const RENEWAL_TICK: Duration = Duration::from_secs(24 * 3600);
-
-/// Tên Windows Service (khớp với `sc create` trong installer).
-#[cfg(windows)]
-const SERVICE_NAME: &str = "SapoPrinterAgent";
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     init_tracing();
@@ -162,9 +161,8 @@ fn run_service() -> Result<(), Box<dyn std::error::Error>> {
     status_handle.set_service_status(running)?;
 
     // Chạy daemon ở thread riêng; thread chính chờ tín hiệu stop từ SCM.
-    let data_dir = resolve_data_dir(&[]).unwrap_or_else(|_| {
-        sapo_printer::infrastructure::platform::tls::shared_cert_dir()
-    });
+    let data_dir = resolve_data_dir(&[])
+        .unwrap_or_else(|_| sapo_printer::infrastructure::platform::tls::shared_cert_dir());
     std::thread::spawn(move || {
         if let Err(e) = run_agent_blocking(data_dir) {
             tracing::error!(error = %e, "Agent daemon exited with error");
@@ -394,7 +392,7 @@ async fn handle_update_request(
         Ok(staged) => {
             let app_exe = std::env::current_exe()
                 .ok()
-                .and_then(|p| p.parent().map(|d| d.join(service_updater::APP_EXE_NAME)));
+                .and_then(|p| p.parent().map(|d| d.join(APP_EXE_NAME)));
             match app_exe {
                 Some(exe) => {
                     service_updater::finalize_update(staged.installer_path, app_pid, exe);

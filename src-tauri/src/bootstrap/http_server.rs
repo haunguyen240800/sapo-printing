@@ -4,11 +4,7 @@ use tauri::{App, Emitter, Manager};
 
 use crate::{
     AppContextState,
-    infrastructure::{
-        configs::db::DbPool,
-        persistence::ApiTokenRepository,
-        platform::tls,
-    },
+    infrastructure::{configs::db::DbPool, persistence::ApiTokenRepository, platform::tls},
     interface::http_server,
     interface::tauri::commands::auth_command::AgentState,
 };
@@ -37,7 +33,7 @@ pub fn start_http_server(app: &App, pool: DbPool, data_dir: &std::path::Path) {
             event_bus,
             create_uc,
             get_status_uc,
-            env!("CARGO_PKG_VERSION"),
+            env!("SAPO_APP_VERSION"),
         )
         .await
         {

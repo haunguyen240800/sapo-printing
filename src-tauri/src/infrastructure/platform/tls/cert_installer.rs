@@ -10,9 +10,10 @@
 use std::path::Path;
 
 use crate::infrastructure::errors::InfrastructureError;
-
-pub const CA_FRIENDLY_NAME: &str = "Sapo Printer Local CA";
-pub const LINUX_CA_FILENAME: &str = "sapo-printer-ca.crt";
+#[cfg(any(target_os = "windows", target_os = "macos"))]
+use crate::infrastructure::platform::agent_config::CA_FRIENDLY_NAME;
+#[cfg(target_os = "linux")]
+use crate::infrastructure::platform::agent_config::LINUX_CA_FILENAME;
 
 pub trait CertInstaller: Send + Sync {
     /// Install CA vào system trust store. Idempotent — nếu đã tồn tại → replace.

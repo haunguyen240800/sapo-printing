@@ -24,11 +24,12 @@ use rcgen::{
 use x509_parser::prelude::*;
 
 use crate::infrastructure::errors::InfrastructureError;
+use crate::infrastructure::platform::agent_config::{
+    CA_COMMON_NAME, CERT_ORGANIZATION_NAME, SERVER_COMMON_NAME,
+};
 
 const CA_VALIDITY_DAYS: i64 = 3650;
 const SERVER_VALIDITY_DAYS: i64 = 397;
-const CA_COMMON_NAME: &str = "Sapo Printer Local CA";
-const SERVER_COMMON_NAME: &str = "local.mysapo.net";
 
 pub struct CertPaths {
     pub ca_pem: PathBuf,
@@ -135,7 +136,7 @@ impl CertGenerator {
         let mut params = CertificateParams::default();
         let mut dn = DistinguishedName::new();
         dn.push(DnType::CommonName, CA_COMMON_NAME);
-        dn.push(DnType::OrganizationName, "Sapo");
+        dn.push(DnType::OrganizationName, CERT_ORGANIZATION_NAME);
         params.distinguished_name = dn;
         params.is_ca = IsCa::Ca(BasicConstraints::Unconstrained);
         params.key_usages = vec![
@@ -171,7 +172,7 @@ impl CertGenerator {
         let mut params = CertificateParams::default();
         let mut dn = DistinguishedName::new();
         dn.push(DnType::CommonName, SERVER_COMMON_NAME);
-        dn.push(DnType::OrganizationName, "Sapo");
+        dn.push(DnType::OrganizationName, CERT_ORGANIZATION_NAME);
         params.distinguished_name = dn;
         params.subject_alt_names = vec![
             SanType::DnsName(SERVER_COMMON_NAME.try_into().unwrap()),

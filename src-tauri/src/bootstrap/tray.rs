@@ -1,6 +1,6 @@
-use tauri::{App, Manager};
 use tauri::menu::{MenuBuilder, MenuItemBuilder};
 use tauri::tray::{TrayIconBuilder, TrayIconEvent};
+use tauri::{App, Manager};
 
 use crate::AppContextState;
 
@@ -16,7 +16,7 @@ pub fn setup_tray(app: &App) -> tauri::Result<()> {
         .build()?;
 
     let mut tray_builder = TrayIconBuilder::with_id("main-tray")
-        .tooltip("Sapo Printer Pro Max")
+        .tooltip(env!("SAPO_PRODUCT_NAME"))
         .menu(&tray_menu)
         .show_menu_on_left_click(false)
         .on_menu_event(|app, event| match event.id().as_ref() {

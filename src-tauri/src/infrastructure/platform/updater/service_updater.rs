@@ -10,20 +10,12 @@
 
 use std::path::{Path, PathBuf};
 
+use crate::infrastructure::platform::agent_config::UPDATER_PLATFORM_KEY;
 use base64::Engine;
 
-/// Endpoint cố định — phải khớp `plugins.updater.endpoints` trong tauri.conf.json.
-const LATEST_JSON_URL: &str =
-    "https://github.com/haunguyen240800/sapo-printing/releases/latest/download/latest.json";
-
-/// Public key minisign (base64 của cả file pubkey) — khớp `plugins.updater.pubkey`.
-const UPDATER_PUBKEY_B64: &str = "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDkxMkIxRTg0QzJCQ0NENjAKUldSZ3piekNoQjRya1pLalBEb0NQMUhnK1pYSnFYQWNvMEhWWnJzdWx5T3F6YlZZODRvN0hWc08K";
-
-/// Tên platform key trong latest.json.
-const PLATFORM_KEY: &str = "windows-x86_64";
-
-/// Tên binary app chính (cùng thư mục với service exe sau khi cài).
-pub const APP_EXE_NAME: &str = "sapo-printer.exe";
+/// Values owned by Tauri and injected by `build.rs` from `tauri.conf.json`.
+const LATEST_JSON_URL: &str = env!("SAPO_UPDATER_ENDPOINT");
+const UPDATER_PUBKEY_B64: &str = env!("SAPO_UPDATER_PUBKEY");
 
 #[derive(Debug)]
 pub struct StagedUpdate {
@@ -32,10 +24,7 @@ pub struct StagedUpdate {
 }
 
 /// Tải + verify bản cập nhật. KHÔNG chạy installer (để caller quyết định thời điểm).
-pub async fn stage_update(
-    expected_version: &str,
-    data_dir: &Path,
-) -> Result<StagedUpdate, String> {
+pub async fn stage_update(expected_version: &str, data_dir: &Path) -> Result<StagedUpdate, String> {
     let manifest = fetch_manifest().await?;
 
     if manifest.version != expected_version {
@@ -46,8 +35,7 @@ pub async fn stage_update(
     }
 
     let update_dir = data_dir.join("update");
-    std::fs::create_dir_all(&update_dir)
-        .map_err(|e| format!("create update dir: {}", e))?;
+    std::fs::create_dir_all(&update_dir).map_err(|e| format!("create update dir: {}", e))?;
 
     let installer_path = update_dir.join(format!("sapo-printer-setup-{}.exe", manifest.version));
     download_to(&manifest.url, &installer_path).await?;
@@ -95,8 +83,8 @@ async fn fetch_manifest() -> Result<Manifest, String> {
         .to_string();
     let platform = json
         .get("platforms")
-        .and_then(|p| p.get(PLATFORM_KEY))
-        .ok_or_else(|| format!("latest.json missing platform {}", PLATFORM_KEY))?;
+        .and_then(|p| p.get(UPDATER_PLATFORM_KEY))
+        .ok_or_else(|| format!("latest.json missing platform {}", UPDATER_PLATFORM_KEY))?;
     let url = platform
         .get("url")
         .and_then(|v| v.as_str())
@@ -153,8 +141,7 @@ fn verify_signature(installer: &Path, signature_b64: &str) -> Result<(), String>
         .map(str::trim)
         .find(|l| !l.is_empty() && !l.starts_with("untrusted comment"))
         .ok_or("pubkey line not found")?;
-    let public_key =
-        PublicKey::from_base64(pk_line).map_err(|e| format!("parse pubkey: {}", e))?;
+    let public_key = PublicKey::from_base64(pk_line).map_err(|e| format!("parse pubkey: {}", e))?;
 
     // Signature: base64 -> nội dung file .sig -> Signature::decode.
     let sig_file_bytes = base64::engine::general_purpose::STANDARD
@@ -162,8 +149,7 @@ fn verify_signature(installer: &Path, signature_b64: &str) -> Result<(), String>
         .map_err(|e| format!("decode signature b64: {}", e))?;
     let sig_file =
         String::from_utf8(sig_file_bytes).map_err(|e| format!("signature utf8: {}", e))?;
-    let signature =
-        Signature::decode(&sig_file).map_err(|e| format!("parse signature: {}", e))?;
+    let signature = Signature::decode(&sig_file).map_err(|e| format!("parse signature: {}", e))?;
 
     let data = std::fs::read(installer).map_err(|e| format!("read installer: {}", e))?;
     public_key
@@ -207,7 +193,7 @@ pub fn finalize_update(_installer: PathBuf, _app_pid: u32, _app_exe: PathBuf) {
 fn wait_for_process_exit(pid: u32, timeout: std::time::Duration) {
     use windows::Win32::Foundation::{CloseHandle, WAIT_OBJECT_0};
     use windows::Win32::System::Threading::{
-        OpenProcess, WaitForSingleObject, PROCESS_SYNCHRONIZE,
+        OpenProcess, PROCESS_SYNCHRONIZE, WaitForSingleObject,
     };
     unsafe {
         let handle = match OpenProcess(PROCESS_SYNCHRONIZE, false, pid) {
@@ -231,11 +217,9 @@ fn wait_for_process_exit(pid: u32, timeout: std::time::Duration) {
 #[cfg(windows)]
 fn relaunch_in_user_session(exe: &Path) -> Result<(), String> {
     use windows::Win32::Foundation::{CloseHandle, HANDLE};
-    use windows::Win32::System::RemoteDesktop::{
-        WTSGetActiveConsoleSessionId, WTSQueryUserToken,
-    };
+    use windows::Win32::System::RemoteDesktop::{WTSGetActiveConsoleSessionId, WTSQueryUserToken};
     use windows::Win32::System::Threading::{
-        CreateProcessAsUserW, CREATE_NEW_CONSOLE, CREATE_UNICODE_ENVIRONMENT, PROCESS_INFORMATION,
+        CREATE_NEW_CONSOLE, CREATE_UNICODE_ENVIRONMENT, CreateProcessAsUserW, PROCESS_INFORMATION,
         STARTUPINFOW,
     };
     use windows::core::PWSTR;

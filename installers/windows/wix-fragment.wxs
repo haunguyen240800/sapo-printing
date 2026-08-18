@@ -4,6 +4,9 @@
     "bundle": { "windows": { "wix": { "fragmentPaths": ["installers/windows/wix-fragment.wxs"] } } }
 
   Chạy install-ca-cert.ps1 sau khi files được install, uninstall-ca-cert.ps1 trước khi remove.
+
+  Installer boundary values below mirror the canonical Rust source:
+  src-tauri/src/infrastructure/platform/agent_config.rs.
 -->
 <Wix xmlns="http://schemas.microsoft.com/wix/2006/wi">
   <Fragment>
@@ -23,7 +26,7 @@
 
     <!-- Đăng ký + start Windows Service (SYSTEM) cho silent auto-update. -->
     <CustomAction Id="RegisterAgentService"
-                  ExeCommand='powershell.exe -NoProfile -ExecutionPolicy Bypass -File "[INSTALLDIR]register-agent-service.ps1"'
+                  ExeCommand='powershell.exe -NoProfile -ExecutionPolicy Bypass -File "[INSTALLDIR]register-agent-service.ps1" -ServiceName "SapoPrinterAgent" -AgentExeName "sapo-printer-cert-manager.exe"'
                   Directory="INSTALLDIR"
                   Execute="deferred"
                   Impersonate="no"
@@ -31,7 +34,7 @@
 
     <!-- Stop service trước khi ghi đè file (update) hoặc trước khi gỡ (uninstall). -->
     <CustomAction Id="UnregisterAgentService"
-                  ExeCommand='powershell.exe -NoProfile -ExecutionPolicy Bypass -File "[INSTALLDIR]unregister-agent-service.ps1"'
+                  ExeCommand='powershell.exe -NoProfile -ExecutionPolicy Bypass -File "[INSTALLDIR]unregister-agent-service.ps1" -ServiceName "SapoPrinterAgent"'
                   Directory="INSTALLDIR"
                   Execute="deferred"
                   Impersonate="no"

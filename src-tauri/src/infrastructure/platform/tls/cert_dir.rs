@@ -13,9 +13,18 @@
 
 use std::path::PathBuf;
 
+use crate::infrastructure::platform::agent_config::DATA_DIR_ENV;
+
+#[cfg(target_os = "linux")]
+use crate::infrastructure::platform::agent_config::LINUX_DATA_DIR;
+#[cfg(target_os = "macos")]
+use crate::infrastructure::platform::agent_config::MACOS_DATA_DIR;
+#[cfg(target_os = "windows")]
+use crate::infrastructure::platform::agent_config::WINDOWS_DATA_DIR_NAME;
+
 /// Thư mục chứa CA/server cert (và IPC state) dùng chung giữa cert-manager và app.
 pub fn shared_cert_dir() -> PathBuf {
-    if let Some(v) = std::env::var_os("SAPO_AGENT_DATA_DIR") {
+    if let Some(v) = std::env::var_os(DATA_DIR_ENV) {
         return PathBuf::from(v);
     }
 
@@ -23,14 +32,14 @@ pub fn shared_cert_dir() -> PathBuf {
     {
         let program_data =
             std::env::var("ProgramData").unwrap_or_else(|_| r"C:\ProgramData".into());
-        PathBuf::from(program_data).join("SapoPrinter")
+        PathBuf::from(program_data).join(WINDOWS_DATA_DIR_NAME)
     }
     #[cfg(target_os = "macos")]
     {
-        PathBuf::from("/Library/Application Support/SapoPrinter")
+        PathBuf::from(MACOS_DATA_DIR)
     }
     #[cfg(target_os = "linux")]
     {
-        PathBuf::from("/var/lib/sapo-printer")
+        PathBuf::from(LINUX_DATA_DIR)
     }
 }

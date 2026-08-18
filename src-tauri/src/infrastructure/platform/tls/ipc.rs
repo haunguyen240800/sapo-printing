@@ -12,11 +12,7 @@
 
 use serde::{Deserialize, Serialize};
 
-#[cfg(target_os = "windows")]
-pub const IPC_ENDPOINT: &str = r"\\.\pipe\sapo-printer-agent";
-
-#[cfg(unix)]
-pub const IPC_ENDPOINT: &str = "/var/run/sapo-printer-agent.sock";
+pub use crate::infrastructure::platform::agent_config::IPC_ENDPOINT;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "cmd", rename_all = "snake_case")]

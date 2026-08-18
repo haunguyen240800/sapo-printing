@@ -2,7 +2,8 @@
 title: 'Tập trung cấu hình privileged agent theo một nguồn'
 type: 'refactor'
 created: '2026-08-18'
-status: 'draft'
+status: 'done'
+baseline_commit: '56a82040b6c3f749034b13f2d7d88105eb0ee649'
 context:
   - '{project-root}/docs/silent-auto-update-privileged-agent.md'
 ---
@@ -49,11 +50,11 @@ context:
 ## Tasks & Acceptance
 
 **Execution:**
-- [ ] `src-tauri/build.rs`, `src-tauri/Cargo.toml` — parse và validate Tauri config, phát compile-time env cho product/version/pubkey/endpoint.
-- [ ] `src-tauri/src/infrastructure/platform/agent_config.rs`, `platform/mod.rs` — định nghĩa và export các hằng số agent thuần Rust.
-- [ ] Updater/TLS/cert-manager modules — thay literal thuộc phạm vi bằng import hoặc `env!`, không đổi luồng runtime.
-- [ ] Hai PS1 và hooks NSIS/WiX — parameter hóa service/exe name và truyền giá trị hiện tại một cách tường minh.
-- [ ] Tests/build checks — chứng minh config hợp lệ compile và không còn duplicate updater secrets trong Rust.
+- [x] `src-tauri/build.rs`, `src-tauri/Cargo.toml` — parse và validate Tauri config, phát compile-time env cho product/version/pubkey/endpoint.
+- [x] `src-tauri/src/infrastructure/platform/agent_config.rs`, `platform/mod.rs` — định nghĩa và export các hằng số agent thuần Rust.
+- [x] Updater/TLS/cert-manager modules — thay literal thuộc phạm vi bằng import hoặc `env!`, không đổi luồng runtime.
+- [x] Hai PS1 và hooks NSIS/WiX — parameter hóa service/exe name và truyền giá trị hiện tại một cách tường minh.
+- [x] Tests/build checks — chứng minh config hợp lệ compile và không còn duplicate updater secrets trong Rust.
 
 **Acceptance Criteria:**
 - Given pubkey hoặc updater endpoint thay đổi duy nhất trong `tauri.conf.json`, when Rust được rebuild, then service updater compile với giá trị mới mà không sửa file Rust.
@@ -70,8 +71,48 @@ Compile-time env chỉ chứa dữ liệu Tauri đã sở hữu; agent constants
 ## Verification
 
 **Commands:**
-- `cargo fmt --all -- --check` — Rust formatting hợp lệ.
+- `rustfmt --edition 2024 --config skip_children=true --check <các file Rust đã thay đổi>` — các file trong scope có formatting hợp lệ; toàn workspace hiện còn baseline chưa format.
 - `cargo check --all-targets` — build script và mọi consumer compile.
-- `cargo test infrastructure::platform::tls infrastructure::platform::updater` — test liên quan pass.
+- `cargo test infrastructure::platform::tls` — test TLS liên quan pass.
+- `cargo test infrastructure::platform::updater` — test updater liên quan pass.
 - `rg` kiểm tra literal updater/service/IPC — không còn duplicate ngoài nguồn canonical và installer boundary đã ghi chú.
 
+## Suggested Review Order
+
+**Nguồn cấu hình và build contract**
+
+- Entry point đọc, validate và truyền metadata Tauri vào Rust lúc compile.
+  [`build.rs:5`](../../src-tauri/build.rs#L5)
+
+- Agent-only constants được gom tại một module canonical.
+  [`agent_config.rs:7`](../../src-tauri/src/infrastructure/platform/agent_config.rs#L7)
+
+**Runtime consumers**
+
+- Privileged updater lấy endpoint/pubkey từ compile-time env, không giữ literal.
+  [`service_updater.rs:17`](../../src-tauri/src/infrastructure/platform/updater/service_updater.rs#L17)
+
+- Windows Service và relaunch executable dùng chung agent constants.
+  [`sapo_printer_cert_manager.rs:20`](../../src-tauri/src/bin/sapo_printer_cert_manager.rs#L20)
+
+- IPC và certificate metadata derive từ cùng agent module.
+  [`ipc.rs:15`](../../src-tauri/src/infrastructure/platform/tls/ipc.rs#L15)
+
+**Installer boundary**
+
+- PS1 validate tham số và cập nhật cả service đã tồn tại.
+  [`register-agent-service.ps1:6`](../../installers/windows/register-agent-service.ps1#L6)
+
+- NSIS truyền explicit service/exe values tại boundary không import được Rust.
+  [`nsis-hooks.nsh:5`](../../installers/windows/nsis-hooks.nsh#L5)
+
+- WiX giữ parity với NSIS cho register/unregister.
+  [`wix-fragment.wxs:28`](../../installers/windows/wix-fragment.wxs#L28)
+
+**Metadata consumers**
+
+- HTTP API version derive từ Tauri version thay vì Cargo package version.
+  [`http_server.rs:36`](../../src-tauri/src/bootstrap/http_server.rs#L36)
+
+- Tray tooltip derive từ Tauri productName.
+  [`tray.rs:19`](../../src-tauri/src/bootstrap/tray.rs#L19)
