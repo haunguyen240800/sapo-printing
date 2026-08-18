@@ -1,4 +1,4 @@
-# Rustfmt configuration — formatting conventions for the sapo-printer backend.
+# Rustfmt configuration — formatting conventions for the sapo-printer-pro-max backend.
 # Only stable options are active so `cargo fmt` works on the stable toolchain.
 # Run: `cargo fmt` (format) / `cargo fmt -- --check` (verify in CI).
 

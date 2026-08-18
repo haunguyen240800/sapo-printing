@@ -1,4 +1,4 @@
-# sapo-printing
+# Sapo Printer Pro Max
 
 Ứng dụng in ấn desktop cho SAPO, xây dựng bằng [Tauri 2](https://tauri.app/) + Rust + TypeScript.
 

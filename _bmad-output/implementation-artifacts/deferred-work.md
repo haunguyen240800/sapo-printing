@@ -1,5 +1,11 @@
 # Deferred Work
 
+## Deferred from: standardize-sapo-printer-pro-max review (2026-08-18)
+
+- **macOS bundle resource wiring** — `postinstall.sh` expects `com.sapo.printer.cert-manager.plist` inside the app Resources directory, but `tauri.conf.json` does not currently bundle that resource. This predates the rename and needs a macOS packaging pass because the shared resource map also contains Windows-only artifacts.
+- **Idempotent launchd upgrade lifecycle** — `postinstall.sh` calls `launchctl load -w` without unloading/booting out an already-loaded `com.sapo.printer.agent` daemon. Fix together with a real macOS package upgrade test.
+- **Legacy macOS app-bundle cleanup** — changing `productName` may leave `/Applications/Sapo Printer.app` beside the new bundle. Removing or migrating the old bundle is destructive and requires an explicit installer migration decision; uninstall now only falls back to its agent for CA cleanup.
+
 ## Deferred from: code review of 2-1-setup-sqlite-database-with-migrations-schemas (2026-06-22)
 
 - Home dir fallback `"."` if USERPROFILE/HOME unset — `.sapo-printer` resolves to CWD. Cross-platform concern for Epic 4.

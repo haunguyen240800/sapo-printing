@@ -1,4 +1,4 @@
-//! IPC client — connect tới `sapo-printer-agent` helper service.
+//! IPC client — connect tới `sapo-printer-cert-manager` helper service.
 //!
 //! Windows: named pipe. Unix: unix domain socket. Timeout 5s.
 

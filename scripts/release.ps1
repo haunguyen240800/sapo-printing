@@ -1,7 +1,7 @@
 # Manual release helper for Windows PowerShell.
 #
 # What it does:
-#   1. Reads the version from src-tauri/tauri.conf.json
+#   1. Reads the product name and version from src-tauri/tauri.conf.json
 #   2. Locates the NSIS installer + its .sig produced by `pnpm build`
 #   3. Generates latest.json (the updater manifest) with the correct
 #      signature content and GitHub download URL
@@ -27,15 +27,23 @@ $Root = Split-Path -Parent $ScriptDir
 $Conf = Join-Path $Root "src-tauri\tauri.conf.json"
 $NsisDir = Join-Path $Root "src-tauri\target\release\bundle\nsis"
 
-# --- 1. Read version --------------------------------------------------------
+# --- 1. Read product metadata -----------------------------------------------
 if (-not (Test-Path $Conf)) { throw "Cannot find $Conf" }
-$Version = (Get-Content $Conf -Raw | ConvertFrom-Json).version
-if (-not $Version) { throw "Could not parse version from tauri.conf.json" }
+$TauriConfig = Get-Content $Conf -Raw | ConvertFrom-Json
+$ProductName = [string]$TauriConfig.productName
+$Version = [string]$TauriConfig.version
+if ([string]::IsNullOrWhiteSpace($ProductName)) {
+    throw "Could not parse productName from tauri.conf.json"
+}
+if ([string]::IsNullOrWhiteSpace($Version)) {
+    throw "Could not parse version from tauri.conf.json"
+}
 $Tag = "v$Version"
+Write-Host ">> Product: $ProductName"
 Write-Host ">> Version: $Version  (tag: $Tag)"
 
 # --- 2. Locate installer + signature ---------------------------------------
-$Exe = Join-Path $NsisDir "Sapo Printer Pro Max_${Version}_x64-setup.exe"
+$Exe = Join-Path $NsisDir "${ProductName}_${Version}_x64-setup.exe"
 $Sig = "$Exe.sig"
 
 if (-not (Test-Path $Exe)) {

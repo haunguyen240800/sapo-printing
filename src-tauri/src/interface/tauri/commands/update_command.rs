@@ -20,7 +20,7 @@ pub async fn check_for_updates(app: AppHandle) -> Result<UpdateCheckResponse, St
 
 /// Download and install the available update.
 ///
-/// Đường chính: uỷ quyền cho `sapo-printer-agent` (SYSTEM) cài im lặng (không UAC).
+/// Đường chính: uỷ quyền cho `sapo-printer-cert-manager` (SYSTEM) cài im lặng (không UAC).
 /// Fallback: nếu service không phản hồi, tự dùng tauri-updater (có UAC) để không chặn update.
 #[tauri::command]
 pub async fn install_update(

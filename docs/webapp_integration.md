@@ -1,6 +1,6 @@
-# Sapo Printer — Webapp Integration Guide
+# Sapo Printer Pro Max — Webapp Integration Guide
 
-Hướng dẫn tích hợp webapp (React/Vue/vanilla JS) với Sapo Printer desktop agent để in ấn từ browser.
+Hướng dẫn tích hợp webapp (React/Vue/vanilla JS) với Sapo Printer Pro Max desktop agent để in ấn từ browser.
 
 **Đối tượng**: Frontend engineer làm việc trên `admin.mysapo.net` hoặc subdomain khác của `mysapo.net`.
 
@@ -24,7 +24,7 @@ Hướng dẫn tích hợp webapp (React/Vue/vanilla JS) với Sapo Printer desk
 
 ```
 ┌─────────────────────────┐        HTTPS         ┌────────────────────────────┐
-│  Webapp (browser)       │ ───────────────────► │  Sapo Printer Desktop      │
+│  Webapp (browser)       │ ───────────────────► │ Sapo Printer Pro Max       │
 │  https://*.mysapo.net   │ ◄─────── SSE ─────── │  https://local.mysapo.net  │
 └─────────────────────────┘                       │  :18901 (fallback 18902…) │
                                                   └────────────────────────────┘
@@ -61,7 +61,7 @@ Chỉ các origin sau được desktop agent chấp nhận (CORS whitelist):
 `local.mysapo.net` phải resolve thành `127.0.0.1`. Do team Sapo publish public DNS record.
 
 ### Desktop app installed
-User phải cài Sapo Printer + helper service (`sapo-printer-agent`) đang chạy. Nếu chưa có → hiển thị `AgentSetupGuide` với link tải.
+User phải cài Sapo Printer Pro Max + helper service (`sapo-printer-cert-manager`) đang chạy. Nếu chưa có → hiển thị `AgentSetupGuide` với link tải.
 
 ---
 
@@ -690,7 +690,7 @@ function BulkPrintButton({ orders }: { orders: Order[] }) {
   if (status.kind === 'checking') return <Spinner />;
   if (status.kind === 'unavailable') return <AgentSetupGuide />;
   if (status.kind === 'pairing') return <div>Chờ user xác nhận trên desktop app...</div>;
-  if (status.kind === 'pair_denied') return <div>Vui lòng Cho phép trên Sapo Printer</div>;
+  if (status.kind === 'pair_denied') return <div>Vui lòng Cho phép trên Sapo Printer Pro Max</div>;
 
   const handleClick = async () => {
     const urls = orders.map(o => o.invoicePdfUrl);
@@ -723,7 +723,7 @@ function BulkPrintButton({ orders }: { orders: Order[] }) {
 | Printer offline | `POST /jobs` → 503 | Show list printers, yêu cầu chọn printer online |
 | SSE mất kết nối | `es.onerror` | EventSource tự reconnect. Sau 3 lần fail → force reconnect qua `discoverPort()` |
 | Webapp version cũ | `ping.min_webapp_version > current` | Hiện banner "Cần refresh webapp" |
-| Desktop app version cũ | `ping.version` cũ hơn expected | Hiện notice "Cập nhật Sapo Printer để dùng feature X" |
+| Desktop app version cũ | `ping.version` cũ hơn expected | Hiện notice "Cập nhật Sapo Printer Pro Max để dùng feature X" |
 
 ### Reconnect strategy
 

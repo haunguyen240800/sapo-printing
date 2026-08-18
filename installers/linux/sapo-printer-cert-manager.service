@@ -1,5 +1,5 @@
 [Unit]
-Description=Sapo Printer Agent — local HTTPS + cert lifecycle
+Description=Sapo Printer Pro Max Agent — local HTTPS + cert lifecycle
 After=network.target
 
 [Service]

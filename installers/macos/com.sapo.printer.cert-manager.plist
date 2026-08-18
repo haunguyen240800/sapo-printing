@@ -6,7 +6,7 @@
     <string>com.sapo.printer.agent</string>
     <key>ProgramArguments</key>
     <array>
-        <string>/Applications/Sapo Printer.app/Contents/MacOS/sapo-printer-cert-manager</string>
+        <string>/Applications/Sapo Printer Pro Max.app/Contents/MacOS/sapo-printer-cert-manager</string>
     </array>
     <key>RunAtLoad</key>
     <true/>

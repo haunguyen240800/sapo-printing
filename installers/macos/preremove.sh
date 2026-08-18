@@ -2,7 +2,8 @@
 # pkg preremove — chạy root khi uninstall.
 set +e
 
-AGENT="/Applications/Sapo Printer.app/Contents/MacOS/sapo-printer-cert-manager"
+AGENT="/Applications/Sapo Printer Pro Max.app/Contents/MacOS/sapo-printer-cert-manager"
+LEGACY_AGENT="/Applications/Sapo Printer.app/Contents/MacOS/sapo-printer-cert-manager"
 PLIST_DST="/Library/LaunchDaemons/com.sapo.printer.agent.plist"
 DATA_DIR="/Library/Application Support/SapoPrinter"
 
@@ -13,6 +14,9 @@ if [ -f "$PLIST_DST" ]; then
 fi
 
 # 2. Uninstall CA.
+if [ ! -x "$AGENT" ] && [ -x "$LEGACY_AGENT" ]; then
+    AGENT="$LEGACY_AGENT"
+fi
 if [ -x "$AGENT" ]; then
     "$AGENT" --data-dir="$DATA_DIR" --uninstall-ca
 fi

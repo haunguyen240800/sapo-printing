@@ -1,4 +1,4 @@
-//! IPC protocol giữa helper service (`sapo-printer-agent`) và app runtime.
+//! IPC protocol giữa helper service (`sapo-printer-cert-manager`) và app runtime.
 //!
 //! Transport:
 //! - Windows: named pipe `\\.\pipe\sapo-printer-agent`.

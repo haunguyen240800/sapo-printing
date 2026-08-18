@@ -1,4 +1,4 @@
-//! Client phía app: gửi yêu cầu update tới `sapo-printer-agent` (SYSTEM) qua named pipe.
+//! Client phía app: gửi yêu cầu update tới `sapo-printer-cert-manager` (SYSTEM) qua named pipe.
 //!
 //! App KHÔNG tự chạy installer khi có service — service (SYSTEM) làm để tránh UAC.
 //! Nếu service không phản hồi, caller (update_command) tự fallback về đường UAC cũ.

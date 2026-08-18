@@ -14,7 +14,7 @@
 //!
 //! # Schema/Label Structure
 //! - Schema: `"com.sapo.printer"` (application identifier)
-//! - Label: `"SAPO Printer: {key}"` (descriptive label for UI)
+//! - Label: `"Sapo Printer Pro Max: {key}"` (descriptive label for UI)
 
 #[cfg(target_os = "linux")]
 use secret_service::{Collection, EncryptionType, SecretService};
@@ -71,7 +71,7 @@ impl SecretPort for LinuxSecretService {
 
         let collection = self.get_default_collection()?;
 
-        let label = format!("SAPO Printer: {}", key);
+        let label = format!("Sapo Printer Pro Max: {}", key);
         let mut attributes = std::collections::HashMap::new();
         attributes.insert("application", "com.sapo.printer");
         attributes.insert("key", key);

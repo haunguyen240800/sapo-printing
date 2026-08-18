@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-**sapo-printer** is a desktop printing application for bulk print job management in the SAPO retail management system. The client receives print commands from a web application, manages print jobs, downloads documents, renders them, and sends them to printers with full audit trails and retry capabilities.
+**sapo-printer-pro-max** is a desktop printing application for bulk print job management in the SAPO retail management system. The client receives print commands from a web application, manages print jobs, downloads documents, renders them, and sends them to printers with full audit trails and retry capabilities.
 
 This is a greenfield project following **Domain-Driven Design (DDD)** and **Clean Architecture** principles, documented in Vietnamese.
 

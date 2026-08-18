@@ -1,4 +1,4 @@
-//! Sapo Printer Agent — elevated helper service.
+//! Sapo Printer Pro Max Agent — elevated helper service.
 //!
 //! Nhiệm vụ:
 //! 1. Ensure CA + server cert tồn tại (first-run sinh, sau đó load).
@@ -82,7 +82,7 @@ fn run_agent_blocking(data_dir: PathBuf) -> Result<(), Box<dyn std::error::Error
 }
 
 async fn run_agent(data_dir: PathBuf) -> Result<(), Box<dyn std::error::Error>> {
-    tracing::info!(data_dir = %data_dir.display(), "Sapo Printer Agent starting");
+    tracing::info!(data_dir = %data_dir.display(), "Sapo Printer Pro Max Agent starting");
 
     let installer: Arc<dyn CertInstaller> = Arc::new(PlatformInstaller::default());
 

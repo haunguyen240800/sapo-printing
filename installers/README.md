@@ -1,4 +1,4 @@
-# Installers
+# Sapo Printer Pro Max Installers
 
 Install-time scripts + service unit files. Chạy trong context installer với quyền elevated.
 
@@ -23,36 +23,36 @@ Cấu hình bundle:
 
 ## macOS (pkg)
 
-1. Bundle binary vào `/Applications/Sapo Printer.app`.
+1. Bundle binary vào `/Applications/Sapo Printer Pro Max.app`.
 2. `postinstall`:
    - Copy `com.sapo.printer.agent.plist` → `/Library/LaunchDaemons/`.
-   - Chạy `sapo-printer-agent --install-ca`.
+   - Chạy `sapo-printer-cert-manager --install-ca`.
    - `launchctl load /Library/LaunchDaemons/com.sapo.printer.agent.plist`.
 3. `preremove`:
    - `launchctl unload ...`.
-   - Chạy `sapo-printer-agent --uninstall-ca`.
+   - Chạy `sapo-printer-cert-manager --uninstall-ca`.
    - Xóa plist.
 
 ## Linux (deb / rpm)
 
-1. Binary → `/usr/bin/sapo-printer` + `/usr/bin/sapo-printer-agent`.
+1. Binary → `/usr/bin/sapo-printer` + `/usr/bin/sapo-printer-cert-manager`.
 2. `postinst`:
-   - Copy `sapo-printer-agent.service` → `/etc/systemd/system/`.
+   - Copy `sapo-printer-cert-manager.service` → `/etc/systemd/system/`.
    - `getent group sapo-printer || groupadd -r sapo-printer`.
    - Add current user to group: `usermod -a -G sapo-printer $SUDO_USER`.
-   - `sapo-printer-agent --install-ca`.
-   - `systemctl daemon-reload && systemctl enable --now sapo-printer-agent.service`.
+   - `sapo-printer-cert-manager --install-ca`.
+   - `systemctl daemon-reload && systemctl enable --now sapo-printer-cert-manager.service`.
 3. `prerm`:
-   - `systemctl stop sapo-printer-agent.service`.
-   - `systemctl disable sapo-printer-agent.service`.
-   - `sapo-printer-agent --uninstall-ca`.
+   - `systemctl stop sapo-printer-cert-manager.service`.
+   - `systemctl disable sapo-printer-cert-manager.service`.
+   - `sapo-printer-cert-manager --uninstall-ca`.
    - Xóa service file.
 
 ## Verify
 
 Sau install, chạy:
 ```
-sapo-printer-agent --check
+sapo-printer-cert-manager --check
 ```
 Trả `Ok` → cert healthy.
 

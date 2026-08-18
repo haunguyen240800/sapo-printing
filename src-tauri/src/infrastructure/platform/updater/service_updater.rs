@@ -1,4 +1,4 @@
-//! Update executor chạy trong `sapo-printer-agent` (SYSTEM).
+//! Update executor chạy trong `sapo-printer-cert-manager` (SYSTEM).
 //!
 //! Nhiệm vụ: tải installer từ endpoint CỐ ĐỊNH, verify chữ ký minisign, chạy installer
 //! im lặng (không UAC vì đã là SYSTEM), rồi relaunch app trong session của user.

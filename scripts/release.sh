@@ -3,7 +3,7 @@
 # Manual release helper for Git Bash (Windows).
 #
 # What it does:
-#   1. Reads the version from src-tauri/tauri.conf.json
+#   1. Reads the product name and version from src-tauri/tauri.conf.json
 #   2. Locates the NSIS installer + its .sig produced by `pnpm build`
 #   3. Generates latest.json (the updater manifest) with the correct
 #      signature content and GitHub download URL
@@ -34,22 +34,40 @@ NSIS_DIR="$ROOT/src-tauri/target/release/bundle/nsis"
 PUBLISH=0
 [ "${1:-}" = "--publish" ] && PUBLISH=1
 
-# --- 1. Read version --------------------------------------------------------
+# --- 1. Read product metadata -----------------------------------------------
 if [ ! -f "$CONF" ]; then
   echo "ERROR: cannot find $CONF" >&2
   exit 1
 fi
 
-VERSION="$(grep -m1 '"version"' "$CONF" | sed -E 's/.*"version"[[:space:]]*:[[:space:]]*"([^"]+)".*/\1/')"
+read_config_field() {
+  node -e '
+    const fs = require("fs");
+    const config = JSON.parse(fs.readFileSync(process.argv[1], "utf8"));
+    const value = config[process.argv[2]];
+    if (typeof value !== "string" || value.trim() === "") process.exit(1);
+    process.stdout.write(value);
+  ' "$CONF" "$1"
+}
+
+if ! PRODUCT_NAME="$(read_config_field productName)"; then
+  echo "ERROR: could not parse productName from tauri.conf.json" >&2
+  exit 1
+fi
+if ! VERSION="$(read_config_field version)"; then
+  echo "ERROR: could not parse version from tauri.conf.json" >&2
+  exit 1
+fi
 if [ -z "$VERSION" ]; then
   echo "ERROR: could not parse version from tauri.conf.json" >&2
   exit 1
 fi
 TAG="v$VERSION"
+echo ">> Product: $PRODUCT_NAME"
 echo ">> Version: $VERSION  (tag: $TAG)"
 
 # --- 2. Locate installer + signature ---------------------------------------
-EXE="$NSIS_DIR/Sapo Printer Pro Max_${VERSION}_x64-setup.exe"
+EXE="$NSIS_DIR/${PRODUCT_NAME}_${VERSION}_x64-setup.exe"
 SIG="$EXE.sig"
 
 if [ ! -f "$EXE" ]; then

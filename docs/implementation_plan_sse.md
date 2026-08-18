@@ -330,19 +330,19 @@ pub fn bind_with_fallback(preferred: u16, range: RangeInclusive<u16>)
 
 ### Component 5b: Elevated Helper Service — Cert Lifecycle Daemon
 
-**Binary riêng**: `sapo-printer-agent` (không chạy chung process với app).
+**Binary riêng**: `sapo-printer-cert-manager` (không chạy chung process với app).
 
 **Đăng ký service**:
 - Windows: Windows Service (`sc create SapoPrinterAgent binPath=... start=auto`), chạy `LocalSystem`.
 - macOS: launchd daemon (`/Library/LaunchDaemons/com.sapo.printer.agent.plist`), chạy `root`.
-- Linux: systemd service (`/etc/systemd/system/sapo-printer-agent.service`), `User=root`.
+- Linux: systemd service (`/etc/systemd/system/sapo-printer-cert-manager.service`), `User=root`.
 
 Đăng ký trong installer script (chạy 1 lần lúc cài).
 
 #### Nhiệm vụ helper
 
 ```rust
-// crates/sapo-printer-agent/src/main.rs
+// src-tauri/src/bin/sapo_printer_cert_manager.rs
 #[tokio::main]
 async fn main() -> Result<()> {
     ensure_ca_exists().await?;              // First-run: sinh CA + install trust store
@@ -548,10 +548,10 @@ Chạy `sapo-printer --uninstall-ca` xóa CA khỏi trust store trước khi xó
 ### Automated Tests
 
 ```bash
-cargo test -p sapo-printer -- tls::
-cargo test -p sapo-printer -- http_server::
-cargo test -p sapo-printer -- api_token::   # Timing attack, rate limit
-cargo test -p sapo-printer -- cert_renewal:: # Expiry path
+cargo test -p sapo-printer-pro-max -- tls::
+cargo test -p sapo-printer-pro-max -- http_server::
+cargo test -p sapo-printer-pro-max -- api_token::   # Timing attack, rate limit
+cargo test -p sapo-printer-pro-max -- cert_renewal:: # Expiry path
 cargo build --release
 ```
 
@@ -591,7 +591,7 @@ Phase 1 — Cert Infrastructure + Helper Service (6-8 ngày)
 ├── cert_generator.rs (rcgen, CA 10y + server 397d)
 ├── cert_installer.rs (Windows LocalMachine, macOS System.keychain, Linux system trust)
 ├── cert_uninstaller.rs
-├── crates/sapo-printer-agent/ (helper service binary)
+├── src-tauri/src/bin/sapo_printer_cert_manager.rs (helper service binary)
 │   ├── main.rs (service entry, IPC server, renewal loop)
 │   ├── Windows Service registration
 │   ├── launchd plist + install script

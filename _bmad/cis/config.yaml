@@ -7,7 +7,7 @@ visual_tools: intermediate
 
 # Core Configuration Values
 user_name: dev
-project_name: sapo-printer
+project_name: sapo-printer-pro-max
 communication_language: vietnamese
 document_output_language: vietnamese
 output_folder: "{project-root}/_bmad-output"

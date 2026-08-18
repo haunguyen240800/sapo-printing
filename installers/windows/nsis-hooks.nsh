@@ -8,7 +8,7 @@
 ; Chạy TRƯỚC khi copy files. Dừng service để giải phóng lock trên
 ; sapo-printer-cert-manager.exe (nếu đang chạy từ bản cài trước) → cho phép ghi đè khi update.
 !macro NSIS_HOOK_PREINSTALL
-  DetailPrint "Dừng Sapo Printer Agent (nếu đang chạy)..."
+  DetailPrint "Dừng Sapo Printer Pro Max Agent (nếu đang chạy)..."
   nsExec::ExecToStack 'sc.exe stop "${SAPO_AGENT_SERVICE_NAME}"'
   Pop $0
   Pop $1
@@ -27,7 +27,7 @@
     DetailPrint "CA cert đã được cài thành công."
   ${EndIf}
 
-  DetailPrint "Đăng ký Sapo Printer Agent service..."
+  DetailPrint "Đăng ký Sapo Printer Pro Max Agent service..."
   nsExec::ExecToStack 'powershell.exe -NoProfile -ExecutionPolicy Bypass -File "$INSTDIR\register-agent-service.ps1" -ServiceName "${SAPO_AGENT_SERVICE_NAME}" -AgentExeName "${SAPO_AGENT_EXE_NAME}"'
   Pop $0
   Pop $1
@@ -41,7 +41,7 @@
 
 ; Chạy trước khi gỡ files khi uninstall — stop + delete service.
 !macro NSIS_HOOK_PREUNINSTALL
-  DetailPrint "Gỡ Sapo Printer Agent service..."
+  DetailPrint "Gỡ Sapo Printer Pro Max Agent service..."
   nsExec::ExecToStack 'powershell.exe -NoProfile -ExecutionPolicy Bypass -File "$INSTDIR\unregister-agent-service.ps1" -ServiceName "${SAPO_AGENT_SERVICE_NAME}"'
   Pop $0
   Pop $1
