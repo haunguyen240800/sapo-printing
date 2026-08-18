@@ -32,7 +32,7 @@ pub fn run() {
             detect_printer_category, get_printer_config, get_printer_status,
             list_printers, save_printer_config,
         },
-        update_command::{check_for_updates, install_update, restart_app},
+        update_command::{check_for_updates, install_update, quit_app, restart_app},
     };
     use tauri::Manager;
 
@@ -98,6 +98,7 @@ pub fn run() {
             check_for_updates,
             install_update,
             restart_app,
+            quit_app,
             get_autostart_enabled,
             set_autostart_enabled,
             approve_pairing_request,

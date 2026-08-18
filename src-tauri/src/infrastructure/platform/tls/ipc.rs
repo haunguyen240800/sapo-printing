@@ -25,6 +25,14 @@ pub enum IpcRequest {
     GetStatus,
     RotateCa,
     Ping,
+    /// App yêu cầu service (SYSTEM) tự tải + verify + cài bản cập nhật im lặng.
+    /// Service KHÔNG nhận url/signature từ client — tự đọc `latest.json` từ endpoint
+    /// cố định. `expected_version` chỉ để đối chiếu; `app_pid` để service chờ app thoát
+    /// trước khi ghi đè file rồi relaunch.
+    RequestUpdate {
+        expected_version: String,
+        app_pid: u32,
+    },
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -40,6 +48,9 @@ pub enum IpcResponse {
         ca_trusted: Option<bool>,
         #[serde(skip_serializing_if = "Option::is_none")]
         renewal_status: Option<String>,
+        /// Trạng thái luồng update ("staged" = đã tải+verify xong, sẽ cài sau khi app thoát).
+        #[serde(skip_serializing_if = "Option::is_none")]
+        update_status: Option<String>,
     },
     Err {
         ok: bool,
@@ -62,6 +73,19 @@ impl IpcResponse {
             ca_expires_at: None,
             ca_trusted: None,
             renewal_status: None,
+            update_status: None,
+        }
+    }
+
+    /// Trả về khi service đã tải + verify bản cập nhật xong (sẽ cài sau khi app thoát).
+    pub fn update_staged() -> Self {
+        Self::Ok {
+            ok: true,
+            server_expires_at: None,
+            ca_expires_at: None,
+            ca_trusted: None,
+            renewal_status: None,
+            update_status: Some("staged".into()),
         }
     }
 }
@@ -92,6 +116,7 @@ mod tests {
             ca_expires_at: None,
             ca_trusted: Some(true),
             renewal_status: None,
+            update_status: None,
         };
         let json = serde_json::to_string(&r).unwrap();
         assert!(json.contains(r#""ok":true"#));

@@ -21,8 +21,27 @@
                   Impersonate="no"
                   Return="ignore" />
 
+    <!-- Đăng ký + start Windows Service (SYSTEM) cho silent auto-update. -->
+    <CustomAction Id="RegisterAgentService"
+                  ExeCommand='powershell.exe -NoProfile -ExecutionPolicy Bypass -File "[INSTALLDIR]register-agent-service.ps1"'
+                  Directory="INSTALLDIR"
+                  Execute="deferred"
+                  Impersonate="no"
+                  Return="ignore" />
+
+    <!-- Stop service trước khi ghi đè file (update) hoặc trước khi gỡ (uninstall). -->
+    <CustomAction Id="UnregisterAgentService"
+                  ExeCommand='powershell.exe -NoProfile -ExecutionPolicy Bypass -File "[INSTALLDIR]unregister-agent-service.ps1"'
+                  Directory="INSTALLDIR"
+                  Execute="deferred"
+                  Impersonate="no"
+                  Return="ignore" />
+
     <InstallExecuteSequence>
+      <!-- Dừng service cũ trước khi copy đè files (release lock trên agent exe). -->
+      <Custom Action="UnregisterAgentService" Before="InstallFiles">Installed</Custom>
       <Custom Action="InstallCaCert" After="InstallFiles">NOT Installed</Custom>
+      <Custom Action="RegisterAgentService" After="InstallCaCert">NOT (REMOVE="ALL")</Custom>
       <Custom Action="UninstallCaCert" Before="RemoveFiles">Installed AND (REMOVE="ALL")</Custom>
     </InstallExecuteSequence>
   </Fragment>

@@ -19,6 +19,15 @@ export async function onUpdateReadyToApply(handler: () => void): Promise<Unliste
   });
 }
 
+/**
+ * Service (SYSTEM) đã nhận và đang cài bản mới im lặng — app sẽ tự thoát rồi khởi động lại.
+ */
+export async function onUpdateInstallingAgent(handler: () => void): Promise<UnlistenFn> {
+  return listen("update-installing-agent", () => {
+    handler();
+  });
+}
+
 export async function checkForUpdates(): Promise<UpdateCheckResponse> {
   return invoke<UpdateCheckResponse>("check_for_updates");
 }
@@ -29,4 +38,8 @@ export async function installUpdate(): Promise<void> {
 
 export async function restartApp(): Promise<void> {
   return invoke("restart_app");
+}
+
+export async function quitApp(): Promise<void> {
+  return invoke("quit_app");
 }

@@ -55,7 +55,7 @@ const AppInfoModal = ({ open, onClose }: Props) => {
                 Phiên bản mới nhất đã được cập nhật
               </Text>
               <Text as="p" tone="subdued">
-                Bạn đang dùng phiên bản {state.version}
+                Bạn đang dùng phiên bản {version || state.version}
               </Text>
             </BlockStack>
           </Banner>

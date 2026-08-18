@@ -4999,11 +4999,12 @@ dependencies = [
 
 [[package]]
 name = "sapo-printer-pro-max"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "async-trait",
  "axum",
  "axum-server",
+ "base64 0.22.1",
  "chrono",
  "cups-sys",
  "filetime",
@@ -5012,6 +5013,7 @@ dependencies = [
  "hmac",
  "home",
  "image",
+ "minisign-verify",
  "mockito",
  "notify",
  "pdfium-render",
@@ -5048,6 +5050,7 @@ dependencies = [
  "url",
  "uuid",
  "windows 0.52.0",
+ "windows-service",
  "winreg 0.52.0",
  "x509-parser",
 ]
@@ -7183,6 +7186,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "widestring"
+version = "1.2.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "72069c3113ab32ab29e5584db3c6ec55d416895e60715417b5b883a357c3e471"
+
+[[package]]
 name = "winapi"
 version = "0.2.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -7389,6 +7398,17 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7781fa89eaf60850ac3d2da7af8e5242a5ea78d1a11c49bf2910bb5a73853eb5"
 dependencies = [
  "windows-link 0.2.1",
+]
+
+[[package]]
+name = "windows-service"
+version = "0.7.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d24d6bcc7f734a4091ecf8d7a64c5f7d7066f45585c1861eba06449909609c8a"
+dependencies = [
+ "bitflags 2.13.0",
+ "widestring",
+ "windows-sys 0.52.0",
 ]
 
 [[package]]

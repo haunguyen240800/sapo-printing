@@ -2,32 +2,26 @@ import { useEffect, useState } from "react";
 import { Outlet } from "react-router-dom";
 import { Frame } from "@sapo/ui-components";
 import { UnlistenFn } from "@tauri-apps/api/event";
-import { onUpdateAvailable, onUpdateReadyToApply, UpdateCheckResponse } from "src/services/update-service";
+import { onUpdateAvailable, UpdateCheckResponse } from "src/services/update-service";
 import { ToastProvider } from "src/utils/toast";
 
 import { PairRequestDialog } from "../PairRequestDialog";
-import { UpdatePopup } from "../UpdatePopup";
+import { ForcedUpdateModal } from "../ForcedUpdateModal";
 
 export function AppLayout() {
-  const [showUpdatePopup, setShowUpdatePopup] = useState(false);
+  // Mọi version mới đều BẮT BUỘC (fail-open: không có mạng thì không có event → app dùng bình thường).
+  const [forcedUpdate, setForcedUpdate] = useState(false);
   const [updateInfo, setUpdateInfo] = useState<UpdateCheckResponse | null>(null);
-  const [updateReady, setUpdateReady] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
     let unlistenAvailable: UnlistenFn | undefined;
-    let unlistenReady: UnlistenFn | undefined;
 
     async function setup() {
       unlistenAvailable = await onUpdateAvailable((payload) => {
         if (!cancelled) {
           setUpdateInfo(payload);
-          setShowUpdatePopup(true);
-        }
-      });
-      unlistenReady = await onUpdateReadyToApply(() => {
-        if (!cancelled) {
-          setUpdateReady(true);
+          setForcedUpdate(true);
         }
       });
     }
@@ -37,7 +31,6 @@ export function AppLayout() {
     return () => {
       cancelled = true;
       unlistenAvailable?.();
-      unlistenReady?.();
     };
   }, []);
 
@@ -45,12 +38,7 @@ export function AppLayout() {
     <Frame>
       <ToastProvider>
         <Outlet />
-        <UpdatePopup
-          isOpen={showUpdatePopup}
-          onClose={() => setShowUpdatePopup(false)}
-          updateInfo={updateInfo}
-          readyToApply={updateReady}
-        />
+        {forcedUpdate && <ForcedUpdateModal updateInfo={updateInfo} />}
         <PairRequestDialog />
       </ToastProvider>
     </Frame>

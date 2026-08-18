@@ -20,13 +20,17 @@ use sapo_printer::infrastructure::platform::tls::{
     IpcRequest, IpcResponse, PlatformInstaller, RenewalStatus, cert_checker,
     cert_generator::CertGenerator, cert_installer::CertInstaller, ipc::IPC_ENDPOINT,
 };
+use sapo_printer::infrastructure::platform::updater::service_updater;
 use serde_json::Value;
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 
 const RENEWAL_TICK: Duration = Duration::from_secs(24 * 3600);
 
-#[tokio::main(flavor = "current_thread")]
-async fn main() -> Result<(), Box<dyn std::error::Error>> {
+/// Tên Windows Service (khớp với `sc create` trong installer).
+#[cfg(windows)]
+const SERVICE_NAME: &str = "SapoPrinterAgent";
+
+fn main() -> Result<(), Box<dyn std::error::Error>> {
     init_tracing();
 
     let args: Vec<String> = std::env::args().skip(1).collect();
@@ -57,9 +61,28 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             println!("{:?}", status);
             return Ok(());
         }
+        // Chạy như Windows Service (SCM gọi với flag này qua binPath).
+        #[cfg(windows)]
+        Some("--service") => {
+            return windows_service::service_dispatcher::start(SERVICE_NAME, ffi_service_main)
+                .map_err(Into::into);
+        }
         _ => {}
     }
 
+    // Không có flag service → chạy daemon trực tiếp (dev/CLI).
+    run_agent_blocking(data_dir)
+}
+
+/// Chạy daemon trong một tokio runtime (dùng cho cả CLI mode lẫn service mode).
+fn run_agent_blocking(data_dir: PathBuf) -> Result<(), Box<dyn std::error::Error>> {
+    let rt = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()?;
+    rt.block_on(run_agent(data_dir))
+}
+
+async fn run_agent(data_dir: PathBuf) -> Result<(), Box<dyn std::error::Error>> {
     tracing::info!(data_dir = %data_dir.display(), "Sapo Printer Agent starting");
 
     let installer: Arc<dyn CertInstaller> = Arc::new(PlatformInstaller::default());
@@ -90,6 +113,76 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // 4. IPC server.
     run_ipc_server(data_dir).await?;
+    Ok(())
+}
+
+// ===================== Windows Service (SCM) =====================
+
+#[cfg(windows)]
+windows_service::define_windows_service!(ffi_service_main, service_main);
+
+#[cfg(windows)]
+fn service_main(_args: Vec<std::ffi::OsString>) {
+    if let Err(e) = run_service() {
+        tracing::error!(error = %e, "Service run failed");
+    }
+}
+
+#[cfg(windows)]
+fn run_service() -> Result<(), Box<dyn std::error::Error>> {
+    use std::time::Duration;
+    use windows_service::service::{
+        ServiceControl, ServiceControlAccept, ServiceExitCode, ServiceState, ServiceStatus,
+        ServiceType,
+    };
+    use windows_service::service_control_handler::{self, ServiceControlHandlerResult};
+
+    let (shutdown_tx, shutdown_rx) = std::sync::mpsc::channel::<()>();
+
+    let event_handler = move |control| match control {
+        ServiceControl::Stop | ServiceControl::Shutdown => {
+            let _ = shutdown_tx.send(());
+            ServiceControlHandlerResult::NoError
+        }
+        ServiceControl::Interrogate => ServiceControlHandlerResult::NoError,
+        _ => ServiceControlHandlerResult::NotImplemented,
+    };
+
+    let status_handle = service_control_handler::register(SERVICE_NAME, event_handler)?;
+
+    let running = ServiceStatus {
+        service_type: ServiceType::OWN_PROCESS,
+        current_state: ServiceState::Running,
+        controls_accepted: ServiceControlAccept::STOP | ServiceControlAccept::SHUTDOWN,
+        exit_code: ServiceExitCode::Win32(0),
+        checkpoint: 0,
+        wait_hint: Duration::default(),
+        process_id: None,
+    };
+    status_handle.set_service_status(running)?;
+
+    // Chạy daemon ở thread riêng; thread chính chờ tín hiệu stop từ SCM.
+    let data_dir = resolve_data_dir(&[]).unwrap_or_else(|_| {
+        sapo_printer::infrastructure::platform::tls::shared_cert_dir()
+    });
+    std::thread::spawn(move || {
+        if let Err(e) = run_agent_blocking(data_dir) {
+            tracing::error!(error = %e, "Agent daemon exited with error");
+        }
+    });
+
+    let _ = shutdown_rx.recv();
+
+    let stopped = ServiceStatus {
+        service_type: ServiceType::OWN_PROCESS,
+        current_state: ServiceState::Stopped,
+        controls_accepted: ServiceControlAccept::empty(),
+        exit_code: ServiceExitCode::Win32(0),
+        checkpoint: 0,
+        wait_hint: Duration::default(),
+        process_id: None,
+    };
+    status_handle.set_service_status(stopped)?;
     Ok(())
 }
 
@@ -197,12 +290,35 @@ async fn unix_ipc(data_dir: PathBuf) -> Result<(), Box<dyn std::error::Error>> {
 
 #[cfg(windows)]
 async fn windows_ipc(data_dir: PathBuf) -> Result<(), Box<dyn std::error::Error>> {
+    use std::ffi::c_void;
     use tokio::net::windows::named_pipe::ServerOptions;
+    use windows::Win32::Security::SECURITY_ATTRIBUTES;
+
+    // DACL: SYSTEM + Administrators full; Authenticated Users chỉ connect + gửi lệnh.
+    // Nếu build được thì mọi instance pipe dùng chung security descriptor này.
+    let sd = build_pipe_security_descriptor();
 
     loop {
-        let server = ServerOptions::new()
-            .first_pipe_instance(false)
-            .create(IPC_ENDPOINT)?;
+        let mut opts = ServerOptions::new();
+        opts.first_pipe_instance(false);
+
+        let server = match &sd {
+            Some(psd) => {
+                let mut sa = SECURITY_ATTRIBUTES {
+                    nLength: size_of::<SECURITY_ATTRIBUTES>() as u32,
+                    lpSecurityDescriptor: psd.0,
+                    bInheritHandle: false.into(),
+                };
+                unsafe {
+                    opts.create_with_security_attributes_raw(
+                        IPC_ENDPOINT,
+                        &mut sa as *mut _ as *mut c_void,
+                    )?
+                }
+            }
+            None => opts.create(IPC_ENDPOINT)?,
+        };
+
         server.connect().await?;
         let dir = data_dir.clone();
         tokio::spawn(async move {
@@ -213,6 +329,36 @@ async fn windows_ipc(data_dir: PathBuf) -> Result<(), Box<dyn std::error::Error>
     }
 }
 
+/// Tạo security descriptor cho named pipe từ SDDL. Trả None nếu thất bại (fallback default).
+#[cfg(windows)]
+fn build_pipe_security_descriptor() -> Option<windows::Win32::Security::PSECURITY_DESCRIPTOR> {
+    use windows::Win32::Security::Authorization::{
+        ConvertStringSecurityDescriptorToSecurityDescriptorW, SDDL_REVISION_1,
+    };
+    use windows::Win32::Security::PSECURITY_DESCRIPTOR;
+    use windows::core::PCWSTR;
+
+    let sddl: Vec<u16> = "D:(A;;GA;;;SY)(A;;GA;;;BA)(A;;GRGW;;;AU)"
+        .encode_utf16()
+        .chain(std::iter::once(0))
+        .collect();
+    let mut psd = PSECURITY_DESCRIPTOR::default();
+    unsafe {
+        match ConvertStringSecurityDescriptorToSecurityDescriptorW(
+            PCWSTR(sddl.as_ptr()),
+            SDDL_REVISION_1,
+            &mut psd,
+            None,
+        ) {
+            Ok(_) => Some(psd),
+            Err(e) => {
+                tracing::warn!(error = %e, "Failed to build pipe DACL; using default security");
+                None
+            }
+        }
+    }
+}
+
 async fn handle_connection<S>(stream: S, data_dir: PathBuf) -> std::io::Result<()>
 where
     S: tokio::io::AsyncRead + tokio::io::AsyncWrite + Unpin,
@@ -220,7 +366,15 @@ where
     let (rd, mut wr) = tokio::io::split(stream);
     let mut lines = BufReader::new(rd).lines();
     if let Some(line) = lines.next_line().await? {
-        let response = handle_request(&line, &data_dir);
+        // RequestUpdate cần xử lý async (tải + verify) nên tách riêng khỏi handle_request sync.
+        let response = match serde_json::from_str::<IpcRequest>(&line) {
+            Ok(IpcRequest::RequestUpdate {
+                expected_version,
+                app_pid,
+            }) => handle_update_request(expected_version, app_pid, &data_dir).await,
+            Ok(_) => handle_request(&line, &data_dir),
+            Err(e) => IpcResponse::err(format!("bad request: {}", e)),
+        };
         let mut json = serde_json::to_string(&response)
             .unwrap_or_else(|_| r#"{"ok":false,"error":"encode failure"}"#.to_string());
         json.push('\n');
@@ -228,6 +382,29 @@ where
         wr.flush().await?;
     }
     Ok(())
+}
+
+/// Xử lý RequestUpdate: tải + verify bản mới, rồi lên lịch cài (sau khi app thoát) + relaunch.
+async fn handle_update_request(
+    expected_version: String,
+    app_pid: u32,
+    data_dir: &std::path::Path,
+) -> IpcResponse {
+    match service_updater::stage_update(&expected_version, data_dir).await {
+        Ok(staged) => {
+            let app_exe = std::env::current_exe()
+                .ok()
+                .and_then(|p| p.parent().map(|d| d.join(service_updater::APP_EXE_NAME)));
+            match app_exe {
+                Some(exe) => {
+                    service_updater::finalize_update(staged.installer_path, app_pid, exe);
+                    IpcResponse::update_staged()
+                }
+                None => IpcResponse::err("cannot resolve app exe path"),
+            }
+        }
+        Err(e) => IpcResponse::err(e),
+    }
 }
 
 fn handle_request(line: &str, data_dir: &std::path::Path) -> IpcResponse {
@@ -244,6 +421,7 @@ fn handle_request(line: &str, data_dir: &std::path::Path) -> IpcResponse {
                 ca_expires_at: Some(system_time_to_unix(b.ca_expires_at)),
                 ca_trusted: None,
                 renewal_status: Some("renewed".into()),
+                update_status: None,
             },
             Err(e) => IpcResponse::err(e.to_string()),
         },
@@ -256,11 +434,16 @@ fn handle_request(line: &str, data_dir: &std::path::Path) -> IpcResponse {
                     ca_expires_at: Some(system_time_to_unix(b.ca_expires_at)),
                     ca_trusted: Some(PlatformInstaller::default().is_ca_trusted()),
                     renewal_status: Some(format!("{:?}", status)),
+                    update_status: None,
                 }
             }
             Err(e) => IpcResponse::err(e.to_string()),
         },
         IpcRequest::RotateCa => IpcResponse::err("rotate_ca not implemented"),
+        // Xử lý async ở handle_update_request; nhánh này chỉ để match đủ biến thể.
+        IpcRequest::RequestUpdate { .. } => {
+            IpcResponse::err("request_update must be handled asynchronously")
+        }
     }
 }
 
