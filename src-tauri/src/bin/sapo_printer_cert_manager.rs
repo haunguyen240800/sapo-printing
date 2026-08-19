@@ -18,12 +18,11 @@ use std::time::Duration;
 
 #[cfg(windows)]
 use sapo_printer::infrastructure::platform::agent_config::SERVICE_NAME;
-use sapo_printer::infrastructure::platform::agent_config::{APP_EXE_NAME, IPC_ENDPOINT};
+use sapo_printer::infrastructure::platform::agent_config::IPC_ENDPOINT;
 use sapo_printer::infrastructure::platform::tls::{
     IpcRequest, IpcResponse, PlatformInstaller, RenewalStatus, cert_checker,
     cert_generator::CertGenerator, cert_installer::CertInstaller,
 };
-use sapo_printer::infrastructure::platform::updater::service_updater;
 use serde_json::Value;
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 
@@ -185,9 +184,33 @@ fn run_service() -> Result<(), Box<dyn std::error::Error>> {
 }
 
 fn init_tracing() {
+    use tracing_subscriber::{fmt, layer::SubscriberExt, util::SubscriberInitExt};
+
     let filter = tracing_subscriber::EnvFilter::try_from_env("SAPO_AGENT_LOG")
         .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("info"));
-    tracing_subscriber::fmt().with_env_filter(filter).init();
+
+    // Service chạy như Windows Service → stdout đi vào hư không. Ghi thêm ra file để
+    // chẩn đoán renewal, IPC và vòng đời service khi có sự cố.
+    let file_layer = shared_cert_dir_for_logs().and_then(|dir| {
+        let log_dir = dir.join("logs");
+        std::fs::create_dir_all(&log_dir).ok()?;
+        let appender = tracing_appender::rolling::RollingFileAppender::builder()
+            .rotation(tracing_appender::rolling::Rotation::DAILY)
+            .filename_prefix("agent.log")
+            .build(&log_dir)
+            .ok()?;
+        Some(fmt::layer().json().with_ansi(false).with_writer(appender))
+    });
+
+    tracing_subscriber::registry()
+        .with(filter)
+        .with(fmt::layer().compact())
+        .with(file_layer)
+        .init();
+}
+
+fn shared_cert_dir_for_logs() -> Option<PathBuf> {
+    Some(sapo_printer::infrastructure::platform::tls::shared_cert_dir())
 }
 
 fn subcommand(args: &[String]) -> Option<&str> {
@@ -364,15 +387,7 @@ where
     let (rd, mut wr) = tokio::io::split(stream);
     let mut lines = BufReader::new(rd).lines();
     if let Some(line) = lines.next_line().await? {
-        // RequestUpdate cần xử lý async (tải + verify) nên tách riêng khỏi handle_request sync.
-        let response = match serde_json::from_str::<IpcRequest>(&line) {
-            Ok(IpcRequest::RequestUpdate {
-                expected_version,
-                app_pid,
-            }) => handle_update_request(expected_version, app_pid, &data_dir).await,
-            Ok(_) => handle_request(&line, &data_dir),
-            Err(e) => IpcResponse::err(format!("bad request: {}", e)),
-        };
+        let response = handle_request(&line, &data_dir);
         let mut json = serde_json::to_string(&response)
             .unwrap_or_else(|_| r#"{"ok":false,"error":"encode failure"}"#.to_string());
         json.push('\n');
@@ -380,29 +395,6 @@ where
         wr.flush().await?;
     }
     Ok(())
-}
-
-/// Xử lý RequestUpdate: tải + verify bản mới, rồi lên lịch cài (sau khi app thoát) + relaunch.
-async fn handle_update_request(
-    expected_version: String,
-    app_pid: u32,
-    data_dir: &std::path::Path,
-) -> IpcResponse {
-    match service_updater::stage_update(&expected_version, data_dir).await {
-        Ok(staged) => {
-            let app_exe = std::env::current_exe()
-                .ok()
-                .and_then(|p| p.parent().map(|d| d.join(APP_EXE_NAME)));
-            match app_exe {
-                Some(exe) => {
-                    service_updater::finalize_update(staged.installer_path, app_pid, exe);
-                    IpcResponse::update_staged()
-                }
-                None => IpcResponse::err("cannot resolve app exe path"),
-            }
-        }
-        Err(e) => IpcResponse::err(e),
-    }
 }
 
 fn handle_request(line: &str, data_dir: &std::path::Path) -> IpcResponse {
@@ -438,10 +430,9 @@ fn handle_request(line: &str, data_dir: &std::path::Path) -> IpcResponse {
             Err(e) => IpcResponse::err(e.to_string()),
         },
         IpcRequest::RotateCa => IpcResponse::err("rotate_ca not implemented"),
-        // Xử lý async ở handle_update_request; nhánh này chỉ để match đủ biến thể.
-        IpcRequest::RequestUpdate { .. } => {
-            IpcResponse::err("request_update must be handled asynchronously")
-        }
+        IpcRequest::RequestUpdate { .. } => IpcResponse::err(
+            "service-based application updates are disabled; use the interactive updater",
+        ),
     }
 }
 

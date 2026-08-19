@@ -10,12 +10,14 @@ interface Props {
   readyToApply?: boolean;
 }
 
-type PopupState = "idle" | "installing" | "ready" | "error" | "up-to-date" | "checking";
+type PopupState = "idle" | "installing" | "ready" | "applying" | "error" | "up-to-date" | "checking";
 
 export const UpdatePopup: React.FC<Props> = ({ isOpen, onClose, updateInfo, readyToApply = false }) => {
   const [currentVersion, setCurrentVersion] = useState<string>("");
   const [popupState, setPopupState] = useState<PopupState>("idle");
   const [errorMessage, setErrorMessage] = useState<string>("");
+  const [downloadedVersion, setDownloadedVersion] = useState(updateInfo?.version ?? "");
+  const [failedStage, setFailedStage] = useState<"download" | "apply">("download");
 
   useEffect(() => {
     getVersion()
@@ -27,9 +29,10 @@ export const UpdatePopup: React.FC<Props> = ({ isOpen, onClose, updateInfo, read
 
   useEffect(() => {
     if (readyToApply && (popupState === "installing" || popupState === "idle")) {
+      setDownloadedVersion(updateInfo?.version ?? "");
       setPopupState("ready");
     }
-  }, [readyToApply, popupState]);
+  }, [readyToApply, popupState, updateInfo?.version]);
 
   useEffect(() => {
     if (isOpen) {
@@ -50,8 +53,11 @@ export const UpdatePopup: React.FC<Props> = ({ isOpen, onClose, updateInfo, read
     setPopupState("installing");
     setErrorMessage("");
     try {
-      await installUpdate();
+      const version = await installUpdate();
+      setDownloadedVersion(version);
+      setPopupState("ready");
     } catch (err) {
+      setFailedStage("download");
       setPopupState("error");
       setErrorMessage(err instanceof Error ? err.message : String(err));
     }
@@ -68,21 +74,30 @@ export const UpdatePopup: React.FC<Props> = ({ isOpen, onClose, updateInfo, read
         setPopupState("idle");
       }
     } catch (err) {
+      setFailedStage("apply");
       setPopupState("error");
       setErrorMessage(err instanceof Error ? err.message : String(err));
     }
   };
 
   const handleRestart = async () => {
+    if (!downloadedVersion) {
+      setPopupState("error");
+      setErrorMessage("Không tìm thấy phiên bản cập nhật đã tải. Vui lòng tải lại.");
+      return;
+    }
+
+    setPopupState("applying");
+    setErrorMessage("");
     try {
-      await restartApp();
-    } catch {
-      // If restart fails, fallback to webview reload
-      window.location.reload();
+      await restartApp(downloadedVersion);
+    } catch (err) {
+      setPopupState("error");
+      setErrorMessage(err instanceof Error ? err.message : String(err));
     }
   };
 
-  const isBusy = popupState === "installing" || popupState === "checking";
+  const isBusy = popupState === "installing" || popupState === "applying" || popupState === "checking";
 
   return (
     <div
@@ -178,6 +193,22 @@ export const UpdatePopup: React.FC<Props> = ({ isOpen, onClose, updateInfo, read
           </div>
         )}
 
+        {popupState === "applying" && (
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              gap: "8px",
+              marginBottom: "16px",
+              color: "#1976d2",
+            }}
+          >
+            <Spinner size="small" />
+            <span>Đang mở trình cài đặt Windows...</span>
+          </div>
+        )}
+
         {/* Checking state */}
         {popupState === "checking" && (
           <div
@@ -219,7 +250,7 @@ export const UpdatePopup: React.FC<Props> = ({ isOpen, onClose, updateInfo, read
         {/* Retry link for error state */}
         {popupState === "error" && (
           <div style={{ textAlign: "center", marginTop: "12px" }}>
-            <Button onClick={handleInstall}>Thử lại</Button>
+            <Button onClick={failedStage === "apply" ? handleRestart : handleInstall}>Thử lại</Button>
           </div>
         )}
       </div>

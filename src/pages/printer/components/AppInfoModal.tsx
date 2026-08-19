@@ -46,12 +46,12 @@ export const AppInfoModal = ({ open, onClose }: Props) => {
         return null;
 
       case "update-available":
-      case "installing":
+      case "downloading":
         return (
           <Banner tone="info" hideDismiss>
             <BlockStack gap="2">
               <Text as="p">
-                {state.status === "installing"
+                {state.status === "downloading"
                   ? "Đang tải xuống bản mới..."
                   : `Đã có phiên bản mới ver [${state.result.version}]. Vui lòng xác nhận để cập nhật`}
               </Text>
@@ -59,8 +59,8 @@ export const AppInfoModal = ({ open, onClose }: Props) => {
                 <Button
                   variant="outline"
                   onClick={handleInstallUpdate}
-                  loading={state.status === "installing"}
-                  disabled={state.status === "installing"}
+                  loading={state.status === "downloading"}
+                  disabled={state.status === "downloading"}
                 >
                   Cập nhật
                 </Button>
@@ -73,13 +73,22 @@ export const AppInfoModal = ({ open, onClose }: Props) => {
         return (
           <Banner tone="success" hideDismiss>
             <BlockStack gap="2">
-              <Text as="p">Đã tải xong bản mới. Nhấn &#34;Cài đặt và khởi động lại&#34; để hoàn tất cập nhật.</Text>
+              <Text as="p">
+                Đã tải xong bản mới. Trình cài đặt Windows sẽ hiển thị UAC và tiến trình, sau đó tự mở lại ứng dụng.
+              </Text>
               <InlineStack>
                 <Button variant="primary" onClick={restartApp}>
                   Cài đặt và khởi động lại
                 </Button>
               </InlineStack>
             </BlockStack>
+          </Banner>
+        );
+
+      case "applying":
+        return (
+          <Banner tone="info" title="Đang mở trình cài đặt" hideDismiss>
+            <Text as="p">Vui lòng xác nhận UAC và chờ thanh tiến trình hoàn tất. Ứng dụng sẽ tự mở lại.</Text>
           </Banner>
         );
 
@@ -92,11 +101,20 @@ export const AppInfoModal = ({ open, onClose }: Props) => {
           <Banner tone="critical" hideDismiss>
             <BlockStack gap="1">
               <Text as="p" fontWeight="medium">
-                Không thể kết nối máy chủ
+                {state.stage === "apply" ? "Không thể mở trình cài đặt" : "Cập nhật thất bại"}
               </Text>
               <Text as="p" tone="subdued">
                 {state.message}
               </Text>
+              <InlineStack>
+                <Button
+                  variant="outline"
+                  onClick={state.stage === "apply" ? restartApp : handleInstallUpdate}
+                  disabled={state.stage === "check"}
+                >
+                  Thử lại
+                </Button>
+              </InlineStack>
             </BlockStack>
           </Banner>
         );

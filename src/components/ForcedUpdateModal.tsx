@@ -15,7 +15,8 @@ interface Props {
   updateInfo: UpdateCheckResponse | null;
 }
 
-type State = "idle" | "installing" | "ready" | "error";
+type State = "idle" | "downloading" | "ready" | "applying" | "error";
+type RetryStage = "download" | "apply";
 
 const MAX_RETRIES = 3;
 
@@ -30,6 +31,8 @@ export const ForcedUpdateModal: React.FC<Props> = ({ updateInfo }) => {
   const [state, setState] = useState<State>("idle");
   const [errorMessage, setErrorMessage] = useState<string>("");
   const [currentVersion, setCurrentVersion] = useState<string>("");
+  const [downloadedVersion, setDownloadedVersion] = useState(updateInfo?.version ?? "");
+  const [retryStage, setRetryStage] = useState<RetryStage>("download");
   const failCount = useRef(0);
 
   useEffect(() => {
@@ -39,14 +42,15 @@ export const ForcedUpdateModal: React.FC<Props> = ({ updateInfo }) => {
   }, []);
 
   const runInstall = useCallback(async () => {
-    setState("installing");
+    setState("downloading");
     setErrorMessage("");
     try {
-      await installUpdate();
-      // installUpdate chỉ TẢI về. Cả 2 đường (service silent / fallback UAC) đều phát
-      // "update-ready-to-apply" → state "ready" → nút "Cài đặt và khởi động lại".
+      const version = await installUpdate();
+      setDownloadedVersion(version);
+      setState("ready");
     } catch (err) {
       failCount.current += 1;
+      setRetryStage("download");
       setState("error");
       setErrorMessage(err instanceof Error ? err.message : String(err));
     }
@@ -57,8 +61,11 @@ export const ForcedUpdateModal: React.FC<Props> = ({ updateInfo }) => {
     let unlistenReady: UnlistenFn | undefined;
 
     async function setup() {
-      unlistenReady = await onUpdateReadyToApply(() => {
-        if (!cancelled) setState("ready");
+      unlistenReady = await onUpdateReadyToApply((version) => {
+        if (!cancelled) {
+          setDownloadedVersion(version);
+          setState("ready");
+        }
       });
     }
 
@@ -71,10 +78,17 @@ export const ForcedUpdateModal: React.FC<Props> = ({ updateInfo }) => {
   }, []);
 
   const handleRestart = async () => {
+    if (state === "applying" || !downloadedVersion) return;
+
+    setState("applying");
+    setErrorMessage("");
     try {
-      await restartApp();
-    } catch {
-      window.location.reload();
+      await restartApp(downloadedVersion);
+    } catch (err) {
+      failCount.current += 1;
+      setRetryStage("apply");
+      setState("error");
+      setErrorMessage(err instanceof Error ? err.message : String(err));
     }
   };
 
@@ -86,16 +100,22 @@ export const ForcedUpdateModal: React.FC<Props> = ({ updateInfo }) => {
     }
   };
 
+  const retryAction = retryStage === "apply" ? handleRestart : runInstall;
   const primaryAction =
-    state === "ready"
-      ? { content: "Cài đặt và khởi động lại", onAction: handleRestart }
+    state === "ready" || state === "applying"
+      ? {
+          content: "Cài đặt và khởi động lại",
+          onAction: handleRestart,
+          loading: state === "applying",
+          disabled: state === "applying",
+        }
       : state === "error"
-        ? { content: "Thử lại", onAction: runInstall }
+        ? { content: "Thử lại", onAction: retryAction }
         : {
             content: "Tải xuống",
             onAction: runInstall,
-            loading: state === "installing",
-            disabled: state === "installing",
+            loading: state === "downloading",
+            disabled: state === "downloading",
           };
 
   const secondaryActions =
@@ -133,7 +153,7 @@ export const ForcedUpdateModal: React.FC<Props> = ({ updateInfo }) => {
           )}
         </BlockStack>
 
-        {state === "installing" && (
+        {state === "downloading" && (
           <Banner tone="info" hideDismiss>
             <InlineStack gap="2" blockAlign="center">
               <Text as="span">Đang tải xuống...</Text>
@@ -143,7 +163,16 @@ export const ForcedUpdateModal: React.FC<Props> = ({ updateInfo }) => {
 
         {state === "ready" && (
           <Banner tone="success" title="Đã tải xong bản mới" hideDismiss>
-            <Text as="p">Nhấn &#34;Cài đặt và khởi động lại&#34; để hoàn tất cập nhật.</Text>
+            <Text as="p">
+              Nhấn &#34;Cài đặt và khởi động lại&#34; để mở trình cài đặt Windows. Ứng dụng sẽ tự mở lại sau khi hoàn
+              tất.
+            </Text>
+          </Banner>
+        )}
+
+        {state === "applying" && (
+          <Banner tone="info" title="Đang mở trình cài đặt" hideDismiss>
+            <Text as="p">Vui lòng xác nhận UAC và chờ thanh tiến trình hoàn tất. Ứng dụng sẽ tự mở lại.</Text>
           </Banner>
         )}
 

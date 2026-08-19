@@ -33,18 +33,21 @@ if ($existing) {
     # Service already registered (update path): stop so the new exe can take over.
     try { Stop-Service -Name $ServiceName -Force -ErrorAction SilentlyContinue } catch {}
     try {
-        & sc.exe config $ServiceName binPath= $Bin | Out-Null
-        if ($LASTEXITCODE -ne 0) {
-            throw "Failed to update service $ServiceName binary path (exit $LASTEXITCODE)"
+        # Reconfigure via WMI, not sc.exe: PowerShell 5.1 mangles the embedded double-quotes
+        # in binPath when handing them to the native sc.exe, producing exit 1639
+        # (ERROR_INVALID_COMMAND_LINE). Win32_Service.Change() takes the path as a plain string.
+        $svc = Get-WmiObject -Class Win32_Service -Filter "Name='$ServiceName'"
+        if (-not $svc) {
+            throw "Service $ServiceName not found for reconfigure"
         }
-        & sc.exe config $ServiceName DisplayName= $ServiceDisplayName | Out-Null
-        if ($LASTEXITCODE -ne 0) {
-            throw "Failed to update service $ServiceName display name (exit $LASTEXITCODE)"
+        # Change(DisplayName, PathName, ServiceType, ErrorControl, StartMode, ...): pass the two
+        # fields we care about; $null leaves every other setting untouched.
+        $ret = $svc.Change($ServiceDisplayName, $Bin, $null, $null, $null, $null, $null, $null, $null, $null, $null)
+        if ($ret.ReturnValue -ne 0) {
+            throw "Failed to reconfigure service $ServiceName (WMI Change returned $($ret.ReturnValue))"
         }
+        # Description is not a Change() parameter; set it via sc.exe (single arg, no quoting issue).
         & sc.exe description $ServiceName $ServiceDescription | Out-Null
-        if ($LASTEXITCODE -ne 0) {
-            throw "Failed to update service $ServiceName description (exit $LASTEXITCODE)"
-        }
     } finally {
         # A metadata-only failure must not leave the existing functional service stopped.
         Start-Service -Name $ServiceName

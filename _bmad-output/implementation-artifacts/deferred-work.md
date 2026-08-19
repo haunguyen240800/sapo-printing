@@ -1,5 +1,13 @@
 # Deferred Work
 
+## Deferred from: visible updater review (2026-08-19)
+
+- **Privileged agent log retention** — `sapo_printer_cert_manager` writes daily rolling logs without retention/size cleanup; add a bounded retention policy in a focused observability change.
+- **Service description exit-code handling** — `register-agent-service.ps1` no longer checks `$LASTEXITCODE` after `sc.exe description`; restore explicit failure handling together with installer service lifecycle tests.
+- **Updater Clean Architecture boundary** — Tauri update commands still call updater infrastructure directly instead of an Application use case/port; refactor as a separate architecture change.
+- **Tauri ShellExecute result limitation** — `tauri-plugin-updater 2.10.1` ignores the Windows `ShellExecuteW` return value and exits after requesting installer launch. A fully checked launch/cancel flow requires a plugin upgrade/patch or approved custom launcher.
+- **Existing Rust suite failures** — full suite currently has 156 passing and 4 unrelated failures in SQLite migration assertions and tracing logger tests; repair independently of the updater.
+
 ## Deferred from: standardize-sapo-printer-pro-max review (2026-08-18)
 
 - **macOS bundle resource wiring** — `postinstall.sh` expects `com.sapo.printer.cert-manager.plist` inside the app Resources directory, but `tauri.conf.json` does not currently bundle that resource. This predates the rename and needs a macOS packaging pass because the shared resource map also contains Windows-only artifacts.

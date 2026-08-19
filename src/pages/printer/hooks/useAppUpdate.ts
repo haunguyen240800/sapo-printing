@@ -12,14 +12,16 @@ type UpdateState =
   | { status: "checking" }
   | { status: "up-to-date"; version: string }
   | { status: "update-available"; result: UpdateCheckResponse }
-  | { status: "installing"; progress: number }
-  | { status: "ready-to-restart" }
-  | { status: "error"; message: string };
+  | { status: "downloading" }
+  | { status: "ready-to-restart"; targetVersion: string }
+  | { status: "applying"; targetVersion: string }
+  | { status: "error"; message: string; stage: "check" | "download" | "apply" };
 
 export function useAppUpdate() {
   const [state, setState] = useState<UpdateState>({ status: "idle" });
   const [isChecking, setIsChecking] = useState(false);
   const [isInstalling, setIsInstalling] = useState(false);
+  const [targetVersion, setTargetVersion] = useState("");
 
   const checkUpdate = useCallback(async () => {
     setIsChecking(true);
@@ -32,7 +34,7 @@ export function useAppUpdate() {
         setState({ status: "up-to-date", version: result.version ?? "unknown" });
       }
     } catch (err) {
-      setState({ status: "error", message: err as string });
+      setState({ status: "error", message: String(err), stage: "check" });
     } finally {
       setIsChecking(false);
     }
@@ -40,25 +42,30 @@ export function useAppUpdate() {
 
   const installUpdate = useCallback(async () => {
     setIsInstalling(true);
-    setState({ status: "installing", progress: 0 });
+    setState({ status: "downloading" });
     try {
-      await installUpdateService();
-      // Bản mới đã sẵn sàng (staged/cài xong) — chờ user bấm khởi động lại.
-      setState({ status: "ready-to-restart" });
+      const version = await installUpdateService();
+      setTargetVersion(version);
+      setState({ status: "ready-to-restart", targetVersion: version });
     } catch (err) {
-      setState({ status: "error", message: err as string });
+      setState({ status: "error", message: String(err), stage: "download" });
     } finally {
       setIsInstalling(false);
     }
   }, []);
 
   const restartApp = useCallback(async () => {
+    if (!targetVersion) return;
+
+    setIsInstalling(true);
+    setState({ status: "applying", targetVersion });
     try {
-      await restartAppService();
-    } catch {
-      window.location.reload();
+      await restartAppService(targetVersion);
+    } catch (err) {
+      setState({ status: "error", message: String(err), stage: "apply" });
+      setIsInstalling(false);
     }
-  }, []);
+  }, [targetVersion]);
 
   return {
     state,

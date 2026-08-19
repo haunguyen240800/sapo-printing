@@ -1,17 +1,61 @@
 import { useEffect, useState } from "react";
 import { Outlet } from "react-router-dom";
 import { Frame } from "@sapo/ui-components";
+import { getVersion } from "@tauri-apps/api/app";
 import { UnlistenFn } from "@tauri-apps/api/event";
-import { checkForUpdates, onUpdateAvailable, UpdateCheckResponse } from "src/services/update-service";
-import { ToastProvider } from "src/utils/toast";
+import {
+  checkForUpdates,
+  getPendingUpdateResult,
+  getPendingUpdateTarget,
+  onUpdateAvailable,
+  UpdateCheckResponse,
+} from "src/services/update-service";
+import { showErrorToast, showToast, ToastProvider } from "src/utils/toast";
 
 import { ForcedUpdateModal } from "../ForcedUpdateModal";
 import { PairRequestDialog } from "../PairRequestDialog";
 
 export function AppLayout() {
   // Mọi version mới đều BẮT BUỘC (fail-open: không có mạng thì không có event → app dùng bình thường).
-  const [forcedUpdate, setForcedUpdate] = useState(false);
-  const [updateInfo, setUpdateInfo] = useState<UpdateCheckResponse | null>(null);
+  const [pendingTargetAtStartup] = useState(() => getPendingUpdateTarget());
+  const [forcedUpdate, setForcedUpdate] = useState(Boolean(pendingTargetAtStartup));
+  const [updateInfo, setUpdateInfo] = useState<UpdateCheckResponse | null>(() =>
+    pendingTargetAtStartup ? { update_available: true, version: pendingTargetAtStartup, release_notes: null } : null
+  );
+
+  useEffect(() => {
+    const pendingTarget = pendingTargetAtStartup;
+    if (!pendingTarget) return;
+
+    const requirePendingUpdate = () => {
+      setUpdateInfo({ update_available: true, version: pendingTarget, release_notes: null });
+      setForcedUpdate(true);
+    };
+
+    getVersion()
+      .then((currentVersion) => {
+        const result = getPendingUpdateResult(currentVersion);
+        if (result?.status === "updated") {
+          setUpdateInfo(null);
+          setForcedUpdate(false);
+          showToast(`Đã cập nhật thành công lên phiên bản ${result.targetVersion}.`, {
+            id: "app-update-result",
+          });
+        } else if (result?.status === "not-updated") {
+          requirePendingUpdate();
+          showErrorToast(
+            `Cập nhật lên phiên bản ${result.targetVersion} chưa hoàn tất. Ứng dụng vẫn đang ở phiên bản ${result.currentVersion}.`,
+            { id: "app-update-result" }
+          );
+        }
+      })
+      .catch(() => {
+        requirePendingUpdate();
+        showErrorToast("Không thể xác minh kết quả cập nhật. Vui lòng thử cài đặt lại.", {
+          id: "app-update-result",
+        });
+      });
+  }, [pendingTargetAtStartup]);
 
   useEffect(() => {
     let cancelled = false;
@@ -59,9 +103,14 @@ export function AppLayout() {
   return (
     <Frame>
       <ToastProvider>
-        <Outlet />
-        <PairRequestDialog />
-        {forcedUpdate && <ForcedUpdateModal updateInfo={updateInfo} />}
+        {forcedUpdate ? (
+          <ForcedUpdateModal updateInfo={updateInfo} />
+        ) : (
+          <>
+            <Outlet />
+            <PairRequestDialog />
+          </>
+        )}
       </ToastProvider>
     </Frame>
   );

@@ -221,8 +221,7 @@ fn relaunch_in_user_session(exe: &Path) -> Result<(), String> {
     use windows::Win32::Foundation::{CloseHandle, HANDLE};
     use windows::Win32::System::RemoteDesktop::{WTSGetActiveConsoleSessionId, WTSQueryUserToken};
     use windows::Win32::System::Threading::{
-        CREATE_NEW_CONSOLE, CREATE_UNICODE_ENVIRONMENT, CreateProcessAsUserW, PROCESS_INFORMATION,
-        STARTUPINFOW,
+        CREATE_UNICODE_ENVIRONMENT, CreateProcessAsUserW, PROCESS_INFORMATION, STARTUPINFOW,
     };
     use windows::core::PWSTR;
 
@@ -242,8 +241,17 @@ fn relaunch_in_user_session(exe: &Path) -> Result<(), String> {
             .chain(std::iter::once(0))
             .collect();
 
+        // Bắt buộc gắn process vào interactive desktop của session user. Service chạy ở
+        // session 0 (non-interactive); nếu lpDesktop = NULL thì app GUI khởi động nhưng
+        // KHÔNG hiện cửa sổ → người dùng thấy "app tắt rồi không có gì xảy ra".
+        let mut desktop: Vec<u16> = "winsta0\\default"
+            .encode_utf16()
+            .chain(std::iter::once(0))
+            .collect();
+
         let startup = STARTUPINFOW {
             cb: size_of::<STARTUPINFOW>() as u32,
+            lpDesktop: PWSTR(desktop.as_mut_ptr()),
             ..Default::default()
         };
         let mut proc_info = PROCESS_INFORMATION::default();
@@ -255,7 +263,7 @@ fn relaunch_in_user_session(exe: &Path) -> Result<(), String> {
             None,
             None,
             false,
-            CREATE_UNICODE_ENVIRONMENT | CREATE_NEW_CONSOLE,
+            CREATE_UNICODE_ENVIRONMENT,
             None,
             None,
             &startup,
