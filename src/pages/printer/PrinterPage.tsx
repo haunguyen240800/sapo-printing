@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { useOutletContext } from "react-router-dom";
 import styled from "@emotion/styled";
 import { Box, Button, Icon, InlineStack, Text } from "@sapo/ui-components";
 import { WarningIcon } from "@sapo/ui-icons";
@@ -14,14 +15,25 @@ import { Overview } from "./components/Overview";
 import PrinterSettingsFormModal from "./components/PrinterSettingsFormModal";
 import { SupportModal } from "./components/SupportModal";
 
+type ModalName = "config" | "clear-cache" | "app-info" | "support";
+
 export default function PrinterPage() {
-  const [modalName, setModalName] = useState<undefined | "config" | "clear-cache" | "app-info" | "support">();
+  const { forcedUpdate = false } = useOutletContext<{ forcedUpdate?: boolean }>() ?? {};
+  const [modalName, setModalName] = useState<ModalName>();
 
   const [printerConfig, setPrinterConfig] = useState<PrinterConfig>();
   const [metrics, setMetrics] = useState<MetricsDto | null>(null);
   const [activeJobs, setActiveJobs] = useState<Map<string, JobStatusPayload>>(new Map());
   const metricsIntervalRef = useRef<number | null>(null);
   const removalTimeoutsRef = useRef<Map<string, number>>(new Map());
+
+  useEffect(() => {
+    if (forcedUpdate) setModalName(undefined);
+  }, [forcedUpdate]);
+
+  const openModal = (name: ModalName) => {
+    if (!forcedUpdate) setModalName(name);
+  };
 
   const loadPrinterConfig = useCallback(async () => {
     const config = await getPrinterConfig();
@@ -143,7 +155,7 @@ export default function PrinterPage() {
     return Math.round(avgProgress);
   }
 
-  const clearCacheConfirmModal = modalName === "clear-cache" && (
+  const clearCacheConfirmModal = !forcedUpdate && modalName === "clear-cache" && (
     <ConfirmModal
       open
       title={
@@ -167,13 +179,17 @@ export default function PrinterPage() {
     />
   );
 
-  const systemConfigModal = modalName === "config" && (
+  const systemConfigModal = !forcedUpdate && modalName === "config" && (
     <PrinterSettingsFormModal open onClose={() => setModalName(undefined)} onSaved={loadPrinterConfig} />
   );
 
-  const appInfoMarkup = modalName === "app-info" && <AppInfoModal open onClose={() => setModalName(undefined)} />;
+  const appInfoMarkup = !forcedUpdate && modalName === "app-info" && (
+    <AppInfoModal open onClose={() => setModalName(undefined)} />
+  );
 
-  const supportModal = modalName === "support" && <SupportModal open onClose={() => setModalName(undefined)} />;
+  const supportModal = !forcedUpdate && modalName === "support" && (
+    <SupportModal open onClose={() => setModalName(undefined)} />
+  );
 
   return (
     <Box>
@@ -181,16 +197,16 @@ export default function PrinterPage() {
         <ActionListButton
           plain
           actions={[
-            { content: "Chỉnh sửa cấu hình", onAction: () => setModalName("config") },
-            { content: "Xóa dữ liệu cache", onAction: () => setModalName("clear-cache") },
+            { content: "Chỉnh sửa cấu hình", onAction: () => openModal("config") },
+            { content: "Xóa dữ liệu cache", onAction: () => openModal("clear-cache") },
           ]}
         >
           Cấu hình hệ thống
         </ActionListButton>
-        <Button plain onClick={() => setModalName("support")}>
+        <Button plain onClick={() => openModal("support")}>
           Hỗ trợ
         </Button>
-        <Button plain onClick={() => setModalName("app-info")}>
+        <Button plain onClick={() => openModal("app-info")}>
           Thông tin
         </Button>
       </ButtonGroupStyled>

@@ -123,7 +123,7 @@ export function AppLayout() {
     <Frame>
       <ToastProvider disabled={forcedUpdate}>
         <div ref={backgroundRef} aria-hidden={forcedUpdate || undefined} style={{ display: "contents" }}>
-          <Outlet />
+          <Outlet context={{ forcedUpdate }} />
         </div>
         {!forcedUpdate && <PairRequestDialog />}
         {forcedUpdate && <ForcedUpdateModal updateInfo={updateInfo} />}
