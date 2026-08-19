@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { Outlet } from "react-router-dom";
 import { Frame } from "@sapo/ui-components";
 import { getVersion } from "@tauri-apps/api/app";
@@ -23,6 +23,25 @@ export function AppLayout() {
   const [updateInfo, setUpdateInfo] = useState<UpdateCheckResponse | null>(() =>
     pendingTargetAtStartup ? { update_available: true, version: pendingTargetAtStartup, release_notes: null } : null
   );
+  const backgroundRef = useRef<HTMLDivElement>(null);
+
+  useLayoutEffect(() => {
+    backgroundRef.current?.toggleAttribute("inert", forcedUpdate);
+  }, [forcedUpdate]);
+
+  useLayoutEffect(() => {
+    if (!forcedUpdate) return;
+
+    const preventBackgroundEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        event.stopImmediatePropagation();
+      }
+    };
+
+    document.addEventListener("keyup", preventBackgroundEscape, true);
+    return () => document.removeEventListener("keyup", preventBackgroundEscape, true);
+  }, [forcedUpdate]);
 
   useEffect(() => {
     const pendingTarget = pendingTargetAtStartup;
@@ -103,14 +122,11 @@ export function AppLayout() {
   return (
     <Frame>
       <ToastProvider disabled={forcedUpdate}>
-        {forcedUpdate ? (
-          <ForcedUpdateModal updateInfo={updateInfo} />
-        ) : (
-          <>
-            <Outlet />
-            <PairRequestDialog />
-          </>
-        )}
+        <div ref={backgroundRef} aria-hidden={forcedUpdate || undefined} style={{ display: "contents" }}>
+          <Outlet />
+        </div>
+        {!forcedUpdate && <PairRequestDialog />}
+        {forcedUpdate && <ForcedUpdateModal updateInfo={updateInfo} />}
       </ToastProvider>
     </Frame>
   );
