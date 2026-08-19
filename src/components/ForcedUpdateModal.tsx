@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
-import { Button, Spinner } from "@sapo/ui-components";
+import { Banner, BlockStack, Icon, InlineStack, Modal, Spinner, Text } from "@sapo/ui-components";
+import { ShieldCheckIcon } from "@sapo/ui-icons";
 import { getVersion } from "@tauri-apps/api/app";
 import { UnlistenFn } from "@tauri-apps/api/event";
 import {
@@ -93,98 +94,65 @@ export const ForcedUpdateModal: React.FC<Props> = ({ updateInfo }) => {
     }
   };
 
+  const primaryAction =
+    state === "ready"
+      ? { content: "Khởi động lại", onAction: handleRestart }
+      : state === "error"
+        ? { content: "Thử lại", onAction: runInstall }
+        : undefined;
+
+  const secondaryActions =
+    state === "error" && failCount.current >= MAX_RETRIES
+      ? [{ content: "Thoát ứng dụng", onAction: handleQuit }]
+      : undefined;
+
   return (
-    <div
-      style={{
-        position: "fixed",
-        inset: 0,
-        backgroundColor: "rgba(0, 0, 0, 0.75)",
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        zIndex: 100000,
-      }}
+    <Modal
+      open
+      title={
+        <InlineStack gap="2" blockAlign="center">
+          <Icon source={ShieldCheckIcon} tone="primary" />
+          <Text as="span" variant="headingLg">
+            Bắt buộc cập nhật
+          </Text>
+        </InlineStack>
+      }
+      size="small"
+      sectioned
+      onClose={() => {}}
+      primaryAction={primaryAction}
+      secondaryActions={secondaryActions}
     >
-      <div
-        style={{
-          backgroundColor: "#fff",
-          borderRadius: "8px",
-          padding: "32px",
-          maxWidth: "480px",
-          width: "90%",
-          boxShadow: "0 8px 32px rgba(0, 0, 0, 0.3)",
-          textAlign: "center",
-        }}
-      >
-        <div style={{ fontSize: "48px", marginBottom: "16px" }}>🔒</div>
-        <h2 style={{ margin: "0 0 8px 0", fontSize: "20px" }}>Bắt buộc cập nhật</h2>
-        <p style={{ color: "#555", marginBottom: "16px" }}>
-          Đã có phiên bản mới{updateInfo?.version ? ` (${updateInfo.version})` : ""}. Vui lòng cập nhật
-          để tiếp tục sử dụng.
+      <BlockStack gap="4">
+        <BlockStack gap="2">
+          <Text as="p">
+            Đã có phiên bản mới{updateInfo?.version ? ` (${updateInfo.version})` : ""}. Vui lòng cập nhật để tiếp tục sử
+            dụng.
+          </Text>
           {currentVersion && (
-            <>
-              <br />
-              <span style={{ fontSize: "13px", color: "#888" }}>
-                Phiên bản hiện tại: {currentVersion}
-              </span>
-            </>
+            <Text as="p" variant="bodySm" tone="subdued">
+              Phiên bản hiện tại: {currentVersion}
+            </Text>
           )}
-        </p>
+        </BlockStack>
 
         {(state === "installing" || state === "agent") && (
-          <div
-            style={{
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              gap: "8px",
-              marginBottom: "16px",
-              color: "#1976d2",
-            }}
-          >
-            <Spinner size="small" />
-            <span>
-              {state === "agent"
-                ? "Đang cập nhật, ứng dụng sẽ tự khởi động lại..."
-                : "Đang tải và cài đặt..."}
-            </span>
-          </div>
+          <InlineStack gap="2" blockAlign="center" align="center">
+            <Spinner size="small" accessibilityLabel="Đang cập nhật ứng dụng" />
+            <Text as="span">
+              {state === "agent" ? "Đang cập nhật, ứng dụng sẽ tự khởi động lại..." : "Đang tải và cài đặt..."}
+            </Text>
+          </InlineStack>
         )}
 
         {state === "error" && (
-          <div
-            style={{
-              backgroundColor: "#fdecea",
-              color: "#b71c1c",
-              borderRadius: "4px",
-              padding: "12px",
-              marginBottom: "16px",
-              fontSize: "14px",
-              wordBreak: "break-word",
-            }}
-          >
-            Cập nhật thất bại: {errorMessage}
-          </div>
+          <Banner tone="critical" title="Cập nhật thất bại" hideDismiss>
+            <Text as="p" breakWord>
+              {errorMessage}
+            </Text>
+          </Banner>
         )}
-
-        <div style={{ display: "flex", gap: "8px", justifyContent: "center", flexWrap: "wrap" }}>
-          {state === "ready" && (
-            <Button primary onClick={handleRestart}>
-              Khởi động lại
-            </Button>
-          )}
-          {state === "error" && (
-            <>
-              <Button primary onClick={runInstall}>
-                Thử lại
-              </Button>
-              {failCount.current >= MAX_RETRIES && (
-                <Button onClick={handleQuit}>Thoát ứng dụng</Button>
-              )}
-            </>
-          )}
-        </div>
-      </div>
-    </div>
+      </BlockStack>
+    </Modal>
   );
 };
