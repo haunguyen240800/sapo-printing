@@ -2,12 +2,10 @@ import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { Outlet } from "react-router-dom";
 import { Frame } from "@sapo/ui-components";
 import { getVersion } from "@tauri-apps/api/app";
-import { UnlistenFn } from "@tauri-apps/api/event";
 import {
   checkForUpdates,
   getPendingUpdateResult,
   getPendingUpdateTarget,
-  onUpdateAvailable,
   UpdateCheckResponse,
 } from "src/services/update-service";
 import { showToast, ToastProvider } from "src/utils/toast";
@@ -15,8 +13,18 @@ import { showToast, ToastProvider } from "src/utils/toast";
 import { ForcedUpdateModal } from "../ForcedUpdateModal";
 import { PairRequestDialog } from "../PairRequestDialog";
 
+let startupUpdateCheck: Promise<UpdateCheckResponse> | undefined;
+
+function checkForUpdateAtStartup() {
+  startupUpdateCheck ??= checkForUpdates().catch((error) => {
+    startupUpdateCheck = undefined;
+    throw error;
+  });
+  return startupUpdateCheck;
+}
+
 export function AppLayout() {
-  // Mọi version mới đều BẮT BUỘC (fail-open: không có mạng thì không có event → app dùng bình thường).
+  // Chỉ kiểm tra bắt buộc khi khởi động app; kiểm tra thủ công trong AppInfoModal dùng flow riêng.
   const [pendingTargetAtStartup] = useState(() => getPendingUpdateTarget());
   const [forcedUpdate, setForcedUpdate] = useState(Boolean(pendingTargetAtStartup));
   const [completedUpdateVersion, setCompletedUpdateVersion] = useState<string | null>(null);
@@ -44,31 +52,6 @@ export function AppLayout() {
   }, [forcedUpdate]);
 
   useEffect(() => {
-    const pendingTarget = pendingTargetAtStartup;
-    if (!pendingTarget) return;
-
-    const requirePendingUpdate = () => {
-      setUpdateInfo({ update_available: true, version: pendingTarget, release_notes: null });
-      setForcedUpdate(true);
-    };
-
-    getVersion()
-      .then((currentVersion) => {
-        const result = getPendingUpdateResult(currentVersion);
-        if (result?.status === "updated") {
-          setUpdateInfo(null);
-          setForcedUpdate(false);
-          setCompletedUpdateVersion(result.targetVersion);
-        } else if (result?.status === "not-updated") {
-          requirePendingUpdate();
-        }
-      })
-      .catch(() => {
-        requirePendingUpdate();
-      });
-  }, [pendingTargetAtStartup]);
-
-  useEffect(() => {
     if (!forcedUpdate && completedUpdateVersion) {
       showToast(`Đã cập nhật thành công lên phiên bản ${completedUpdateVersion}.`, {
         id: "app-update-result",
@@ -78,46 +61,51 @@ export function AppLayout() {
 
   useEffect(() => {
     let cancelled = false;
-    let unlistenAvailable: UnlistenFn | undefined;
 
-    const requireUpdate = (payload: UpdateCheckResponse) => {
-      if (!cancelled && payload.update_available) {
-        setUpdateInfo(payload);
-        setForcedUpdate(true);
-      }
+    const requirePendingUpdate = () => {
+      if (cancelled || !pendingTargetAtStartup) return;
+      setUpdateInfo({ update_available: true, version: pendingTargetAtStartup, release_notes: null });
+      setForcedUpdate(true);
     };
 
-    async function setup() {
-      try {
-        const unlisten = await onUpdateAvailable(requireUpdate);
+    async function initializeUpdateGate() {
+      if (pendingTargetAtStartup) {
+        try {
+          const currentVersion = await getVersion();
+          if (cancelled) return;
 
-        if (cancelled) {
-          unlisten();
-          return;
+          const result = getPendingUpdateResult(currentVersion, pendingTargetAtStartup);
+          if (result?.status === "updated") {
+            setUpdateInfo(null);
+            setForcedUpdate(false);
+            setCompletedUpdateVersion(result.targetVersion);
+          } else if (result?.status === "not-updated") {
+            requirePendingUpdate();
+          }
+        } catch {
+          requirePendingUpdate();
         }
-
-        unlistenAvailable = unlisten;
-      } catch {
-        // The active check below still protects startup if listener setup fails.
       }
 
       if (cancelled) return;
 
       try {
-        const result = await checkForUpdates();
-        requireUpdate(result);
+        const result = await checkForUpdateAtStartup();
+        if (!cancelled && result.update_available && result.version) {
+          setUpdateInfo(result);
+          setForcedUpdate(true);
+        }
       } catch {
         // Fail open when the update server is unavailable.
       }
     }
 
-    setup().catch(() => {});
+    initializeUpdateGate().catch(() => {});
 
     return () => {
       cancelled = true;
-      unlistenAvailable?.();
     };
-  }, []);
+  }, [pendingTargetAtStartup]);
 
   return (
     <Frame>

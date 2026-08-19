@@ -1,5 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
-import { emit, listen, UnlistenFn } from "@tauri-apps/api/event";
+import { listen, UnlistenFn } from "@tauri-apps/api/event";
 
 export interface UpdateCheckResponse {
   update_available: boolean;
@@ -7,43 +7,11 @@ export interface UpdateCheckResponse {
   release_notes: string | null;
 }
 
-type UpdateAvailableHandler = (payload: UpdateCheckResponse) => void;
-
 export type PendingUpdateResult =
   | { status: "updated"; targetVersion: string }
   | { status: "not-updated"; targetVersion: string; currentVersion: string };
 
 const PENDING_UPDATE_VERSION_KEY = "sapo-printer.pending-update-version";
-
-const localUpdateAvailableHandlers = new Set<UpdateAvailableHandler>();
-
-function notifyLocalUpdateAvailable(payload: UpdateCheckResponse) {
-  localUpdateAvailableHandlers.forEach((handler) => {
-    try {
-      handler(payload);
-    } catch {
-      // One subscriber must not prevent the update gate from notifying others.
-    }
-  });
-}
-
-export async function onUpdateAvailable(handler: UpdateAvailableHandler): Promise<UnlistenFn> {
-  localUpdateAvailableHandlers.add(handler);
-
-  let unlistenTauri: UnlistenFn | undefined;
-  try {
-    unlistenTauri = await listen<UpdateCheckResponse>("update-available", (event) => {
-      handler(event.payload);
-    });
-  } catch {
-    // Local checks can still enforce the update gate if Tauri event setup fails.
-  }
-
-  return () => {
-    localUpdateAvailableHandlers.delete(handler);
-    unlistenTauri?.();
-  };
-}
 
 /** Bản mới đã tải và sẵn sàng để mở Windows installer trong user session. */
 export async function onUpdateReadyToApply(handler: (version: string) => void): Promise<UnlistenFn> {
@@ -53,14 +21,7 @@ export async function onUpdateReadyToApply(handler: (version: string) => void): 
 }
 
 export async function checkForUpdates(): Promise<UpdateCheckResponse> {
-  const result = await invoke<UpdateCheckResponse>("check_for_updates");
-
-  if (result.update_available) {
-    notifyLocalUpdateAvailable(result);
-    await emit("update-available", result).catch(() => {});
-  }
-
-  return result;
+  return invoke<UpdateCheckResponse>("check_for_updates");
 }
 
 export async function installUpdate(): Promise<string> {
@@ -72,18 +33,16 @@ export async function restartApp(targetVersion: string): Promise<void> {
   try {
     await invoke("restart_app");
   } catch (error) {
-    clearPendingUpdate();
+    clearPendingUpdate(targetVersion);
     throw error;
   }
 }
 
-export function getPendingUpdateResult(currentVersion: string): PendingUpdateResult | null {
-  const targetVersion = getPendingUpdateTarget();
-
+export function getPendingUpdateResult(currentVersion: string, targetVersion: string): PendingUpdateResult | null {
   if (!targetVersion) return null;
 
   if (currentVersion === targetVersion) {
-    clearPendingUpdate();
+    clearPendingUpdate(targetVersion);
     return { status: "updated", targetVersion };
   }
 
@@ -107,8 +66,9 @@ function rememberPendingUpdate(targetVersion: string) {
   }
 }
 
-function clearPendingUpdate() {
+function clearPendingUpdate(expectedTarget?: string) {
   try {
+    if (expectedTarget && window.localStorage.getItem(PENDING_UPDATE_VERSION_KEY) !== expectedTarget) return;
     window.localStorage.removeItem(PENDING_UPDATE_VERSION_KEY);
   } catch {
     // Storage availability must not affect the updater itself.
