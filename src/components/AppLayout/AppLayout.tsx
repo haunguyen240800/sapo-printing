@@ -56,15 +56,12 @@ export function AppLayout() {
     };
   }, []);
 
-  if (forcedUpdate) {
-    return <ForcedUpdateModal updateInfo={updateInfo} />;
-  }
-
   return (
     <Frame>
       <ToastProvider>
         <Outlet />
         <PairRequestDialog />
+        {forcedUpdate && <ForcedUpdateModal updateInfo={updateInfo} />}
       </ToastProvider>
     </Frame>
   );

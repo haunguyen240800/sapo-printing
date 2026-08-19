@@ -1,11 +1,10 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
-import { Banner, BlockStack, Icon, InlineStack, Modal, Spinner, Text } from "@sapo/ui-components";
-import { ShieldCheckIcon } from "@sapo/ui-icons";
+import { Banner, BlockStack, Icon, InlineStack, Modal, Text } from "@sapo/ui-components";
+import { WarningIcon } from "@sapo/ui-icons";
 import { getVersion } from "@tauri-apps/api/app";
 import { UnlistenFn } from "@tauri-apps/api/event";
 import {
   installUpdate,
-  onUpdateInstallingAgent,
   onUpdateReadyToApply,
   quitApp,
   restartApp,
@@ -16,19 +15,19 @@ interface Props {
   updateInfo: UpdateCheckResponse | null;
 }
 
-type State = "installing" | "agent" | "ready" | "error";
+type State = "idle" | "installing" | "ready" | "error";
 
 const MAX_RETRIES = 3;
 
 /**
  * Modal bắt buộc cập nhật — chặn toàn app, KHÔNG đóng được.
  * Có version mới thì phải update xong mới dùng được.
- * - Đường chính (service SYSTEM): cài im lặng → app tự khởi động lại.
- * - Fallback (UAC): cài xong hiện nút "Khởi động lại".
+ * - Người dùng chủ động bấm "Cập nhật ngay" để bắt đầu tải + cài.
+ * - Cài/staged xong → hiện nút "Khởi động lại" để user chủ động áp dụng.
  * - Lỗi: cho "Thử lại"; sau nhiều lần lỗi cho "Thoát ứng dụng".
  */
 export const ForcedUpdateModal: React.FC<Props> = ({ updateInfo }) => {
-  const [state, setState] = useState<State>("installing");
+  const [state, setState] = useState<State>("idle");
   const [errorMessage, setErrorMessage] = useState<string>("");
   const [currentVersion, setCurrentVersion] = useState<string>("");
   const failCount = useRef(0);
@@ -44,8 +43,8 @@ export const ForcedUpdateModal: React.FC<Props> = ({ updateInfo }) => {
     setErrorMessage("");
     try {
       await installUpdate();
-      // Nếu qua service: "update-installing-agent" sẽ tới và app tự thoát.
-      // Nếu fallback UAC: "update-ready-to-apply" sẽ tới.
+      // installUpdate chỉ TẢI về. Cả 2 đường (service silent / fallback UAC) đều phát
+      // "update-ready-to-apply" → state "ready" → nút "Cài đặt và khởi động lại".
     } catch (err) {
       failCount.current += 1;
       setState("error");
@@ -55,28 +54,21 @@ export const ForcedUpdateModal: React.FC<Props> = ({ updateInfo }) => {
 
   useEffect(() => {
     let cancelled = false;
-    let unlistenAgent: UnlistenFn | undefined;
     let unlistenReady: UnlistenFn | undefined;
 
     async function setup() {
-      unlistenAgent = await onUpdateInstallingAgent(() => {
-        if (!cancelled) setState("agent");
-      });
       unlistenReady = await onUpdateReadyToApply(() => {
         if (!cancelled) setState("ready");
       });
     }
 
     setup().catch(() => {});
-    // Tự động bắt đầu cập nhật ngay khi modal xuất hiện.
-    runInstall();
 
     return () => {
       cancelled = true;
-      unlistenAgent?.();
       unlistenReady?.();
     };
-  }, [runInstall]);
+  }, []);
 
   const handleRestart = async () => {
     try {
@@ -96,10 +88,15 @@ export const ForcedUpdateModal: React.FC<Props> = ({ updateInfo }) => {
 
   const primaryAction =
     state === "ready"
-      ? { content: "Khởi động lại", onAction: handleRestart }
+      ? { content: "Cài đặt và khởi động lại", onAction: handleRestart }
       : state === "error"
         ? { content: "Thử lại", onAction: runInstall }
-        : undefined;
+        : {
+            content: "Tải xuống",
+            onAction: runInstall,
+            loading: state === "installing",
+            disabled: state === "installing",
+          };
 
   const secondaryActions =
     state === "error" && failCount.current >= MAX_RETRIES
@@ -111,9 +108,9 @@ export const ForcedUpdateModal: React.FC<Props> = ({ updateInfo }) => {
       open
       title={
         <InlineStack gap="2" blockAlign="center">
-          <Icon source={ShieldCheckIcon} tone="primary" />
+          <Icon source={WarningIcon} tone="warning" />
           <Text as="span" variant="headingLg">
-            Bắt buộc cập nhật
+            Cập nhật phiên bản mới
           </Text>
         </InlineStack>
       }
@@ -136,13 +133,18 @@ export const ForcedUpdateModal: React.FC<Props> = ({ updateInfo }) => {
           )}
         </BlockStack>
 
-        {(state === "installing" || state === "agent") && (
-          <InlineStack gap="2" blockAlign="center" align="center">
-            <Spinner size="small" accessibilityLabel="Đang cập nhật ứng dụng" />
-            <Text as="span">
-              {state === "agent" ? "Đang cập nhật, ứng dụng sẽ tự khởi động lại..." : "Đang tải và cài đặt..."}
-            </Text>
-          </InlineStack>
+        {state === "installing" && (
+          <Banner tone="info" hideDismiss>
+            <InlineStack gap="2" blockAlign="center">
+              <Text as="span">Đang tải xuống...</Text>
+            </InlineStack>
+          </Banner>
+        )}
+
+        {state === "ready" && (
+          <Banner tone="success" title="Đã tải xong bản mới" hideDismiss>
+            <Text as="p">Nhấn &#34;Cài đặt và khởi động lại&#34; để hoàn tất cập nhật.</Text>
+          </Banner>
         )}
 
         {state === "error" && (

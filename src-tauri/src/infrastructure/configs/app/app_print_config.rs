@@ -7,19 +7,19 @@ pub struct AppPrintConfig {
     pub printer_name: String,
     pub paper_size: String,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub paper_width: Option<u32>,
+    pub paper_width: Option<f64>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub paper_height: Option<u32>,
+    pub paper_height: Option<f64>,
     pub orientation: String,
-    pub margin_left: u32,
-    pub margin_right: u32,
-    pub margin_top: u32,
-    pub margin_bottom: u32,
+    pub margin_left: f64,
+    pub margin_right: f64,
+    pub margin_top: f64,
+    pub margin_bottom: f64,
     pub color_mode: String,
     pub print_as_image: bool,
     pub enable_buffer: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub buffer_size_kb: Option<u32>,
+    pub buffer_size_kb: Option<f64>,
 }
 
 impl Default for AppPrintConfig {
@@ -30,10 +30,10 @@ impl Default for AppPrintConfig {
             paper_width: None,
             paper_height: None,
             orientation: "Portrait".to_string(),
-            margin_left: 0,
-            margin_right: 0,
-            margin_top: 0,
-            margin_bottom: 0,
+            margin_left: 0.0,
+            margin_right: 0.0,
+            margin_top: 0.0,
+            margin_bottom: 0.0,
             color_mode: "RGB".to_string(),
             print_as_image: false,
             enable_buffer: false,
@@ -112,7 +112,7 @@ mod tests {
         let config = AppPrintConfig::default();
         assert_eq!(config.paper_size, "A4");
         assert_eq!(config.orientation, "Portrait");
-        assert_eq!(config.margin_left, 0);
+        assert_eq!(config.margin_left, 0.0);
     }
 
     #[test]
@@ -141,6 +141,6 @@ mod tests {
         let config: AppPrintConfig = serde_json::from_str(json).unwrap();
         assert_eq!(config.printer_name, "Test Printer");
         assert_eq!(config.paper_size, "A4");
-        assert_eq!(config.margin_left, 10);
+        assert_eq!(config.margin_left, 10.0);
     }
 }

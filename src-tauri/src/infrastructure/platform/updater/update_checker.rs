@@ -79,7 +79,11 @@ pub async fn check_for_updates(app: &AppHandle) -> Result<UpdateCheckResult, Str
     }
 }
 
-pub async fn download_and_install_update(app: &AppHandle) -> Result<(), String> {
+/// Tải bản mới về (KHÔNG cài) và trả về handle `Update` + bytes đã tải.
+/// Caller lưu lại để gọi [`tauri_plugin_updater::Update::install`] khi user bấm khởi động lại.
+pub async fn download_update(
+    app: &AppHandle,
+) -> Result<(tauri_plugin_updater::Update, Vec<u8>), String> {
     let updater = app
         .updater()
         .map_err(|e| format!("Updater init failed: {}", e))?;
@@ -89,8 +93,8 @@ pub async fn download_and_install_update(app: &AppHandle) -> Result<(), String> 
         .map_err(|e| format!("Update check failed: {}", e))?
         .ok_or_else(|| "No update available".to_string())?;
 
-    update
-        .download_and_install(
+    let bytes = update
+        .download(
             |chunk_length, content_length| {
                 tracing::info!(
                     target = "sapo_printer::updater",
@@ -104,9 +108,9 @@ pub async fn download_and_install_update(app: &AppHandle) -> Result<(), String> 
             },
         )
         .await
-        .map_err(|e| format!("Update install failed: {}", e))?;
+        .map_err(|e| format!("Update download failed: {}", e))?;
 
-    Ok(())
+    Ok((update, bytes))
 }
 
 #[cfg(test)]

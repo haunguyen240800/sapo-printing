@@ -9,7 +9,7 @@ import { getMetrics, getPrinterConfig, type MetricsDto } from "src/services/prin
 import type { PrinterConfig } from "src/types/printer";
 import { showErrorToast } from "src/utils/toast";
 
-import AppInfoModal from "./components/AppInfoModal";
+import { AppInfoModal } from "./components/AppInfoModal";
 import { Overview } from "./components/Overview";
 import PrinterSettingsFormModal from "./components/PrinterSettingsFormModal";
 import { SupportModal } from "./components/SupportModal";
@@ -148,8 +148,12 @@ export default function PrinterPage() {
       open
       title={
         <InlineStack gap="2" blockAlign="center">
-          <Text as="span" variant="headingLg"><Icon source={WarningIcon} tone="warning" /></Text>
-          <Text as="span" variant="headingLg">Xóa cache dữ liệu?</Text>
+          <Text as="span" variant="headingLg">
+            <Icon source={WarningIcon} tone="warning" />
+          </Text>
+          <Text as="span" variant="headingLg">
+            Xóa cache dữ liệu?
+          </Text>
         </InlineStack>
       }
       body="Bạn có xác nhận xóa cache dữ liệu không?"

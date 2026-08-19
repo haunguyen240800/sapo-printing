@@ -1,16 +1,5 @@
 import { useEffect, useState } from "react";
-import {
-  Banner,
-  BlockStack,
-  Button,
-  InlineGrid,
-  InlineStack,
-  Link,
-  Modal,
-  ProgressBar,
-  Spinner,
-  Text,
-} from "@sapo/ui-components";
+import { Banner, BlockStack, Button, InlineGrid, InlineStack, Link, Modal, Text } from "@sapo/ui-components";
 import { getVersion } from "@tauri-apps/api/app";
 
 import { useAppUpdate } from "../hooks/useAppUpdate";
@@ -20,8 +9,8 @@ type Props = {
   onClose: () => void;
 };
 
-const AppInfoModal = ({ open, onClose }: Props) => {
-  const { state, checkUpdate, installUpdate, isInstalling } = useAppUpdate();
+export const AppInfoModal = ({ open, onClose }: Props) => {
+  const { state, checkUpdate, installUpdate, restartApp, isInstalling } = useAppUpdate();
   const [version, setVersion] = useState("");
   const [installationStarted, setInstallationStarted] = useState(false);
 
@@ -57,28 +46,39 @@ const AppInfoModal = ({ open, onClose }: Props) => {
         return null;
 
       case "update-available":
+      case "installing":
         return (
           <Banner tone="info" hideDismiss>
             <BlockStack gap="2">
-              <Text as="p">Đã có phiên bản mới ver [{state.result.version}]. Vui lòng xác nhận để cập nhật</Text>
+              <Text as="p">
+                {state.status === "installing"
+                  ? "Đang tải xuống bản mới..."
+                  : `Đã có phiên bản mới ver [${state.result.version}]. Vui lòng xác nhận để cập nhật`}
+              </Text>
               <InlineStack>
-                <Button onClick={handleInstallUpdate}>Cập nhật</Button>
+                <Button
+                  variant="outline"
+                  onClick={handleInstallUpdate}
+                  loading={state.status === "installing"}
+                  disabled={state.status === "installing"}
+                >
+                  Cập nhật
+                </Button>
               </InlineStack>
             </BlockStack>
           </Banner>
         );
 
-      case "installing":
+      case "ready-to-restart":
         return (
-          <Banner tone="info" hideDismiss>
+          <Banner tone="success" hideDismiss>
             <BlockStack gap="2">
-              <InlineStack gap="2" blockAlign="center">
-                <Spinner size="small" />
-                <Text as="span">
-                  {state.progress < 100 ? `Đang tải xuống... ${state.progress}%` : "Đang cài đặt, vui lòng chờ..."}
-                </Text>
+              <Text as="p">Đã tải xong bản mới. Nhấn &#34;Cài đặt và khởi động lại&#34; để hoàn tất cập nhật.</Text>
+              <InlineStack>
+                <Button variant="primary" onClick={restartApp}>
+                  Cài đặt và khởi động lại
+                </Button>
               </InlineStack>
-              <ProgressBar progress={state.progress} size="small" />
             </BlockStack>
           </Banner>
         );
@@ -152,5 +152,3 @@ const AppInfoModal = ({ open, onClose }: Props) => {
     </Modal>
   );
 };
-
-export default AppInfoModal;

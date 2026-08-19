@@ -25,9 +25,7 @@ const validationSchema = yup.object().shape({
     .when("paperSize", {
       is: "Custom",
       then: (schema) =>
-        schema
-          .required("Chiều rộng bắt buộc khi chọn khổ Custom")
-          .min(50, "Chiều rộng phải tối thiểu 50mm"),
+        schema.required("Chiều rộng bắt buộc khi chọn khổ Custom").min(50, "Chiều rộng phải tối thiểu 50mm"),
       otherwise: (schema) => schema.defined(),
     }),
   height: yup
@@ -37,9 +35,7 @@ const validationSchema = yup.object().shape({
     .when("paperSize", {
       is: "Custom",
       then: (schema) =>
-        schema
-          .required("Chiều cao bắt buộc khi chọn khổ Custom")
-          .min(50, "Chiều cao phải tối thiểu 50mm"),
+        schema.required("Chiều cao bắt buộc khi chọn khổ Custom").min(50, "Chiều cao phải tối thiểu 50mm"),
       otherwise: (schema) => schema.defined(),
     }),
   marginLeft: yup
@@ -229,8 +225,12 @@ const PrinterSettingsFormModal = ({ open, onClose, onSaved }: PrinterSettingsFor
       open
       title={
         <InlineStack gap="2" blockAlign="center">
-          <Text as="span" variant="headingLg"><Icon source={WarningIcon} tone="warning" /></Text>
-          <Text as="span" variant="headingLg">Hủy chỉnh sửa?</Text>
+          <Text as="span" variant="headingLg">
+            <Icon source={WarningIcon} tone="warning" />
+          </Text>
+          <Text as="span" variant="headingLg">
+            Hủy chỉnh sửa?
+          </Text>
         </InlineStack>
       }
       body="Thông tin thay đổi của bạn sẽ mất. Bạn có xác nhận thay đổi?"
@@ -247,8 +247,12 @@ const PrinterSettingsFormModal = ({ open, onClose, onSaved }: PrinterSettingsFor
       open
       title={
         <InlineStack gap="2" blockAlign="center">
-          <Text as="span" variant="headingLg"><Icon source={WarningIcon} tone="warning" /></Text>
-          <Text as="span" variant="headingLg">Khôi phục cài đặt?</Text>
+          <Text as="span" variant="headingLg">
+            <Icon source={WarningIcon} tone="warning" />
+          </Text>
+          <Text as="span" variant="headingLg">
+            Khôi phục cài đặt?
+          </Text>
         </InlineStack>
       }
       body="Bạn có xác nhận thiết lập lại cài đặt về mặc định không?"

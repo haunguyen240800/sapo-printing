@@ -4,9 +4,6 @@ use crate::AppContextState;
 use crate::application::models::UpdateCheckResponse;
 use crate::infrastructure::platform::updater::{agent_client, update_checker};
 
-/// Thời gian chờ trước khi app tự thoát để service (SYSTEM) ghi đè file khi cài.
-const AGENT_EXIT_DELAY: std::time::Duration = std::time::Duration::from_secs(3);
-
 /// Check whether an application update is available.
 #[tauri::command]
 pub async fn check_for_updates(app: AppHandle) -> Result<UpdateCheckResponse, String> {
@@ -47,37 +44,49 @@ pub async fn install_update(
     let app_pid = std::process::id();
     match agent_client::request_update(expected_version, app_pid).await {
         Ok(()) => {
-            // Service đã staged bản mới và sẽ cài sau khi app thoát → tự thoát sau ít giây.
+            // Service đã staged bản mới; nó sẽ cài + relaunch NGAY SAU KHI app này thoát.
+            // Không tự thoát — báo frontend hiện nút để user chủ động bấm "Khởi động lại".
             tracing::info!(
                 target = "sapo_printer::updater",
-                "Update delegated to agent (silent, no UAC)"
+                "Update staged by agent (silent, no UAC) — waiting for user restart"
             );
-            let _ = app.emit("update-installing-agent", ());
-            let handle = app.clone();
-            tauri::async_runtime::spawn(async move {
-                tokio::time::sleep(AGENT_EXIT_DELAY).await;
-                handle.exit(0);
-            });
+            let _ = app.emit("update-ready-to-apply", ());
             Ok(())
         }
         Err(e) => {
-            // Service không có/không phản hồi → fallback đường UAC cũ để vẫn update được.
+            // Service không có/không phản hồi → fallback đường UAC: TẢI trước (app vẫn chạy),
+            // lưu lại chờ user bấm "Khởi động lại" mới cài (installer sẽ đóng + relaunch app).
             tracing::warn!(
                 target = "sapo_printer::updater",
                 error = %e,
-                "Agent unavailable, falling back to UAC updater"
+                "Agent unavailable, falling back to UAC updater (download only)"
             );
-            update_checker::download_and_install_update(&app).await?;
+            let downloaded = update_checker::download_update(&app).await?;
+            if let Ok(mut pending) = ctx.pending_update.lock() {
+                *pending = Some(downloaded);
+            }
             let _ = app.emit("update-ready-to-apply", ());
             Ok(())
         }
     }
 }
 
-/// Restart the application (used after an update is installed).
+/// Áp dụng bản cập nhật khi user bấm "Khởi động lại".
+///
+/// - Fallback UAC: có bản đã tải sẵn → chạy installer (UAC), installer đóng + relaunch app.
+/// - Đường service: không có bản pending → thoát app để service (SYSTEM) cài đè + relaunch.
 #[tauri::command]
-pub fn restart_app() -> Result<(), String> {
-    std::process::exit(0);
+pub fn restart_app(ctx: State<'_, AppContextState>) -> Result<(), String> {
+    let pending = ctx.pending_update.lock().ok().and_then(|mut p| p.take());
+
+    if let Some((update, bytes)) = pending {
+        update
+            .install(bytes)
+            .map_err(|e| format!("Update install failed: {}", e))?;
+        Ok(())
+    } else {
+        std::process::exit(0);
+    }
 }
 
 /// Thoát hẳn app — dùng cho nhánh forced update khi user chọn "Thoát" sau khi update thất bại.

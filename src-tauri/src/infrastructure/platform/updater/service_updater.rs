@@ -165,7 +165,9 @@ fn verify_signature(installer: &Path, signature_b64: &str) -> Result<(), String>
 #[cfg(windows)]
 pub fn finalize_update(installer: PathBuf, app_pid: u32, app_exe: PathBuf) {
     std::thread::spawn(move || {
-        wait_for_process_exit(app_pid, std::time::Duration::from_secs(60));
+        // App hiện nút "Khởi động lại" và chờ user bấm, nên cho cửa sổ chờ rộng
+        // (10 phút) trước khi service cài đè — tránh cài khi file còn bị app khóa.
+        wait_for_process_exit(app_pid, std::time::Duration::from_secs(600));
 
         tracing::info!(installer = %installer.display(), "Running silent installer");
         let status = std::process::Command::new(&installer).arg("/S").status();

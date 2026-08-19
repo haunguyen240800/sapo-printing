@@ -25,8 +25,6 @@ export async function getPrinterStatus(name: string): Promise<PrinterStatus> {
   return invoke<PrinterStatus>("get_printer_status", { name });
 }
 
-
-
 export async function getMetrics(): Promise<MetricsDto> {
   return invoke<MetricsDto>("get_metrics");
 }

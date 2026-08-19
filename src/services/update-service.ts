@@ -39,17 +39,12 @@ export async function onUpdateAvailable(handler: UpdateAvailableHandler): Promis
   };
 }
 
+/**
+ * Bản mới đã sẵn sàng (service staged im lặng, hoặc fallback UAC đã cài xong).
+ * App chờ user bấm "Khởi động lại" để áp dụng.
+ */
 export async function onUpdateReadyToApply(handler: () => void): Promise<UnlistenFn> {
   return listen("update-ready-to-apply", () => {
-    handler();
-  });
-}
-
-/**
- * Service (SYSTEM) đã nhận và đang cài bản mới im lặng — app sẽ tự thoát rồi khởi động lại.
- */
-export async function onUpdateInstallingAgent(handler: () => void): Promise<UnlistenFn> {
-  return listen("update-installing-agent", () => {
     handler();
   });
 }

@@ -183,5 +183,6 @@ pub fn build_app_state(
         app_handle,
         install_guard: InstallGuard::new(),
         last_emitted_update_version: std::sync::Mutex::new(None),
+        pending_update: std::sync::Mutex::new(None),
     }
 }

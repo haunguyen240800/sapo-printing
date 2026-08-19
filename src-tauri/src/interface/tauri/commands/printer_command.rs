@@ -22,19 +22,19 @@ pub fn save_printer_config(
         return Err("Khổ giấy không được để trống".to_string());
     }
 
-    if config.paper_width > 0 && !(50..=500).contains(&config.paper_width) {
+    if config.paper_width > 0.0 && !(50.0..=500.0).contains(&config.paper_width) {
         return Err("Chiều rộng giấy phải trong khoảng 50-500mm".to_string());
     }
 
-    if config.paper_height > 0 && !(50..=500).contains(&config.paper_height) {
+    if config.paper_height > 0.0 && !(50.0..=500.0).contains(&config.paper_height) {
         return Err("Chiều cao giấy phải trong khoảng 50-500mm".to_string());
     }
 
     if config.paper_size == "Custom" {
-        if config.paper_width == 0 {
+        if config.paper_width == 0.0 {
             return Err("Chiều rộng giấy bắt buộc khi chọn khổ Custom".to_string());
         }
-        if config.paper_height == 0 {
+        if config.paper_height == 0.0 {
             return Err("Chiều cao giấy bắt buộc khi chọn khổ Custom".to_string());
         }
     }
@@ -102,10 +102,10 @@ pub fn get_printer_config(
             paper_width: None,
             paper_height: None,
             orientation: String::new(),
-            margin_left: 0,
-            margin_right: 0,
-            margin_top: 0,
-            margin_bottom: 0,
+            margin_left: 0.0,
+            margin_right: 0.0,
+            margin_top: 0.0,
+            margin_bottom: 0.0,
             color_mode: String::new(),
             print_as_image: false,
             enable_buffer: false,

@@ -1,5 +1,5 @@
-import { BlockStack, Box, Checkbox, Text } from "@sapo/ui-components";
 import { useEffect, useState } from "react";
+import { BlockStack, Box, Checkbox, Text } from "@sapo/ui-components";
 import { getAutostartEnabled, setAutostartEnabled } from "src/services/printer-service";
 
 export default function SettingsPage() {
@@ -8,9 +8,14 @@ export default function SettingsPage() {
 
   useEffect(() => {
     getAutostartEnabled()
-      .then(setAutostart)
-      .catch(() => setAutostart(false))
-      .finally(() => setLoading(false));
+      .then((enabled) => {
+        setAutostart(enabled);
+        setLoading(false);
+      })
+      .catch(() => {
+        setAutostart(false);
+        setLoading(false);
+      });
   }, []);
 
   const handleToggle = async (checked: boolean) => {

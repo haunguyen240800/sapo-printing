@@ -23,7 +23,7 @@ pub enum PaperSize {
     K80,
     K58,
     // Fully user-defined
-    Custom { width_mm: u32, height_mm: u32 },
+    Custom { width_mm: f64, height_mm: f64 },
 }
 
 impl PaperSize {
@@ -48,7 +48,7 @@ impl PaperSize {
 
     /// Parse from a (size_name, optional width, optional height) triple.
     /// Used at the boundary with persisted config (which still stores fields separately).
-    pub fn from_parts(name: &str, width_mm: Option<u32>, height_mm: Option<u32>) -> Self {
+    pub fn from_parts(name: &str, width_mm: Option<f64>, height_mm: Option<f64>) -> Self {
         match name.to_uppercase().as_str() {
             "A4" => PaperSize::A4,
             "A5" => PaperSize::A5,
@@ -60,8 +60,8 @@ impl PaperSize {
             "K80" => PaperSize::K80,
             "K58" => PaperSize::K58,
             "CUSTOM" => PaperSize::Custom {
-                width_mm: width_mm.unwrap_or(210),
-                height_mm: height_mm.unwrap_or(297),
+                width_mm: width_mm.unwrap_or(210.0),
+                height_mm: height_mm.unwrap_or(297.0),
             },
             // Unknown name with explicit dimensions → treat as custom size.
             _ => match (width_mm, height_mm) {

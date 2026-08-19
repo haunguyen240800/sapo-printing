@@ -20,6 +20,8 @@ pub struct AppContextState {
     pub app_handle: tauri::AppHandle,
     pub install_guard: infrastructure::platform::updater::update_checker::InstallGuard,
     pub last_emitted_update_version: std::sync::Mutex<Option<String>>,
+    /// Bản đã tải qua fallback UAC, chờ user bấm khởi động lại để cài (handle + bytes).
+    pub pending_update: std::sync::Mutex<Option<(tauri_plugin_updater::Update, Vec<u8>)>>,
 }
 
 pub fn run() {

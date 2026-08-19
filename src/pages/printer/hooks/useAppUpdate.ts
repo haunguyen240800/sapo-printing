@@ -3,6 +3,7 @@ import { useCallback, useState } from "react";
 import {
   checkForUpdates,
   installUpdate as installUpdateService,
+  restartApp as restartAppService,
   type UpdateCheckResponse,
 } from "../../../services/update-service";
 
@@ -12,6 +13,7 @@ type UpdateState =
   | { status: "up-to-date"; version: string }
   | { status: "update-available"; result: UpdateCheckResponse }
   | { status: "installing"; progress: number }
+  | { status: "ready-to-restart" }
   | { status: "error"; message: string };
 
 export function useAppUpdate() {
@@ -41,7 +43,8 @@ export function useAppUpdate() {
     setState({ status: "installing", progress: 0 });
     try {
       await installUpdateService();
-      setState({ status: "installing", progress: 100 });
+      // Bản mới đã sẵn sàng (staged/cài xong) — chờ user bấm khởi động lại.
+      setState({ status: "ready-to-restart" });
     } catch (err) {
       setState({ status: "error", message: err as string });
     } finally {
@@ -49,10 +52,19 @@ export function useAppUpdate() {
     }
   }, []);
 
+  const restartApp = useCallback(async () => {
+    try {
+      await restartAppService();
+    } catch {
+      window.location.reload();
+    }
+  }, []);
+
   return {
     state,
     checkUpdate,
     installUpdate,
+    restartApp,
     isChecking,
     isInstalling,
     isBusy: isChecking || isInstalling,
