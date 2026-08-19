@@ -164,8 +164,8 @@ export const ForcedUpdateModal: React.FC<Props> = ({ updateInfo }) => {
         {state === "ready" && (
           <Banner tone="success" title="Đã tải xong bản mới" hideDismiss>
             <Text as="p">
-              Nhấn &#34;Cài đặt và khởi động lại&#34; để mở trình cài đặt Windows. Ứng dụng sẽ tự mở lại sau khi hoàn
-              tất.
+              Nhấn “Cài đặt và khởi động lại” để mở trình cài đặt. Xác nhận yêu cầu UAC và chờ quá trình hoàn tất; ứng
+              dụng sẽ tự động mở lại.
             </Text>
           </Banner>
         )}
