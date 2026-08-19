@@ -127,7 +127,6 @@ pub fn build_app_state(
         Arc::clone(&downloader),
         Arc::clone(&print_service),
         Arc::clone(&temp_files),
-        Arc::clone(&config_provider),
     ));
 
     let failure_handler = Arc::new(PrintJobFailedHandler::new(

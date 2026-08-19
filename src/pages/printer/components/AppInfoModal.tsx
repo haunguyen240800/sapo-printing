@@ -74,7 +74,8 @@ export const AppInfoModal = ({ open, onClose }: Props) => {
           <Banner tone="success" hideDismiss>
             <BlockStack gap="2">
               <Text as="p">
-                Đã tải xong bản mới. Trình cài đặt Windows sẽ hiển thị UAC và tiến trình, sau đó tự mở lại ứng dụng.
+                Đã tải xuống bản cập nhật thành công. Nhấn “Cài đặt và khởi động lại” để bắt đầu cài đặt. Ứng dụng sẽ tự
+                động khởi động lại sau khi hoàn tất.
               </Text>
               <InlineStack>
                 <Button variant="primary" onClick={restartApp}>

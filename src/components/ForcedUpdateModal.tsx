@@ -20,13 +20,6 @@ type RetryStage = "download" | "apply";
 
 const MAX_RETRIES = 3;
 
-/**
- * Modal bắt buộc cập nhật — chặn toàn app, KHÔNG đóng được.
- * Có version mới thì phải update xong mới dùng được.
- * - Người dùng chủ động bấm "Cập nhật ngay" để bắt đầu tải + cài.
- * - Cài/staged xong → hiện nút "Khởi động lại" để user chủ động áp dụng.
- * - Lỗi: cho "Thử lại"; sau nhiều lần lỗi cho "Thoát ứng dụng".
- */
 export const ForcedUpdateModal: React.FC<Props> = ({ updateInfo }) => {
   const [state, setState] = useState<State>("idle");
   const [errorMessage, setErrorMessage] = useState<string>("");
@@ -164,8 +157,8 @@ export const ForcedUpdateModal: React.FC<Props> = ({ updateInfo }) => {
         {state === "ready" && (
           <Banner tone="success" title="Đã tải xong bản mới" hideDismiss>
             <Text as="p">
-              Nhấn “Cài đặt và khởi động lại” để mở trình cài đặt. Xác nhận yêu cầu UAC và chờ quá trình hoàn tất; ứng
-              dụng sẽ tự động mở lại.
+              Đã tải xuống bản cập nhật thành công. Nhấn “Cài đặt và khởi động lại” để bắt đầu cài đặt. Ứng dụng sẽ tự
+              động khởi động lại sau khi hoàn tất.
             </Text>
           </Banner>
         )}

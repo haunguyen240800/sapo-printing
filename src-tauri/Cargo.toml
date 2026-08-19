@@ -1,6 +1,6 @@
 [package]
 name = "sapo-printer-pro-max"
-version = "1.0.1"
+version = "1.0.6"
 description = "Sapo Printer Pro Max"
 authors = ["SAPO Team"]
 edition = "2024"

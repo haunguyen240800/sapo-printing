@@ -3,6 +3,7 @@ use std::sync::{Arc, Mutex};
 use std::thread::{self, JoinHandle};
 use std::time::Duration;
 
+use crate::application::errors::Error;
 use crate::application::handlers::print_job_failed_handler::PrintJobFailedHandler;
 use crate::application::ports::QueuePort;
 use crate::application::use_cases::ProcessPrintJobUseCase;
@@ -113,7 +114,25 @@ impl QueueWorker {
                         "QueueWorker: picked up job for processing"
                     );
 
-                    let result = process_use_case.execute(job);
+                    // Cô lập panic từng job: một job panic (vd. device context không hợp lệ
+                    // sau khi đổi máy in giữa chừng) được chuyển thành lỗi và xử lý qua
+                    // failure_handler, thay vì làm chết worker và treo cả batch.
+                    let result = match std::panic::catch_unwind(std::panic::AssertUnwindSafe(
+                        || process_use_case.execute(job),
+                    )) {
+                        Ok(r) => r,
+                        Err(panic_payload) => {
+                            let detail = panic_payload
+                                .downcast_ref::<&str>()
+                                .map(|s| s.to_string())
+                                .or_else(|| panic_payload.downcast_ref::<String>().cloned())
+                                .unwrap_or_else(|| "unknown panic".to_string());
+                            Err(Error::Operation(format!(
+                                "Tiến trình in gặp lỗi nghiêm trọng và job này đã bị dừng: {}",
+                                detail
+                            )))
+                        }
+                    };
 
                     if let Err(e) = result {
                         tracing::error!(

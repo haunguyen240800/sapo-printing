@@ -98,7 +98,7 @@ impl QueuePort for JobQueueBroker {
         let job_opt = {
             let mut stmt = tx
                 .prepare(
-                    "SELECT id, printer_name, document_url, retry_count, output_path
+                    "SELECT id, printer_name, document_url, retry_count, output_path, settings_json
                      FROM print_jobs
                      WHERE status = ?1
                        AND (scheduled_at IS NULL OR scheduled_at <= ?2)
@@ -115,6 +115,7 @@ impl QueuePort for JobQueueBroker {
                     let document_url: String = row.get(2)?;
                     let retry_count: i64 = row.get(3)?;
                     let output_path: Option<String> = row.get(4)?;
+                    let settings_json: Option<String> = row.get(5)?;
 
                     let id: PrintJobId = id_str.parse().map_err(|e: uuid::Error| {
                         rusqlite::Error::InvalidColumnType(
@@ -123,6 +124,11 @@ impl QueuePort for JobQueueBroker {
                             rusqlite::types::Type::Text,
                         )
                     })?;
+
+                    let settings = settings_json
+                        .as_deref()
+                        .and_then(|s| serde_json::from_str(s).ok())
+                        .unwrap_or_default();
 
                     // Reconstruct with status = Pending (since we're about to update it to Pending)
                     Ok(PrintJob::reconstruct(
@@ -135,7 +141,7 @@ impl QueuePort for JobQueueBroker {
                         None, // completed_at not needed for queue pop
                         None, // error_message not needed for queue pop
                         output_path,
-                        crate::domain::print_job::PrintJobSettings::default(),
+                        settings,
                     ))
                 },
             );
@@ -487,6 +493,52 @@ mod tests {
         // Second pop should return None (job2 not ready yet)
         let popped2 = mgr.pop().unwrap();
         assert!(popped2.is_none());
+        drop(pool);
+        cleanup(&path);
+    }
+
+    #[test]
+    fn test_pop_restores_settings_snapshot() {
+        use crate::domain::print_job::{PaperSize, PrintJobSettings};
+
+        let (pool, mgr, path) = setup();
+        let job_id = PrintJobId::new();
+
+        let mut settings = PrintJobSettings::default();
+        settings.paper_size = PaperSize::Cm10x15;
+        settings.orientation = "LANDSCAPE".to_string();
+        settings.color_mode = "GRAY".to_string();
+        settings.copies = 3;
+        let settings_json = serde_json::to_string(&settings).unwrap();
+
+        {
+            let conn = pool.get().unwrap();
+            let now = 1_700_000_000i64;
+            conn.execute(
+                "INSERT INTO print_jobs (id, printer_name, document_url, status, retry_count, created_at, updated_at, settings_json)
+                 VALUES (?1, 'HP', 'https://s3.example.com/doc.pdf', 'QUEUED', 0, ?2, ?2, ?3)",
+                rusqlite::params![job_id.to_string(), now, settings_json],
+            )
+            .unwrap();
+        }
+
+        let popped = mgr.pop().unwrap().unwrap();
+        assert_eq!(popped.settings, settings);
+        drop(pool);
+        cleanup(&path);
+    }
+
+    #[test]
+    fn test_pop_null_settings_falls_back_to_default() {
+        use crate::domain::print_job::PrintJobSettings;
+
+        let (pool, mgr, path) = setup();
+        let job_id = PrintJobId::new();
+        // insert_job does not set settings_json → NULL
+        insert_job(&pool, &job_id.to_string(), "QUEUED");
+
+        let popped = mgr.pop().unwrap().unwrap();
+        assert_eq!(popped.settings, PrintJobSettings::default());
         drop(pool);
         cleanup(&path);
     }

@@ -44,6 +44,11 @@ impl PrintJobRepositoryPort for PrintJobRepository {
 
         let completed_at = completed_at_for_status(job.status(), now);
 
+        let settings_json =
+            serde_json::to_string(&job.settings).map_err(|e| PrintJobError::RepositoryError {
+                reason: format!("Failed to serialize job settings: {}", e),
+            })?;
+
         tracing::trace!(
             target = "sapo_printer::repository::print_job",
             operation = "save",
@@ -55,8 +60,8 @@ impl PrintJobRepositoryPort for PrintJobRepository {
 
         let rows = conn
             .execute(
-                "INSERT INTO print_jobs (id, printer_name, document_url, status, retry_count, created_at, updated_at, completed_at, error_message, output_path)
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
+                "INSERT INTO print_jobs (id, printer_name, document_url, status, retry_count, created_at, updated_at, completed_at, error_message, output_path, settings_json)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
                 rusqlite::params![
                     job.id().to_string(),
                     job.printer_id().as_str(),
@@ -68,6 +73,7 @@ impl PrintJobRepositoryPort for PrintJobRepository {
                     completed_at,
                     job.error_message(),
                     job.output_path(),
+                    settings_json,
                 ],
             )
             .map_err(|e| {
@@ -180,7 +186,7 @@ impl PrintJobRepositoryPort for PrintJobRepository {
 
         let mut stmt = conn
             .prepare(
-                "SELECT id, printer_name, document_url, status, retry_count, created_at, completed_at, error_message, output_path
+                "SELECT id, printer_name, document_url, status, retry_count, created_at, completed_at, error_message, output_path, settings_json
                  FROM print_jobs WHERE id = ?1",
             )
             .map_err(|e| {
@@ -228,7 +234,7 @@ impl PrintJobRepositoryPort for PrintJobRepository {
 
         let mut stmt = conn
             .prepare(
-                "SELECT id, printer_name, document_url, status, retry_count, created_at, completed_at, error_message, output_path
+                "SELECT id, printer_name, document_url, status, retry_count, created_at, completed_at, error_message, output_path, settings_json
                  FROM print_jobs WHERE status = ?1",
             )
             .map_err(|e| {
@@ -286,7 +292,7 @@ impl PrintJobRepositoryPort for PrintJobRepository {
 
         let mut stmt = conn
             .prepare(
-                "SELECT id, printer_name, document_url, status, retry_count, created_at, completed_at, error_message, output_path
+                "SELECT id, printer_name, document_url, status, retry_count, created_at, completed_at, error_message, output_path, settings_json
                  FROM print_jobs",
             )
             .map_err(|e| {
@@ -344,6 +350,7 @@ fn row_to_print_job(row: &rusqlite::Row<'_>) -> Result<PrintJob, rusqlite::Error
     let completed_at: Option<i64> = row.get(6)?;
     let error_message: Option<String> = row.get(7)?;
     let output_path: Option<String> = row.get(8)?;
+    let settings_json: Option<String> = row.get(9)?;
 
     let id: PrintJobId = id_str.parse().map_err(|e: uuid::Error| {
         rusqlite::Error::InvalidColumnType(
@@ -361,6 +368,11 @@ fn row_to_print_job(row: &rusqlite::Row<'_>) -> Result<PrintJob, rusqlite::Error
         )
     })?;
 
+    let settings = settings_json
+        .as_deref()
+        .and_then(|s| serde_json::from_str(s).ok())
+        .unwrap_or_default();
+
     Ok(PrintJob::reconstruct(
         id,
         status,
@@ -371,7 +383,7 @@ fn row_to_print_job(row: &rusqlite::Row<'_>) -> Result<PrintJob, rusqlite::Error
         completed_at,
         error_message,
         output_path,
-        crate::domain::print_job::PrintJobSettings::default(),
+        settings,
     ))
 }
 

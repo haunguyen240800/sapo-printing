@@ -106,6 +106,10 @@ CREATE INDEX idx_tokens_origin ON api_tokens(origin);
 CREATE INDEX idx_tokens_expires ON api_tokens(expires_at);
 ";
 
+const MIGRATION_9: &str = "
+ALTER TABLE print_jobs ADD COLUMN settings_json TEXT;
+";
+
 pub fn run_migrations(conn: &mut Connection) -> Result<(), DatabaseError> {
     let migrations = Migrations::new(vec![
         M::up(MIGRATION_1),
@@ -116,6 +120,7 @@ pub fn run_migrations(conn: &mut Connection) -> Result<(), DatabaseError> {
         M::up(MIGRATION_6),
         M::up(MIGRATION_7),
         M::up(MIGRATION_8),
+        M::up(MIGRATION_9),
     ]);
     migrations
         .to_latest(conn)
@@ -326,5 +331,24 @@ mod tests {
             )
             .unwrap();
         assert_eq!(count, 1, "scheduled_at index should exist");
+    }
+
+    #[test]
+    fn test_migration_9_adds_settings_json_column() {
+        let mut conn = open_test_conn();
+        run_migrations(&mut conn).unwrap();
+
+        let columns: Vec<String> = conn
+            .prepare("PRAGMA table_info(print_jobs)")
+            .unwrap()
+            .query_map([], |row| row.get::<_, String>(1))
+            .unwrap()
+            .collect::<Result<Vec<_>, _>>()
+            .unwrap();
+
+        assert!(
+            columns.contains(&"settings_json".to_string()),
+            "settings_json column should exist"
+        );
     }
 }

@@ -2,8 +2,8 @@ use std::sync::Arc;
 
 use crate::application::errors::Error;
 use crate::application::ports::event_bus::EventBus;
-use crate::application::ports::{ConfigPort, DownloadPort, EventStore, PrintPort, TempFilePort};
-use crate::domain::print_job::{PrintJob, PrintJobRepository, PrintJobSettings};
+use crate::application::ports::{DownloadPort, EventStore, PrintPort, TempFilePort};
+use crate::domain::print_job::{PrintJob, PrintJobRepository};
 
 pub struct ProcessPrintJobUseCase {
     job_repo: Arc<dyn PrintJobRepository>,
@@ -12,7 +12,6 @@ pub struct ProcessPrintJobUseCase {
     downloader: Arc<dyn DownloadPort>,
     print_service: Arc<dyn PrintPort>,
     temp_files: Arc<dyn TempFilePort>,
-    config_provider: Arc<dyn ConfigPort>,
 }
 
 impl ProcessPrintJobUseCase {
@@ -23,7 +22,6 @@ impl ProcessPrintJobUseCase {
         downloader: Arc<dyn DownloadPort>,
         print_service: Arc<dyn PrintPort>,
         temp_files: Arc<dyn TempFilePort>,
-        config_provider: Arc<dyn ConfigPort>,
     ) -> Self {
         Self {
             job_repo,
@@ -32,7 +30,6 @@ impl ProcessPrintJobUseCase {
             downloader,
             print_service,
             temp_files,
-            config_provider,
         }
     }
 
@@ -107,15 +104,10 @@ impl ProcessPrintJobUseCase {
                 Error::InvalidInput("Temp PDF path is not valid UTF-8".to_string())
             })?;
 
-            let settings: PrintJobSettings = self
-                .config_provider
-                .load_print_config()?
-                .as_ref()
-                .map(PrintJobSettings::from)
-                .unwrap_or_default();
-
+            // Dùng snapshot cấu hình đã đóng băng lúc tạo job, KHÔNG nạp lại cấu hình
+            // hiện tại, để job giữ đúng khổ giấy/hướng/màu... của thời điểm tạo.
             self.print_service
-                .print(pdf_path_str, job.printer_id().as_str(), &settings)?;
+                .print(pdf_path_str, job.printer_id().as_str(), &job.settings)?;
             Ok(())
         }
     }
