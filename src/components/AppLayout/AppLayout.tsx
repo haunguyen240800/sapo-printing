@@ -10,7 +10,7 @@ import {
   onUpdateAvailable,
   UpdateCheckResponse,
 } from "src/services/update-service";
-import { showErrorToast, showToast, ToastProvider } from "src/utils/toast";
+import { showToast, ToastProvider } from "src/utils/toast";
 
 import { ForcedUpdateModal } from "../ForcedUpdateModal";
 import { PairRequestDialog } from "../PairRequestDialog";
@@ -19,6 +19,7 @@ export function AppLayout() {
   // Mọi version mới đều BẮT BUỘC (fail-open: không có mạng thì không có event → app dùng bình thường).
   const [pendingTargetAtStartup] = useState(() => getPendingUpdateTarget());
   const [forcedUpdate, setForcedUpdate] = useState(Boolean(pendingTargetAtStartup));
+  const [completedUpdateVersion, setCompletedUpdateVersion] = useState<string | null>(null);
   const [updateInfo, setUpdateInfo] = useState<UpdateCheckResponse | null>(() =>
     pendingTargetAtStartup ? { update_available: true, version: pendingTargetAtStartup, release_notes: null } : null
   );
@@ -38,24 +39,23 @@ export function AppLayout() {
         if (result?.status === "updated") {
           setUpdateInfo(null);
           setForcedUpdate(false);
-          showToast(`Đã cập nhật thành công lên phiên bản ${result.targetVersion}.`, {
-            id: "app-update-result",
-          });
+          setCompletedUpdateVersion(result.targetVersion);
         } else if (result?.status === "not-updated") {
           requirePendingUpdate();
-          showErrorToast(
-            `Cập nhật lên phiên bản ${result.targetVersion} chưa hoàn tất. Ứng dụng vẫn đang ở phiên bản ${result.currentVersion}.`,
-            { id: "app-update-result" }
-          );
         }
       })
       .catch(() => {
         requirePendingUpdate();
-        showErrorToast("Không thể xác minh kết quả cập nhật. Vui lòng thử cài đặt lại.", {
-          id: "app-update-result",
-        });
       });
   }, [pendingTargetAtStartup]);
+
+  useEffect(() => {
+    if (!forcedUpdate && completedUpdateVersion) {
+      showToast(`Đã cập nhật thành công lên phiên bản ${completedUpdateVersion}.`, {
+        id: "app-update-result",
+      });
+    }
+  }, [completedUpdateVersion, forcedUpdate]);
 
   useEffect(() => {
     let cancelled = false;
@@ -102,7 +102,7 @@ export function AppLayout() {
 
   return (
     <Frame>
-      <ToastProvider>
+      <ToastProvider disabled={forcedUpdate}>
         {forcedUpdate ? (
           <ForcedUpdateModal updateInfo={updateInfo} />
         ) : (
