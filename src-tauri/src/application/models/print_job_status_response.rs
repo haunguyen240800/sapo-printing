@@ -37,6 +37,7 @@ pub fn status_to_string(status: &PrintStatus) -> String {
     match status {
         PrintStatus::Pending => "PENDING".to_string(),
         PrintStatus::Queued => "QUEUED".to_string(),
+        PrintStatus::Processing => "PROCESSING".to_string(),
         PrintStatus::Downloaded => "DOWNLOADED".to_string(),
         PrintStatus::SubmittedToQueue => "SUBMITTED_TO_QUEUE".to_string(),
         PrintStatus::Printing => "PRINTING".to_string(),

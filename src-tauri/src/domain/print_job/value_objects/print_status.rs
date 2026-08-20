@@ -16,6 +16,10 @@
 pub enum PrintStatus {
     Pending,
     Queued,
+    /// Worker đã claim job và đang chạy pipeline (download → render → print).
+    /// Tách khỏi `Queued` để `pop()` KHÔNG bao giờ chọn lại một job đang xử lý,
+    /// tránh in trùng khi có nhiều worker.
+    Processing,
     Downloaded,
     SubmittedToQueue,
     Printing,
@@ -42,6 +46,7 @@ impl PrintStatus {
         match self {
             PrintStatus::Pending => "PENDING",
             PrintStatus::Queued => "QUEUED",
+            PrintStatus::Processing => "PROCESSING",
             PrintStatus::Downloaded => "DOWNLOADED",
             PrintStatus::SubmittedToQueue => "SUBMITTED_TO_QUEUE",
             PrintStatus::Printing => "PRINTING",
@@ -58,6 +63,7 @@ impl PrintStatus {
         match s {
             "PENDING" => Ok(PrintStatus::Pending),
             "QUEUED" => Ok(PrintStatus::Queued),
+            "PROCESSING" => Ok(PrintStatus::Processing),
             "DOWNLOADED" => Ok(PrintStatus::Downloaded),
             "SUBMITTED_TO_QUEUE" => Ok(PrintStatus::SubmittedToQueue),
             "PRINTING" => Ok(PrintStatus::Printing),
@@ -78,8 +84,11 @@ impl PrintStatus {
         matches!(
             (self, target),
             (PrintStatus::Pending, PrintStatus::Queued)
+                | (PrintStatus::Queued, PrintStatus::Processing)
                 | (PrintStatus::Queued, PrintStatus::Downloaded)
                 | (PrintStatus::Queued, PrintStatus::Failed)
+                | (PrintStatus::Processing, PrintStatus::Downloaded)
+                | (PrintStatus::Processing, PrintStatus::Failed)
                 | (PrintStatus::Downloaded, PrintStatus::SubmittedToQueue)
                 | (PrintStatus::Downloaded, PrintStatus::Failed) // Render failure
                 | (PrintStatus::SubmittedToQueue, PrintStatus::Printing)

@@ -94,6 +94,28 @@ impl Error {
             Self::MetricsError { .. } => "metrics_error",
         }
     }
+
+    /// Concise, user-facing message in Vietnamese, suitable for storing as a
+    /// job's failure reason and displaying to end users.
+    ///
+    /// Unlike `Display`, this never embeds the raw (often long, English)
+    /// infrastructure detail carried by the port variants — that detail stays
+    /// in the structured logs. Use `Display`/`to_string()` for logging and
+    /// `user_message()` for anything the user sees, so failure messages stay
+    /// short and consistently Vietnamese.
+    pub fn user_message(&self) -> String {
+        match self {
+            Self::NotFound(_) => "Không tìm thấy tài nguyên yêu cầu.".to_string(),
+            Self::Unavailable(_) => {
+                "Dịch vụ tạm thời không khả dụng.".to_string()
+            }
+            Self::InvalidInput(_) => "Tài liệu hoặc dữ liệu đầu vào không hợp lệ.".to_string(),
+            Self::Timeout(_) => "Quá thời gian chờ khi xử lý tài liệu.".to_string(),
+            Self::Operation(_) => "Đã xảy ra lỗi trong quá trình in.".to_string(),
+            // Remaining variants already produce concise Vietnamese messages.
+            other => other.to_string(),
+        }
+    }
 }
 
 impl fmt::Display for Error {

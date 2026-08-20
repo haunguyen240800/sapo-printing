@@ -34,7 +34,7 @@ impl ProcessPrintJobUseCase {
     }
 
     pub fn execute(&self, mut job: PrintJob) -> Result<(), Error> {
-        job.queue()?;
+        job.begin_processing()?;
         if let Err(e) = self.persist_and_publish(&mut job) {
             tracing::error!(
                 target = "sapo_printer::application::use_case::process_print_job",
@@ -42,7 +42,7 @@ impl ProcessPrintJobUseCase {
                 error = %e,
                 "Initial persist failed, marking job as Failed"
             );
-            let _ = job.fail(format!("Initial persist failed: {}", e), e.code().to_string());
+            let _ = job.fail(e.user_message(), e.code().to_string());
             let _ = self.job_repo.update(&job);
             return Err(e);
         }

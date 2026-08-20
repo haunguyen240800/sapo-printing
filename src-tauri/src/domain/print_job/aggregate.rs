@@ -7,15 +7,6 @@ use super::value_objects::{PrintJobId, PrintJobSettings, PrintStatus, PrinterId}
 
 pub const MAX_RETRY_COUNT: u32 = 3;
 
-/// PrintJob aggregate root.
-///
-/// Encapsulates the lifecycle of a print request and enforces all business rules:
-/// state transitions, retry limits, cancellation guards. Carries the document
-/// reference (`pdf_url`) and the rendered-file location (`output_path`) directly.
-///
-/// The destination printer is referenced by **identity only** (`PrinterId`),
-/// following the DDD "Reference by Identity" rule for cross-context references.
-/// The OS printer state itself is not a domain aggregate.
 #[derive(Debug, Serialize, Deserialize)]
 pub struct PrintJob {
     id: PrintJobId,
@@ -58,13 +49,10 @@ impl PrintJob {
             .as_secs() as i64
     }
 
-    /// Creates a new PrintJob in PENDING status.
-    /// Emits a PrintJobCreated event.
     pub fn new(pdf_url: String, printer_id: PrinterId, settings: PrintJobSettings) -> Self {
         Self::new_with_output_path(pdf_url, printer_id, settings, None)
     }
 
-    /// Creates a new PrintJob with optional output path for Print-to-PDF printers.
     pub fn new_with_output_path(
         pdf_url: String,
         printer_id: PrinterId,
@@ -94,7 +82,6 @@ impl PrintJob {
         job
     }
 
-    /// Reconstructs a PrintJob from persisted state (no events emitted).
     pub fn reconstruct(
         id: PrintJobId,
         status: PrintStatus,
@@ -126,7 +113,6 @@ impl PrintJob {
         self.events.push(event);
     }
 
-    /// PENDING → QUEUED
     pub fn queue(&mut self) -> Result<(), PrintJobError> {
         if !self.status.can_transition_to(&PrintStatus::Queued) {
             return Err(PrintJobError::InvalidStateTransition {
@@ -139,7 +125,18 @@ impl PrintJob {
         Ok(())
     }
 
-    /// QUEUED → DOWNLOADED
+    pub fn begin_processing(&mut self) -> Result<(), PrintJobError> {
+        if !self.status.can_transition_to(&PrintStatus::Processing) {
+            return Err(PrintJobError::InvalidStateTransition {
+                from: format!("{:?}", self.status),
+                to: "Processing".to_string(),
+            });
+        }
+        self.status = PrintStatus::Processing;
+        self.push_event(Box::new(PrintJobQueued::new(self.id.clone())));
+        Ok(())
+    }
+
     pub fn mark_downloaded(&mut self) -> Result<(), PrintJobError> {
         if !self.status.can_transition_to(&PrintStatus::Downloaded) {
             return Err(PrintJobError::InvalidStateTransition {
@@ -152,7 +149,6 @@ impl PrintJob {
         Ok(())
     }
 
-    /// DOWNLOADED → SUBMITTED_TO_QUEUE
     pub fn mark_submitted(&mut self) -> Result<(), PrintJobError> {
         if !self
             .status
@@ -168,7 +164,6 @@ impl PrintJob {
         Ok(())
     }
 
-    /// SUBMITTED_TO_QUEUE → PRINTING
     pub fn mark_printing(&mut self) -> Result<(), PrintJobError> {
         if !self.status.can_transition_to(&PrintStatus::Printing) {
             return Err(PrintJobError::InvalidStateTransition {
@@ -181,7 +176,6 @@ impl PrintJob {
         Ok(())
     }
 
-    /// PRINTING → COMPLETED
     pub fn complete(&mut self) -> Result<(), PrintJobError> {
         if !self.status.can_transition_to(&PrintStatus::Completed) {
             return Err(PrintJobError::InvalidStateTransition {
@@ -195,11 +189,6 @@ impl PrintJob {
         Ok(())
     }
 
-    /// Transition to FAILED (from QUEUED or PRINTING).
-    ///
-    /// `error_code` is a stable machine-readable classifier (see
-    /// `application::errors::Error::code`) carried through the `PrintJobFailed`
-    /// event for the frontend; it is not persisted on the aggregate.
     pub fn fail(&mut self, reason: String, error_code: String) -> Result<(), PrintJobError> {
         if !self.status.can_transition_to(&PrintStatus::Failed) {
             return Err(PrintJobError::InvalidStateTransition {
@@ -219,7 +208,6 @@ impl PrintJob {
         Ok(())
     }
 
-    /// FAILED → QUEUED (only if retry_count < MAX_RETRY_COUNT).
     pub fn retry(&mut self) -> Result<(), PrintJobError> {
         if self.retry_count >= MAX_RETRY_COUNT {
             return Err(PrintJobError::MaxRetryExceeded);
@@ -237,7 +225,6 @@ impl PrintJob {
         Ok(())
     }
 
-    /// Cancel a non-terminal job. Cannot cancel COMPLETED, FAILED, or CANCELLED jobs.
     pub fn cancel(&mut self) -> Result<(), PrintJobError> {
         match self.status {
             PrintStatus::Completed => Err(PrintJobError::CannotCancelCompleted),
@@ -252,13 +239,9 @@ impl PrintJob {
         }
     }
 
-    /// Drains the internal event buffer, returning all collected events.
-    /// Called after persistence (Outbox Pattern).
     pub fn drain_events(&mut self) -> Vec<Box<dyn DomainEvent>> {
         std::mem::take(&mut self.events)
     }
-
-    // --- Accessors ---
 
     pub fn id(&self) -> &PrintJobId {
         &self.id

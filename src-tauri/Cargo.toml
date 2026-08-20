@@ -1,6 +1,6 @@
 [package]
 name = "sapo-printer-pro-max"
-version = "1.0.6"
+version = "1.0.7"
 description = "Sapo Printer Pro Max"
 authors = ["SAPO Team"]
 edition = "2024"
@@ -106,6 +106,10 @@ tauri-plugin-dialog = "2"
 
 # Auto-start on OS login (toggleable via Settings)
 tauri-plugin-autostart = "2"
+
+# Chặn chạy nhiều tiến trình app trên cùng một máy. Nhiều instance sẽ cùng chạy
+# QueueWorker trên chung 1 SQLite DB và pop trùng job → in ra nhiều bản.
+tauri-plugin-single-instance = "2"
 image = "0.25.10"
 
 # Platform-specific secret management

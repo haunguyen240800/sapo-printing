@@ -50,16 +50,20 @@ pub fn run() {
     let dirs = bootstrap::dirs::init_directories();
 
     tauri::Builder::default()
+        .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
+            if let Some(window) = app.get_webview_window("main") {
+                let _ = window.show();
+                let _ = window.unminimize();
+                let _ = window.set_focus();
+            }
+        }))
         .setup(move |app| {
-            // 1. Windows title-bar colour (platform-specific)
             #[cfg(target_os = "windows")]
             setup_windows_titlebar(app);
 
-            // 2. Database + migrations + temp-file cleanup
             let pool =
                 bootstrap::database::init_database(&dirs.db_path_str, &dirs.temp_dir);
 
-            // 3. Dependency injection — wires all ports, starts queue worker
             let resource_dir = app.path().resource_dir().ok();
             let state = bootstrap::app_state::build_app_state(
                 pool.clone(),
@@ -69,10 +73,8 @@ pub fn run() {
             );
             app.manage(state);
 
-            // 4. HTTPS agent server (background task)
             bootstrap::http_server::start_http_server(app, pool, &dirs.data_dir);
 
-            // 5. Tauri plugins
             app.handle().plugin(tauri_plugin_dialog::init())?;
 
             #[cfg(desktop)]
@@ -81,10 +83,8 @@ pub fn run() {
                 Some(vec!["--minimized"]),
             ))?;
 
-            // 6. System tray
             bootstrap::tray::setup_tray(app)?;
 
-            // 7. Auto-updater plugin + background check loop
             #[cfg(desktop)]
             bootstrap::updater::setup_updater(app)?;
 
@@ -118,7 +118,6 @@ pub fn run() {
         });
 }
 
-/// Đặt màu title bar trên Windows để khớp với theme của app.
 #[cfg(target_os = "windows")]
 fn setup_windows_titlebar(app: &tauri::App) {
     use tauri::Manager;

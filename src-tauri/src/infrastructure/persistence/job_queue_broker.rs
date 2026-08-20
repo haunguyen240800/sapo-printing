@@ -130,10 +130,12 @@ impl QueuePort for JobQueueBroker {
                         .and_then(|s| serde_json::from_str(s).ok())
                         .unwrap_or_default();
 
-                    // Reconstruct with status = Pending (since we're about to update it to Pending)
+                    // Reconstruct as Queued: job vừa được lấy từ hàng đợi và sắp
+                    // được claim sang PROCESSING. Worker sẽ gọi begin_processing()
+                    // (Queued → Processing) ngay sau khi pop.
                     Ok(PrintJob::reconstruct(
                         id,
-                        PrintStatus::Pending,
+                        PrintStatus::Queued,
                         retry_count as u32,
                         document_url,
                         PrinterId::new(printer_id_raw),
@@ -162,29 +164,52 @@ impl QueuePort for JobQueueBroker {
             tracing::info!(
                 target = "sapo_printer::queue_manager",
                 job_id = %job.id(),
-                "JobQueueBroker: popped job, updating status to PENDING"
+                "JobQueueBroker: popped job, claiming to PROCESSING"
             );
 
-            tx.execute(
-                "UPDATE print_jobs SET status = ?1, updated_at = ?2 WHERE id = ?3",
-                rusqlite::params![
-                    PrintStatus::Pending.to_db_string(),
-                    now,
-                    job.id().to_string()
-                ],
-            )
-            .map_err(|e| QueueError::RepositoryError(e.to_string()))?;
-        } else {
-            tracing::trace!(
-                target = "sapo_printer::queue_manager",
-                "JobQueueBroker: no jobs available in queue"
-            );
+            // Claim nguyên tử: chỉ giành job nếu nó VẪN đang ở trạng thái QUEUED,
+            // và đưa sang PROCESSING — trạng thái mà pop() KHÔNG bao giờ chọn. Nhờ
+            // đó dù pipeline (download) kéo dài, không worker nào pop lại job này.
+            // Guard `status = QUEUED` biến SELECT+UPDATE thành một claim an toàn
+            // giữa các worker song song; nếu worker khác đã giành trước
+            // (rows == 0), coi như queue rỗng lượt này để không in trùng.
+            let rows_affected = tx
+                .execute(
+                    "UPDATE print_jobs SET status = ?1, updated_at = ?2 \
+                     WHERE id = ?3 AND status = ?4",
+                    rusqlite::params![
+                        PrintStatus::Processing.to_db_string(),
+                        now,
+                        job.id().to_string(),
+                        PrintStatus::Queued.to_db_string(),
+                    ],
+                )
+                .map_err(|e| QueueError::RepositoryError(e.to_string()))?;
+
+            tx.commit()
+                .map_err(|e| QueueError::RepositoryError(e.to_string()))?;
+
+            if rows_affected == 0 {
+                tracing::info!(
+                    target = "sapo_printer::queue_manager",
+                    job_id = %job.id(),
+                    "JobQueueBroker: job already claimed by another worker, skipping"
+                );
+                return Ok(None);
+            }
+
+            return Ok(job_opt);
         }
+
+        tracing::trace!(
+            target = "sapo_printer::queue_manager",
+            "JobQueueBroker: no jobs available in queue"
+        );
 
         tx.commit()
             .map_err(|e| QueueError::RepositoryError(e.to_string()))?;
 
-        Ok(job_opt)
+        Ok(None)
     }
 
     fn requeue(&self, job_id: &PrintJobId, delay_secs: u64) -> Result<(), QueueError> {
@@ -357,7 +382,7 @@ mod tests {
     }
 
     #[test]
-    fn test_pop_sets_status_to_pending() {
+    fn test_pop_claims_status_to_processing() {
         let (pool, mgr, path) = setup();
         let job_id = PrintJobId::new();
         insert_job(&pool, &job_id.to_string(), "QUEUED");
@@ -372,8 +397,25 @@ mod tests {
                 |row| row.get(0),
             )
             .unwrap();
-        assert_eq!(status, "PENDING");
+        assert_eq!(status, "PROCESSING");
         drop(conn);
+        drop(pool);
+        cleanup(&path);
+    }
+
+    #[test]
+    fn test_pop_not_reselected_while_processing() {
+        // Sau khi pop, job ở PROCESSING nên lần pop kế tiếp phải trả None —
+        // đây là bất biến chống in trùng khi có nhiều worker.
+        let (pool, mgr, path) = setup();
+        let job_id = PrintJobId::new();
+        insert_job(&pool, &job_id.to_string(), "QUEUED");
+
+        assert!(mgr.pop().unwrap().is_some());
+        assert!(
+            mgr.pop().unwrap().is_none(),
+            "job đang PROCESSING không được pop lại"
+        );
         drop(pool);
         cleanup(&path);
     }

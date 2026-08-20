@@ -31,6 +31,7 @@ pub(crate) fn calculate_progress(status: &PrintStatus) -> u8 {
     match status {
         PrintStatus::Pending => 0,
         PrintStatus::Queued => 10,
+        PrintStatus::Processing => 25,
         PrintStatus::Downloaded => 40,
         PrintStatus::SubmittedToQueue => 60,
         PrintStatus::Printing => 80,
@@ -43,6 +44,7 @@ fn status_to_string(status: &PrintStatus) -> String {
     match status {
         PrintStatus::Pending => "PENDING".to_string(),
         PrintStatus::Queued => "QUEUED".to_string(),
+        PrintStatus::Processing => "PROCESSING".to_string(),
         PrintStatus::Downloaded => "DOWNLOADED".to_string(),
         PrintStatus::SubmittedToQueue => "SUBMITTED_TO_QUEUE".to_string(),
         PrintStatus::Printing => "PRINTING".to_string(),
