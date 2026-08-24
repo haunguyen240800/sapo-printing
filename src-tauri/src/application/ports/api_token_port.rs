@@ -39,7 +39,7 @@ pub struct PendingPairRequest {
 pub enum PairError {
     UserDenied,
     Timeout,
-    NoUiSubscriber,
+    PairingConfirmationUnavailable,
     /// Backend failure (e.g. persistence error) while issuing the token.
     Backend(String),
 }
@@ -49,7 +49,9 @@ impl std::fmt::Display for PairError {
         match self {
             Self::UserDenied => write!(f, "user denied"),
             Self::Timeout => write!(f, "user did not respond"),
-            Self::NoUiSubscriber => write!(f, "no ui subscriber to receive pair request"),
+            Self::PairingConfirmationUnavailable => {
+                write!(f, "pairing confirmation unavailable")
+            }
             Self::Backend(msg) => write!(f, "backend: {}", msg),
         }
     }

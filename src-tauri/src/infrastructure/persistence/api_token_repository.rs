@@ -98,10 +98,10 @@ impl ApiTokenPort for ApiTokenRepository {
             let sink = self.ui_sink.lock().await;
             if let Some(s) = sink.as_ref() {
                 if s.send(req).is_err() {
-                    return Err(PairError::NoUiSubscriber);
+                    return Err(PairError::PairingConfirmationUnavailable);
                 }
             } else {
-                return Err(PairError::NoUiSubscriber);
+                return Err(PairError::PairingConfirmationUnavailable);
             }
         }
 

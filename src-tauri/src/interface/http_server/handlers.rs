@@ -112,7 +112,7 @@ fn map_pair_error(error: PairError) -> ApiErrorResponse {
             "pair_timeout",
             "user did not respond",
         ),
-        PairError::NoUiSubscriber => ApiError::new(
+        PairError::PairingConfirmationUnavailable => ApiError::new(
             StatusCode::SERVICE_UNAVAILABLE,
             "pairing_confirmation_unavailable",
             "desktop application is unavailable to confirm pairing",
@@ -236,7 +236,7 @@ mod tests {
 
     #[test]
     fn maps_unavailable_pairing_confirmation_without_internal_terms() {
-        let response = map_pair_error(PairError::NoUiSubscriber);
+        let response = map_pair_error(PairError::PairingConfirmationUnavailable);
 
         assert_eq!(response.status, StatusCode::SERVICE_UNAVAILABLE);
         assert_eq!(response.body.code, "pairing_confirmation_unavailable");
