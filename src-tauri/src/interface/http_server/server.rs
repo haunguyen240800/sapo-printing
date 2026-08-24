@@ -4,7 +4,7 @@ use axum::Router;
 use serde::{Deserialize, Serialize};
 
 use crate::infrastructure::errors::InfrastructureError;
-use crate::infrastructure::platform::port_binder::{self, DEFAULT_PORT, FALLBACK_RANGE};
+use crate::infrastructure::platform::port_binder::{self, DEFAULT_PORT};
 
 use super::router;
 use super::state::HttpServerState;
@@ -42,8 +42,9 @@ pub struct ServerHandles {
 pub async fn start_server(
     state_builder: impl FnOnce(u16) -> HttpServerState,
 ) -> Result<ServerHandles, InfrastructureError> {
-    let (std_listener, port) = port_binder::bind_with_fallback(DEFAULT_PORT, FALLBACK_RANGE)
-        .map_err(|e| InfrastructureError::BindError(format!("bind port: {e}")))?;
+    let std_listener = port_binder::bind()
+        .map_err(|e| InfrastructureError::BindError(format!("bind port {DEFAULT_PORT}: {e}")))?;
+    let port = DEFAULT_PORT;
     std_listener
         .set_nonblocking(true)
         .map_err(|e| InfrastructureError::IoError(format!("set_nonblocking: {e}")))?;

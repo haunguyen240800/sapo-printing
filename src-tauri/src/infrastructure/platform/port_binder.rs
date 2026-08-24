@@ -1,44 +1,20 @@
-//! Bind the local HTTP API to IPv4 loopback with a deterministic fallback range.
+//! Bind the local HTTP API to the fixed IPv4 loopback endpoint.
 
 use std::net::{Ipv4Addr, SocketAddr, TcpListener};
-use std::ops::RangeInclusive;
 
 pub const DEFAULT_PORT: u16 = 18901;
-pub const FALLBACK_RANGE: RangeInclusive<u16> = 18901..=18910;
 
-pub fn bind_with_fallback(
-    preferred: u16,
-    range: RangeInclusive<u16>,
-) -> std::io::Result<(TcpListener, u16)> {
-    match try_bind(preferred) {
-        Ok(listener) => return Ok((listener, preferred)),
-        Err(error) if is_addr_in_use(&error) => {
-            tracing::warn!(port = preferred, "Preferred port in use, trying fallback");
-        }
-        Err(error) => return Err(error),
-    }
-    for port in range {
-        if port == preferred {
-            continue;
-        }
-        match try_bind(port) {
-            Ok(listener) => return Ok((listener, port)),
-            Err(error) if is_addr_in_use(&error) => continue,
-            Err(error) => return Err(error),
-        }
-    }
-    Err(std::io::Error::new(
-        std::io::ErrorKind::AddrInUse,
-        "All ports in fallback range are in use",
-    ))
+pub fn bind() -> std::io::Result<TcpListener> {
+    TcpListener::bind(default_socket_addr())
 }
 
-fn try_bind(port: u16) -> std::io::Result<TcpListener> {
+#[cfg(test)]
+fn bind_port(port: u16) -> std::io::Result<TcpListener> {
     TcpListener::bind(SocketAddr::from((Ipv4Addr::LOCALHOST, port)))
 }
 
-fn is_addr_in_use(error: &std::io::Error) -> bool {
-    error.kind() == std::io::ErrorKind::AddrInUse
+fn default_socket_addr() -> SocketAddr {
+    SocketAddr::from((Ipv4Addr::LOCALHOST, DEFAULT_PORT))
 }
 
 #[cfg(test)]
@@ -46,24 +22,21 @@ mod tests {
     use super::*;
 
     #[test]
-    fn binds_preferred_to_ipv4_loopback() {
-        let (listener, port) = bind_with_fallback(29901, 29901..=29910).unwrap();
-        assert_eq!(port, 29901);
+    fn binds_to_ipv4_loopback() {
+        let listener = bind_port(0).unwrap();
         assert_eq!(listener.local_addr().unwrap().ip(), Ipv4Addr::LOCALHOST);
     }
 
     #[test]
-    fn falls_back_when_preferred_taken() {
-        let _hold = TcpListener::bind((Ipv4Addr::LOCALHOST, 29911)).unwrap();
-        let (listener, port) = bind_with_fallback(29911, 29911..=29915).unwrap();
-        assert!(port > 29911 && port <= 29915);
-        assert_eq!(listener.local_addr().unwrap().ip(), Ipv4Addr::LOCALHOST);
+    fn production_endpoint_is_fixed_to_127_0_0_1_18901() {
+        assert_eq!(default_socket_addr(), "127.0.0.1:18901".parse().unwrap());
     }
 
     #[test]
-    fn returns_err_when_all_taken() {
-        let _h1 = TcpListener::bind((Ipv4Addr::LOCALHOST, 29921)).unwrap();
-        let _h2 = TcpListener::bind((Ipv4Addr::LOCALHOST, 29922)).unwrap();
-        assert!(bind_with_fallback(29921, 29921..=29922).is_err());
+    fn returns_addr_in_use_instead_of_falling_back() {
+        let held = bind_port(0).unwrap();
+        let occupied_port = held.local_addr().unwrap().port();
+        let error = bind_port(occupied_port).unwrap_err();
+        assert_eq!(error.kind(), std::io::ErrorKind::AddrInUse);
     }
 }

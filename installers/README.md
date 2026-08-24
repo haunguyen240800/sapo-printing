@@ -10,5 +10,5 @@ Local API chạy plain HTTP và chỉ bind vào IPv4 loopback:
 http://127.0.0.1:18901/api/v1/ping
 ```
 
-Nếu `18901` bận, app thử lần lượt `18902..=18910` và ghi cổng đã chọn vào
-`agent.json`. Auto-update vẫn do Tauri updater thực hiện trong user session.
+Nếu `18901` bận, local API không khởi động và app ghi lỗi bind vào log; không tự
+chuyển sang cổng khác. Auto-update vẫn do Tauri updater thực hiện trong user session.

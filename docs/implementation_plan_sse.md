@@ -39,7 +39,7 @@ Thêm HTTPS local server vào `sapo-printing` desktop app để webapp (HTTPS) g
 > - IPC socket (named pipe / unix socket) cho app trigger `renew_now` on-demand.
 
 > [!IMPORTANT]
-> **Port**: Cố định `18901`. Nếu bị chiếm → fallback range `18901–18910`. Port đã chọn ghi vào `~/.sapo-printer/agent.json`. Webapp discover qua `/api/v1/ping` với retry range.
+> **Port**: Cố định `127.0.0.1:18901`. Nếu bị chiếm, local API không khởi động và ghi lỗi bind; không fallback sang cổng khác.
 
 > [!IMPORTANT]
 > **Token security**: Token chỉ trả plaintext 1 lần lúc pair. DB lưu SHA-256 hash + salt. Token có `expires_at` (default 90 ngày, sliding window: refresh khi `last_used_at` update).
@@ -217,7 +217,7 @@ CREATE INDEX idx_tokens_origin ON api_tokens(origin);
 
 - `get_paired_origins` — Desktop UI hiển thị + Revoke button.
 - `revoke_token(token_hash)` — Xóa row.
-- `get_agent_port` — Trả port đang bind (webapp fallback discovery).
+- `get_agent_port` — Trả về cổng cố định `18901`.
 
 ---
 
@@ -308,23 +308,22 @@ Reconnect: server hỗ trợ `Last-Event-ID` — replay events từ ring buffer 
 
 ---
 
-### Component 5: Port Discovery & Fallback
+### Component 5: Fixed Loopback Port
 
-#### [NEW] `src/infrastructure/tls/port_binder.rs`
+#### [NEW] `src/infrastructure/platform/port_binder.rs`
 
 ```rust
-pub fn bind_with_fallback(preferred: u16, range: RangeInclusive<u16>)
-    -> Result<(TcpListener, u16), std::io::Error>;
+pub fn bind() -> Result<TcpListener, std::io::Error>;
 ```
 
-- Thử `preferred=18901` trước.
-- Fail (EADDRINUSE) → thử `18902..=18910`.
-- Ghi port đã chọn vào `~/.sapo-printer/agent.json`:
+- Bind duy nhất `127.0.0.1:18901`.
+- Fail (EADDRINUSE) → trả lỗi và không khởi động local API.
+- Ghi port cố định vào `~/.sapo-printer/agent.json`:
   ```json
   { "port": 18901, "version": "1.2.3", "started_at": 1710000000 }
   ```
 - Tauri command `get_agent_port` trả port hiện tại (cho UI).
-- Webapp discovery: loop ping `18901..=18910` với timeout ngắn (200ms mỗi port), cache port thành công vào `localStorage`.
+- Webapp discovery: ping duy nhất `127.0.0.1:18901` với timeout ngắn.
 
 ---
 
@@ -441,30 +440,20 @@ Downloader đã có sẵn `infrastructure/downloader/circuit_breaker.rs`. Wire v
 
 ```typescript
 class PrintAgentClient {
-  private port: number | null = Number(localStorage.getItem('sapo_agent_port')) || null;
+  private readonly port = 18901;
   private token = localStorage.getItem('sapo_print_token');
 
   private baseUrl(): string {
-    const p = this.port ?? 18901;
-    return `https://local.mysapo.net:${p}/api/v1`;
+    return `http://127.0.0.1:${this.port}/api/v1`;
   }
 
   async discoverPort(): Promise<number | null> {
-    for (const port of [18901, 18902, ..., 18910]) {
-      try {
-        const res = await fetch(`https://local.mysapo.net:${port}/api/v1/ping`, {
-          signal: AbortSignal.timeout(200),
-        });
-        if (res.ok) {
-          const { version, min_webapp_version } = await res.json();
-          this.checkVersionCompat(min_webapp_version);
-          localStorage.setItem('sapo_agent_port', String(port));
-          this.port = port;
-          return port;
-        }
-      } catch {}
-    }
-    return null;
+    try {
+      const res = await fetch('http://127.0.0.1:18901/api/v1/ping', {
+        signal: AbortSignal.timeout(200),
+      });
+      return res.ok ? 18901 : null;
+    } catch { return null; }
   }
 
   async isAvailable(): Promise<boolean>;
@@ -520,8 +509,9 @@ for event_type in JOB_STATUS_EVENTS {
     event_bus.subscribe(event_type, sse_broadcaster.clone());
 }
 
-// 4. Bind port với fallback
-let (listener, port) = port_binder::bind_with_fallback(18901, 18901..=18910)?;
+// 4. Bind cổng cố định
+let listener = port_binder::bind()?;
+let port = 18901;
 write_agent_metadata(&data_dir, port)?;
 
 // 5. Start HTTPS server
@@ -569,7 +559,7 @@ cargo build --release
 | Pairing legit | Toast, Allow → token nhận, DB lưu hash không plaintext |
 | Send job → SSE | `PENDING → QUEUED → DOWNLOADED → PRINTING → COMPLETED` |
 | Restart app | Port ghi ra file, webapp reconnect qua discovery |
-| Port 18901 chiếm | Fallback 18902, webapp discover thành công |
+| Port 18901 chiếm | Local API fail-fast, log lỗi bind, không mở cổng khác |
 | Cert còn 29 ngày | Auto renew, TLS reload không restart |
 | Token hết hạn | 401 với `error_code=TOKEN_EXPIRED`, webapp trigger re-pair |
 | Uninstall app | CA gỡ khỏi trust store |
@@ -606,7 +596,7 @@ Phase 2 — HTTPS Server + Auth (4-5 ngày)
 ├── Rate limit tower_governor + per-origin limit
 ├── REST endpoints + auth middleware
 ├── CORS URL-parse predicate
-├── Port fallback binder
+├── Fixed port binder (127.0.0.1:18901)
 └── Integration tests (rate limit, timing, token expiry)
 
 Phase 3 — SSE (2-3 ngày)
@@ -647,7 +637,7 @@ Phase 5 — Webapp (5-7 ngày, team frontend)
 | Browser tương lai giảm max leaf cert lifetime < 397d | Cần renew nhanh hơn | Renewal task đã có, chỉ chỉnh threshold |
 | DNS `local.mysapo.net` bị hack đổi record | Kết nối sai IP, cert mismatch → fail safe | SAN có `127.0.0.1` + `localhost` fallback |
 | Token DB rò | Chỉ hash lộ, plaintext không | Hash SHA-256 + salt |
-| Port range 18901-18910 chiếm hết | App không start server | Log rõ, hiện error UI cho user |
+| Port 18901 bị chiếm | App không start server | Log rõ, hiện error UI cho user |
 | CA private key rò trên 1 máy | Attacker giả cert chỉ cho MÁY ĐÓ (CA per-machine, không cross-trust) | `ca.key` mode 0600 owner SYSTEM/root, chỉ helper service đọc |
 | Helper service bị disable/crash | Cert không auto-renew | App detect < 7 ngày → notification + link elevated helper thủ công |
 | User không thuộc group `sapo-printer` | App không đọc được `server.key` | Installer add user vào group; runtime check + hướng dẫn re-login |

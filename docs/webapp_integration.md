@@ -26,7 +26,7 @@ Hướng dẫn tích hợp webapp (React/Vue/vanilla JS) với Sapo Printer Pro 
 ┌─────────────────────────┐         HTTP         ┌────────────────────────────┐
 │  Webapp (browser)       │ ───────────────────► │ Sapo Printer Pro Max       │
 │  https://*.mysapo.net   │ ◄─────── SSE ─────── │  http://127.0.0.1          │
-└─────────────────────────┘                       │  :18901 (fallback 18902…) │
+└─────────────────────────┘                       │  :18901                   │
                                                   └────────────────────────────┘
                                                              │
                                                              ▼
@@ -63,7 +63,7 @@ User phải cài và chạy Sapo Printer Pro Max. Nếu chưa có → hiển th�
 
 ## 3. API Reference
 
-Base URL: `http://127.0.0.1:<port>/api/v1` (port từ discovery, mặc định 18901).
+Base URL cố định: `http://127.0.0.1:18901/api/v1`.
 
 ### 3.1. `GET /ping`
 
@@ -273,9 +273,9 @@ data: {"job_id":"3fa85f64-...","status":"COMPLETED"}
 
 ```
 ┌─────────────────────────────────────────────────────────┐
-│ 1. Discover port (loop 18901–18910)                    │
-│    ├─ Có port responsive → cache localStorage          │
-│    └─ Không có → setAgentStatus('unavailable')         │
+│ 1. Ping port cố định 18901                             │
+│    ├─ Responsive → tiếp tục bootstrap                  │
+│    └─ Không responsive → setAgentStatus('unavailable') │
 │                    hiện AgentSetupGuide                 │
 ├─────────────────────────────────────────────────────────┤
 │ 2. Check ping.min_webapp_version                        │
@@ -333,8 +333,7 @@ COMPLETED / FAILED → toast + remove from active list
 // services/print-agent-client.ts
 
 export const AGENT_HOST = '127.0.0.1';
-export const AGENT_PORT_RANGE = [18901, 18902, 18903, 18904, 18905, 18906, 18907, 18908, 18909, 18910] as const;
-const PORT_CACHE_KEY = 'sapo_agent_port';
+export const AGENT_PORT = 18901;
 const TOKEN_KEY = 'sapo_print_token';
 
 export interface PingResponse {
@@ -375,46 +374,29 @@ export class AgentPairError extends Error {
 }
 
 export class PrintAgentClient {
-  private port: number | null = null;
   private token: string | null = null;
 
   constructor() {
-    this.port = Number(localStorage.getItem(PORT_CACHE_KEY)) || null;
     this.token = localStorage.getItem(TOKEN_KEY);
   }
 
   private baseUrl(): string {
-    if (!this.port) throw new AgentUnavailableError('Port not discovered');
-    return `http://${AGENT_HOST}:${this.port}/api/v1`;
+    return `http://${AGENT_HOST}:${AGENT_PORT}/api/v1`;
   }
 
-  /** Loop ping 18901-18910, return port đầu tiên OK. Cache localStorage. */
+  /** Ping duy nhất cổng cố định 18901. */
   async discoverPort(): Promise<number | null> {
-    const cached = this.port;
-    const order = cached
-      ? [cached, ...AGENT_PORT_RANGE.filter(p => p !== cached)]
-      : [...AGENT_PORT_RANGE];
-
-    for (const port of order) {
-      try {
-        const ctrl = new AbortController();
-        const timer = setTimeout(() => ctrl.abort(), 300);
-        const res = await fetch(`http://${AGENT_HOST}:${port}/api/v1/ping`, {
-          signal: ctrl.signal,
-        });
-        clearTimeout(timer);
-        if (res.ok) {
-          this.port = port;
-          localStorage.setItem(PORT_CACHE_KEY, String(port));
-          return port;
-        }
-      } catch {
-        // continue
-      }
+    try {
+      const ctrl = new AbortController();
+      const timer = setTimeout(() => ctrl.abort(), 300);
+      const res = await fetch(`http://${AGENT_HOST}:${AGENT_PORT}/api/v1/ping`, {
+        signal: ctrl.signal,
+      });
+      clearTimeout(timer);
+      return res.ok ? AGENT_PORT : null;
+    } catch {
+      return null;
     }
-    this.port = null;
-    localStorage.removeItem(PORT_CACHE_KEY);
-    return null;
   }
 
   async ping(): Promise<PingResponse> {
@@ -788,7 +770,6 @@ Playwright test:
 test('bulk print end-to-end', async ({ page }) => {
   await page.addInitScript(() => {
     localStorage.setItem('sapo_print_token', 'fixed-test-token');
-    localStorage.setItem('sapo_agent_port', '18901');
   });
   await page.goto('https://admin.mysapo.net/orders');
   await page.click('button:has-text("In hàng loạt")');
