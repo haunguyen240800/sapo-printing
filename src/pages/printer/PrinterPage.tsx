@@ -3,6 +3,7 @@ import { useOutletContext } from "react-router-dom";
 import styled from "@emotion/styled";
 import { Box, Button, Icon, InlineStack, Text } from "@sapo/ui-components";
 import { WarningIcon } from "@sapo/ui-icons";
+import { openUrl } from "@tauri-apps/plugin-opener";
 import { ActionListButton } from "src/components/ActionListButton";
 import { ConfirmModal } from "src/components/ConfirmModal";
 import { type JobStatusPayload, onJobStatusChanged } from "src/services/event-listener";
@@ -13,9 +14,8 @@ import { showErrorToast } from "src/utils/toast";
 import { AppInfoModal } from "./components/AppInfoModal";
 import { Overview } from "./components/Overview";
 import PrinterSettingsFormModal from "./components/PrinterSettingsFormModal";
-import { SupportModal } from "./components/SupportModal";
 
-type ModalName = "config" | "clear-cache" | "app-info" | "support";
+type ModalName = "config" | "clear-cache" | "app-info";
 
 export default function PrinterPage() {
   const { forcedUpdate = false } = useOutletContext<{ forcedUpdate?: boolean }>() ?? {};
@@ -33,6 +33,11 @@ export default function PrinterPage() {
 
   const openModal = (name: ModalName) => {
     if (!forcedUpdate) setModalName(name);
+  };
+
+  const openLink = (url: string) => {
+    if (forcedUpdate) return;
+    openUrl(url).catch(() => showErrorToast("Không mở được đường dẫn"));
   };
 
   const loadPrinterConfig = useCallback(async () => {
@@ -187,10 +192,6 @@ export default function PrinterPage() {
     <AppInfoModal open onClose={() => setModalName(undefined)} />
   );
 
-  const supportModal = !forcedUpdate && modalName === "support" && (
-    <SupportModal open onClose={() => setModalName(undefined)} />
-  );
-
   return (
     <Box>
       <ButtonGroupStyled>
@@ -203,16 +204,24 @@ export default function PrinterPage() {
         >
           Cấu hình hệ thống
         </ActionListButton>
-        <Button plain onClick={() => openModal("support")}>
+        <ActionListButton
+          plain
+          actions={[
+            { content: "Hướng dẫn sử dụng", onAction: () => openLink("https://example.com/huong-dan-su-dung") },
+            {
+              content: "Kiểm tra và xử lý sự cố",
+              onAction: () => openLink("https://example.com/kiem-tra-va-xu-ly-su-co"),
+            },
+          ]}
+        >
           Hỗ trợ
-        </Button>
+        </ActionListButton>
         <Button plain onClick={() => openModal("app-info")}>
           Thông tin
         </Button>
       </ButtonGroupStyled>
       <Overview printerConfig={printerConfig} stats={stats} />
       {appInfoMarkup}
-      {supportModal}
       {clearCacheConfirmModal}
       {systemConfigModal}
     </Box>

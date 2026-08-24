@@ -1,10 +1,18 @@
+use std::fs::{self, File, OpenOptions};
+use std::io::{self, Write};
 use std::path::{Path, PathBuf};
-use std::sync::Once;
+use std::sync::{Arc, Mutex, Once};
 
-use tracing_appender::rolling::{RollingFileAppender, Rotation};
-use tracing_subscriber::{EnvFilter, fmt, layer::SubscriberExt, util::SubscriberInitExt};
+use chrono::{DateTime, Local, NaiveDate};
+use tracing::Level;
+use tracing_subscriber::filter::filter_fn;
+use tracing_subscriber::fmt::writer::MakeWriter;
+use tracing_subscriber::{EnvFilter, Layer, fmt, layer::SubscriberExt, util::SubscriberInitExt};
 
 const LOG_RETENTION_DAYS: u64 = 7;
+
+/// Levels that get their own file + archive folder (logback-style).
+const LEVELS: [&str; 4] = ["debug", "info", "warn", "error"];
 
 static INIT_ONCE: Once = Once::new();
 
@@ -36,41 +44,56 @@ fn init_logging_inner() -> Result<(), String> {
     let log_dir = get_log_dir()?;
 
     // Ensure log directory exists
-    std::fs::create_dir_all(&log_dir)
+    fs::create_dir_all(&log_dir)
         .map_err(|e| format!("Failed to create log directory {:?}: {}", log_dir, e))?;
 
-    // Perform startup cleanup of old log files (before subscriber is active)
+    // Perform startup cleanup of old archived log files (before subscriber is active)
     cleanup_old_logs(&log_dir, LOG_RETENTION_DAYS);
 
-    // File appender: daily rotation
-    let file_appender = RollingFileAppender::builder()
-        .rotation(Rotation::DAILY)
-        .filename_prefix("app.log")
-        .build(&log_dir)
-        .map_err(|e| format!("Failed to create file appender: {}", e))?;
+    // One JSON file layer per level. Each layer only accepts events at exactly
+    // its own level (logback LevelFilter style) and writes to its own rolling
+    // file appender (current file at root, older files rolled into a subfolder).
+    let debug_layer = level_file_layer(&log_dir, "debug", Level::DEBUG);
+    let info_layer = level_file_layer(&log_dir, "info", Level::INFO);
+    let warn_layer = level_file_layer(&log_dir, "warn", Level::WARN);
+    let error_layer = level_file_layer(&log_dir, "error", Level::ERROR);
 
-    // JSON file layer (machine-parseable, no ANSI colors)
-    let file_layer = fmt::layer()
-        .json()
-        .with_writer(file_appender)
-        .with_ansi(false);
-
-    // Console layer (human-readable, compact format)
+    // Console layer (human-readable, compact format), gated by RUST_LOG.
     let env_filter = EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info"));
-
     let console_layer = fmt::layer()
         .with_target(true)
         .with_thread_ids(false)
-        .compact();
+        .compact()
+        .with_filter(env_filter);
 
     // Combine layers and initialize global subscriber
     tracing_subscriber::registry()
-        .with(env_filter)
-        .with(file_layer)
+        .with(error_layer)
+        .with(warn_layer)
+        .with(info_layer)
+        .with(debug_layer)
         .with(console_layer)
         .init();
 
     Ok(())
+}
+
+/// Build a JSON file layer that only records events at exactly `level`,
+/// writing to a per-level rolling appender.
+fn level_file_layer<S>(
+    log_dir: &Path,
+    level_name: &'static str,
+    level: Level,
+) -> impl Layer<S>
+where
+    S: tracing::Subscriber + for<'a> tracing_subscriber::registry::LookupSpan<'a>,
+{
+    let appender = LevelAppender::new(log_dir.to_path_buf(), level_name);
+    fmt::layer()
+        .json()
+        .with_writer(appender)
+        .with_ansi(false)
+        .with_filter(filter_fn(move |meta| *meta.level() == level))
 }
 
 fn get_log_dir() -> Result<PathBuf, String> {
@@ -82,13 +105,157 @@ fn get_log_dir() -> Result<PathBuf, String> {
     Ok(PathBuf::from(&home).join(".sapo-printer").join("logs"))
 }
 
+/// A per-level log writer that keeps the current day's file at the log root
+/// (`<level>.log`) and rolls older days into a subfolder (`<level>/<level>.<date>.log`).
+#[derive(Clone)]
+struct LevelAppender {
+    shared: Arc<Shared>,
+}
+
+struct Shared {
+    logs_dir: PathBuf,
+    level: &'static str,
+    state: Mutex<Option<State>>,
+}
+
+struct State {
+    date: NaiveDate,
+    file: File,
+}
+
+impl LevelAppender {
+    fn new(logs_dir: PathBuf, level: &'static str) -> Self {
+        Self {
+            shared: Arc::new(Shared {
+                logs_dir,
+                level,
+                state: Mutex::new(None),
+            }),
+        }
+    }
+}
+
+impl Shared {
+    /// Current active file, e.g. `.../logs/info.log`.
+    fn active_path(&self) -> PathBuf {
+        self.logs_dir.join(format!("{}.log", self.level))
+    }
+
+    /// Archive folder for rolled files, e.g. `.../logs/info/`.
+    fn archive_dir(&self) -> PathBuf {
+        self.logs_dir.join(self.level)
+    }
+
+    /// Move the active file into the archive folder, stamped with `date`.
+    fn archive(&self, active: &Path, date: NaiveDate) -> io::Result<()> {
+        let dir = self.archive_dir();
+        fs::create_dir_all(&dir)?;
+
+        let stamp = date.format("%Y-%m-%d");
+        let mut target = dir.join(format!("{}.{}.log", self.level, stamp));
+        let mut n = 1;
+        while target.exists() {
+            target = dir.join(format!("{}.{}.{}.log", self.level, stamp, n));
+            n += 1;
+        }
+        fs::rename(active, &target)
+    }
+
+    /// Ensure `state` holds a file handle for today, rolling over if the day changed.
+    fn ensure_current(&self, state: &mut Option<State>) -> io::Result<()> {
+        let today = Local::now().date_naive();
+
+        // Roll over an already-open file whose day has passed.
+        if let Some(s) = state.as_mut() {
+            if s.date != today {
+                let old_date = s.date;
+                let _ = s.file.flush();
+                *state = None; // close the handle before renaming
+                let active = self.active_path();
+                if active.exists() {
+                    self.archive(&active, old_date)?;
+                }
+            }
+        }
+
+        if state.is_none() {
+            let active = self.active_path();
+            // If a stale file from a previous day already exists on disk, roll it first.
+            if active.exists() {
+                if let Ok(meta) = fs::metadata(&active) {
+                    if let Ok(modified) = meta.modified() {
+                        let mdate = DateTime::<Local>::from(modified).date_naive();
+                        if mdate < today {
+                            self.archive(&active, mdate)?;
+                        }
+                    }
+                }
+            }
+            let file = OpenOptions::new().create(true).append(true).open(&active)?;
+            *state = Some(State { date: today, file });
+        }
+
+        Ok(())
+    }
+}
+
+struct LevelWriter {
+    shared: Arc<Shared>,
+}
+
+impl Write for LevelWriter {
+    fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
+        let mut guard = self
+            .shared
+            .state
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        self.shared.ensure_current(&mut guard)?;
+        guard
+            .as_mut()
+            .expect("state initialized by ensure_current")
+            .file
+            .write(buf)
+    }
+
+    fn flush(&mut self) -> io::Result<()> {
+        let mut guard = self
+            .shared
+            .state
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        match guard.as_mut() {
+            Some(s) => s.file.flush(),
+            None => Ok(()),
+        }
+    }
+}
+
+impl<'a> MakeWriter<'a> for LevelAppender {
+    type Writer = LevelWriter;
+
+    fn make_writer(&'a self) -> Self::Writer {
+        LevelWriter {
+            shared: self.shared.clone(),
+        }
+    }
+}
+
+/// Delete archived log files (in each `<level>/` subfolder) older than the
+/// retention window. The active `<level>.log` files at the root are never touched.
 fn cleanup_old_logs(log_dir: &Path, retention_days: u64) {
-    let now = chrono::Utc::now();
-    let cutoff = now - chrono::Duration::days(retention_days as i64);
+    let cutoff = Local::now().date_naive() - chrono::Duration::days(retention_days as i64);
 
-    let pattern = regex::Regex::new(r"^app\.log\.(\d{4}-\d{2}-\d{2})$").ok();
+    let Some(re) = regex::Regex::new(r"(\d{4}-\d{2}-\d{2})").ok() else {
+        return;
+    };
 
-    if let Ok(entries) = std::fs::read_dir(log_dir) {
+    for level in LEVELS {
+        let dir = log_dir.join(level);
+        let Ok(entries) = fs::read_dir(&dir) else {
+            continue;
+        };
+
         for entry in entries.flatten() {
             let path = entry.path();
             if !path.is_file() {
@@ -98,36 +265,21 @@ fn cleanup_old_logs(log_dir: &Path, retention_days: u64) {
             let filename = entry.file_name();
             let filename_str = filename.to_string_lossy();
 
-            // Check if this file matches our rotation pattern
-            if let Some(ref re) = pattern {
-                if let Some(caps) = re.captures(&filename_str) {
-                    if let Some(date_str) = caps.get(1) {
-                        // Parse the date from the filename
-                        if let Ok(file_date) =
-                            chrono::NaiveDate::parse_from_str(date_str.as_str(), "%Y-%m-%d")
-                        {
-                            let file_datetime = file_date.and_hms_opt(0, 0, 0).unwrap();
-                            let file_utc =
-                                chrono::DateTime::<chrono::Utc>::from_naive_utc_and_offset(
-                                    file_datetime,
-                                    chrono::Utc,
+            if let Some(caps) = re.captures(&filename_str) {
+                if let Ok(file_date) = NaiveDate::parse_from_str(&caps[1], "%Y-%m-%d") {
+                    if file_date < cutoff {
+                        match fs::remove_file(&path) {
+                            Ok(()) => {
+                                eprintln!(
+                                    "[sapo-printer] Deleted old log file: {}/{}",
+                                    level, filename_str
                                 );
-
-                            if file_utc < cutoff {
-                                match std::fs::remove_file(&path) {
-                                    Ok(()) => {
-                                        eprintln!(
-                                            "[sapo-printer] Deleted old log file: {}",
-                                            filename_str
-                                        );
-                                    }
-                                    Err(e) => {
-                                        eprintln!(
-                                            "[sapo-printer] Failed to delete old log file {}: {}",
-                                            filename_str, e
-                                        );
-                                    }
-                                }
+                            }
+                            Err(e) => {
+                                eprintln!(
+                                    "[sapo-printer] Failed to delete old log file {}/{}: {}",
+                                    level, filename_str, e
+                                );
                             }
                         }
                     }
@@ -171,52 +323,36 @@ mod tests {
 
     #[test]
     fn test_cleanup_old_logs_removes_expired_files() {
-        // Create a temp directory for this test
         let temp_dir = std::env::temp_dir().join("sapo_log_cleanup_test");
         let _ = fs::remove_dir_all(&temp_dir);
-        fs::create_dir_all(&temp_dir).unwrap();
+        let info_dir = temp_dir.join("info");
+        fs::create_dir_all(&info_dir).unwrap();
 
-        // Create a current log file (today)
-        let today = chrono::Utc::now().format("app.log.%Y-%m-%d").to_string();
-        let today_path = temp_dir.join(&today);
-        let mut f = fs::File::create(&today_path).unwrap();
-        writeln!(f, "current log").unwrap();
-
-        // Create an old log file (10 days ago)
-        let old_date = (chrono::Utc::now() - chrono::Duration::days(10))
-            .format("app.log.%Y-%m-%d")
+        // Recent archived file (today) — inside info/ subfolder
+        let today = Local::now()
+            .date_naive()
+            .format("info.%Y-%m-%d.log")
             .to_string();
-        let old_path = temp_dir.join(&old_date);
-        let mut f = fs::File::create(&old_path).unwrap();
-        writeln!(f, "old log").unwrap();
+        let today_path = info_dir.join(&today);
+        File::create(&today_path).unwrap();
 
-        // Create a non-matching file (should not be deleted)
-        let other_path = temp_dir.join("other_file.txt");
-        let mut f = fs::File::create(&other_path).unwrap();
-        writeln!(f, "other").unwrap();
+        // Old archived file (10 days ago)
+        let old_date = (Local::now().date_naive() - chrono::Duration::days(10))
+            .format("info.%Y-%m-%d.log")
+            .to_string();
+        let old_path = info_dir.join(&old_date);
+        File::create(&old_path).unwrap();
 
-        // Run cleanup with 7-day retention
+        // Non-dated file (should not be deleted)
+        let other_path = info_dir.join("other_file.txt");
+        File::create(&other_path).unwrap();
+
         cleanup_old_logs(&temp_dir, 7);
 
-        // Today's file should still exist
-        assert!(
-            today_path.exists(),
-            "Today's log file should not be deleted"
-        );
+        assert!(today_path.exists(), "Today's archive should not be deleted");
+        assert!(!old_path.exists(), "Archive older than 7 days should be deleted");
+        assert!(other_path.exists(), "Non-dated files should not be deleted");
 
-        // Old file should be deleted
-        assert!(
-            !old_path.exists(),
-            "Old log file (>7 days) should be deleted"
-        );
-
-        // Other file should still exist
-        assert!(
-            other_path.exists(),
-            "Non-matching files should not be deleted"
-        );
-
-        // Cleanup temp dir
         let _ = fs::remove_dir_all(&temp_dir);
     }
 
@@ -224,21 +360,21 @@ mod tests {
     fn test_cleanup_keeps_recent_files() {
         let temp_dir = std::env::temp_dir().join("sapo_log_keep_test");
         let _ = fs::remove_dir_all(&temp_dir);
-        fs::create_dir_all(&temp_dir).unwrap();
+        let warn_dir = temp_dir.join("warn");
+        fs::create_dir_all(&warn_dir).unwrap();
 
-        // Create a log file from 3 days ago (should be kept with 7-day retention)
-        let recent_date = (chrono::Utc::now() - chrono::Duration::days(3))
-            .format("app.log.%Y-%m-%d")
+        // Archived file from 3 days ago (kept with 7-day retention)
+        let recent_date = (Local::now().date_naive() - chrono::Duration::days(3))
+            .format("warn.%Y-%m-%d.log")
             .to_string();
-        let recent_path = temp_dir.join(&recent_date);
-        let mut f = fs::File::create(&recent_path).unwrap();
-        writeln!(f, "recent log").unwrap();
+        let recent_path = warn_dir.join(&recent_date);
+        File::create(&recent_path).unwrap();
 
         cleanup_old_logs(&temp_dir, 7);
 
         assert!(
             recent_path.exists(),
-            "Log file within 7-day retention should be kept"
+            "Archive within 7-day retention should be kept"
         );
 
         let _ = fs::remove_dir_all(&temp_dir);
@@ -246,7 +382,6 @@ mod tests {
 
     #[test]
     fn test_env_filter_parses_rust_log() {
-        // Test that valid RUST_LOG values can be parsed
         let test_cases = [
             "debug",
             "info",
@@ -267,157 +402,83 @@ mod tests {
         }
     }
 
-    /// Integration test: verify that log files are created and contain JSON-formatted entries
-    /// when real operations are executed.
+    /// The per-level writer creates `<level>.log` at the root and only that
+    /// level's events land there, in JSON.
     #[test]
-    fn test_integration_log_file_created_with_json_entries() {
-        use tracing_subscriber::{EnvFilter, fmt, layer::SubscriberExt, util::SubscriberInitExt};
+    fn test_level_appender_writes_json_to_root_file() {
+        use tracing_subscriber::{fmt, layer::SubscriberExt};
 
-        let temp_dir = std::env::temp_dir().join("sapo_integration_log_test");
+        let temp_dir = std::env::temp_dir().join("sapo_level_appender_test");
         let _ = fs::remove_dir_all(&temp_dir);
         fs::create_dir_all(&temp_dir).unwrap();
 
-        // Create a file appender targeting the temp directory
-        let file_appender = RollingFileAppender::builder()
-            .rotation(Rotation::DAILY)
-            .filename_prefix("app.log")
-            .build(&temp_dir)
-            .expect("Failed to create file appender");
+        let appender = LevelAppender::new(temp_dir.clone(), "info");
 
-        let filter = EnvFilter::new("debug");
-
-        // Initialize a test subscriber (this won't conflict with the global subscriber
-        // since each test runs in its own thread and the global one is set once)
-        let _guard = tracing_subscriber::registry()
-            .with(filter)
-            .with(
-                fmt::layer()
-                    .json()
-                    .with_writer(file_appender)
-                    .with_ansi(false),
-            )
-            .set_default();
-
-        // Emit some test events
-        tracing::info!(
-            target = "sapo_printer::test",
-            test_field = "test_value",
-            "Integration test log entry"
-        );
-        tracing::debug!(
-            target = "sapo_printer::test",
-            debug_field = 42,
-            "Integration test debug entry"
+        // `with_default` only sets a thread-local subscriber; it avoids installing
+        // the global `log` bridge, which would clash with the idempotency test.
+        let subscriber = tracing_subscriber::registry().with(
+            fmt::layer()
+                .json()
+                .with_writer(appender)
+                .with_ansi(false)
+                .with_filter(filter_fn(|meta| *meta.level() == Level::INFO)),
         );
 
-        // Allow time for file writes to flush
-        // RollingFileAppender uses buffered writes; 500ms should be sufficient
+        tracing::subscriber::with_default(subscriber, || {
+            tracing::info!(target = "sapo_printer::test", test_field = "test_value", "info entry");
+            // A non-info event must NOT appear in the info file.
+            tracing::warn!(target = "sapo_printer::test", "warn entry");
+        });
+
         std::thread::sleep(Duration::from_millis(500));
 
-        // Find the log file
-        let entries: Vec<_> = fs::read_dir(&temp_dir)
-            .unwrap()
-            .filter_map(|e| e.ok())
-            .collect();
+        let active = temp_dir.join("info.log");
+        assert!(active.exists(), "info.log should be created at the log root");
 
-        assert!(
-            !entries.is_empty(),
-            "At least one log file should be created"
-        );
-
-        // Read the first log file and verify it contains JSON entries
-        for entry in &entries {
-            let content = fs::read_to_string(entry.path()).unwrap_or_default();
-            if content.contains("Integration test log entry") {
-                // Verify JSON-like structure (tracing-subscriber json output)
-                assert!(
-                    content.contains("\"timestamp\""),
-                    "Log should contain timestamp field"
-                );
-                assert!(
-                    content.contains("\"level\""),
-                    "Log should contain level field"
-                );
-                assert!(
-                    content.contains("\"fields\""),
-                    "Log should contain fields section"
-                );
-                assert!(
-                    content.contains("\"target\""),
-                    "Log should contain target field"
-                );
-                return;
-            }
-        }
-
-        // If we get here, the log entry wasn't found — but the file was created
-        // which is still a passing test for AC-4 (log file creation)
-        assert!(
-            !entries.is_empty(),
-            "Log files should be created during real operations"
-        );
+        let content = fs::read_to_string(&active).unwrap_or_default();
+        assert!(content.contains("info entry"), "info file should contain the info event");
+        assert!(!content.contains("warn entry"), "info file must not contain warn events");
+        assert!(content.contains("\"timestamp\""), "should be JSON with a timestamp field");
+        assert!(content.contains("\"level\""), "should be JSON with a level field");
 
         let _ = fs::remove_dir_all(&temp_dir);
     }
 
-    /// Integration test: simulate 8-day span and verify cleanup deletes >7-day-old files.
+    /// Simulate 10 days of archives in a level subfolder and verify >7-day-old
+    /// files are cleaned up while the rest are kept.
     #[test]
-    fn test_integration_old_log_files_deleted() {
-        let temp_dir = std::env::temp_dir().join("sapo_integration_cleanup_test");
+    fn test_old_archived_files_deleted() {
+        let temp_dir = std::env::temp_dir().join("sapo_archive_cleanup_test");
         let _ = fs::remove_dir_all(&temp_dir);
-        fs::create_dir_all(&temp_dir).unwrap();
+        let error_dir = temp_dir.join("error");
+        fs::create_dir_all(&error_dir).unwrap();
 
-        // Create log files simulating 10 days of logs
         for days_ago in 1..=10 {
-            let date = (chrono::Utc::now() - chrono::Duration::days(days_ago))
-                .format("app.log.%Y-%m-%d")
+            let date = (Local::now().date_naive() - chrono::Duration::days(days_ago))
+                .format("error.%Y-%m-%d.log")
                 .to_string();
-            let path = temp_dir.join(&date);
-            let mut f = fs::File::create(&path).unwrap();
-            writeln!(f, "Log content for {} days ago", days_ago).unwrap();
+            let mut f = File::create(error_dir.join(&date)).unwrap();
+            writeln!(f, "log for {days_ago} days ago").unwrap();
         }
 
-        // Verify 10 files exist before cleanup
-        let before_count = fs::read_dir(&temp_dir).unwrap().count();
-        assert_eq!(before_count, 10, "Should have 10 log files before cleanup");
+        assert_eq!(fs::read_dir(&error_dir).unwrap().count(), 10);
 
-        // Run cleanup with 7-day retention
         cleanup_old_logs(&temp_dir, 7);
 
-        // Count files after cleanup
-        let after_count = fs::read_dir(&temp_dir).unwrap().count();
+        // Days 8..=10 removed (3), days 1..=7 kept (7).
+        assert_eq!(fs::read_dir(&error_dir).unwrap().count(), 7);
 
-        // Files older than 7 days (days 8, 9, 10) should be deleted = 3 files removed
-        // Files within 7 days (days 1-7) should remain = 7 files kept
-        assert_eq!(
-            after_count, 7,
-            "Should have 7 log files remaining after cleanup (3 old files deleted)"
-        );
-
-        // Verify the remaining files are the most recent ones
         for days_ago in 1..=7 {
-            let date = (chrono::Utc::now() - chrono::Duration::days(days_ago))
-                .format("app.log.%Y-%m-%d")
+            let date = (Local::now().date_naive() - chrono::Duration::days(days_ago))
+                .format("error.%Y-%m-%d.log")
                 .to_string();
-            let path = temp_dir.join(&date);
-            assert!(
-                path.exists(),
-                "Log file from {} days ago should still exist",
-                days_ago
-            );
+            assert!(error_dir.join(&date).exists(), "day {days_ago} should be kept");
         }
-
-        // Verify old files are deleted
         for days_ago in 8..=10 {
-            let date = (chrono::Utc::now() - chrono::Duration::days(days_ago))
-                .format("app.log.%Y-%m-%d")
+            let date = (Local::now().date_naive() - chrono::Duration::days(days_ago))
+                .format("error.%Y-%m-%d.log")
                 .to_string();
-            let path = temp_dir.join(&date);
-            assert!(
-                !path.exists(),
-                "Log file from {} days ago should be deleted",
-                days_ago
-            );
+            assert!(!error_dir.join(&date).exists(), "day {days_ago} should be deleted");
         }
 
         let _ = fs::remove_dir_all(&temp_dir);

@@ -76,6 +76,7 @@ pub fn run() {
             bootstrap::http_server::start_http_server(app, pool, &dirs.data_dir);
 
             app.handle().plugin(tauri_plugin_dialog::init())?;
+            app.handle().plugin(tauri_plugin_opener::init())?;
 
             #[cfg(desktop)]
             app.handle().plugin(tauri_plugin_autostart::init(

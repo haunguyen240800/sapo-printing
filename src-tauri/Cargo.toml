@@ -104,6 +104,9 @@ minisign-verify = "0.2"
 # Dialog plugin for native file dialogs
 tauri-plugin-dialog = "2"
 
+# Open external URLs in the system browser
+tauri-plugin-opener = "2"
+
 # Auto-start on OS login (toggleable via Settings)
 tauri-plugin-autostart = "2"
 

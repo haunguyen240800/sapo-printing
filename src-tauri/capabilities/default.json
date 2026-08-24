@@ -5,6 +5,10 @@
   "permissions": [
     "core:default",
     "updater:default",
-    "dialog:allow-save"
+    "dialog:allow-save",
+    {
+      "identifier": "opener:allow-open-url",
+      "allow": [{ "url": "https://*" }]
+    }
   ]
 }
