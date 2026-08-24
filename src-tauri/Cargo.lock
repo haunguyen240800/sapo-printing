@@ -4785,7 +4785,7 @@ dependencies = [
 
 [[package]]
 name = "sapo-printer-pro-max"
-version = "1.0.9"
+version = "1.0.0"
 dependencies = [
  "async-trait",
  "axum",
