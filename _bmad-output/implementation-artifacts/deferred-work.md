@@ -223,3 +223,7 @@
 - **Redundant network call on manual check** — Manual `check_for_updates` command calls `updater.check()` independently of background task. Low frequency, acceptable.
 - **None version dedup edge case** — If `version: None` but `update_available: true`, dedup behavior is undefined. Defensive concern; tauri-plugin-updater always provides version.
 
+## Deferred from: rename pairing confirmation unavailable error (2026-08-24)
+
+- **Rust formatting debt** [`src-tauri/src/interface/http_server/handlers.rs:1`] — `cargo fmt --check` đã thất bại từ baseline do BOM/thứ tự import trong file này và nhiều file khác của crate. Thay đổi API pairing không gây ra lỗi format; cần một cleanup riêng để tránh trộn diff ngoài phạm vi.
+

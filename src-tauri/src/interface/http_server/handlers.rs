@@ -100,26 +100,28 @@ pub async fn pair(
             api_token: resp.api_token,
             expires_at: resp.expires_at,
         })),
-        Err(PairError::UserDenied) => Err(ApiError::new(
-            StatusCode::FORBIDDEN,
-            "user_denied",
-            "user denied",
-        )),
-        Err(PairError::Timeout) => Err(ApiError::new(
+        Err(error) => Err(map_pair_error(error)),
+    }
+}
+
+fn map_pair_error(error: PairError) -> ApiErrorResponse {
+    match error {
+        PairError::UserDenied => ApiError::new(StatusCode::FORBIDDEN, "user_denied", "user denied"),
+        PairError::Timeout => ApiError::new(
             StatusCode::REQUEST_TIMEOUT,
             "pair_timeout",
             "user did not respond",
-        )),
-        Err(PairError::NoUiSubscriber) => Err(ApiError::new(
+        ),
+        PairError::NoUiSubscriber => ApiError::new(
             StatusCode::SERVICE_UNAVAILABLE,
-            "no_ui_subscriber",
-            "no ui subscriber to receive pair request",
-        )),
-        Err(e) => Err(ApiError::new(
+            "pairing_confirmation_unavailable",
+            "desktop application is unavailable to confirm pairing",
+        ),
+        error => ApiError::new(
             StatusCode::INTERNAL_SERVER_ERROR,
             "internal",
-            e.to_string(),
-        )),
+            error.to_string(),
+        ),
     }
 }
 
@@ -213,4 +215,58 @@ fn map_app_error(e: Error) -> ApiErrorResponse {
         Error::Operation(_) => StatusCode::INTERNAL_SERVER_ERROR,
     };
     ApiError::new(status, e.code(), e.to_string())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn assert_pair_error(
+        error: PairError,
+        expected_status: StatusCode,
+        expected_code: &'static str,
+        expected_message: &str,
+    ) {
+        let response = map_pair_error(error);
+
+        assert_eq!(response.status, expected_status);
+        assert_eq!(response.body.code, expected_code);
+        assert_eq!(response.body.message, expected_message);
+    }
+
+    #[test]
+    fn maps_unavailable_pairing_confirmation_without_internal_terms() {
+        let response = map_pair_error(PairError::NoUiSubscriber);
+
+        assert_eq!(response.status, StatusCode::SERVICE_UNAVAILABLE);
+        assert_eq!(response.body.code, "pairing_confirmation_unavailable");
+        assert_eq!(
+            response.body.message,
+            "desktop application is unavailable to confirm pairing"
+        );
+        assert!(!response.body.message.contains("subscriber"));
+        assert!(!response.body.message.contains("channel"));
+    }
+
+    #[test]
+    fn preserves_other_pair_error_mappings() {
+        assert_pair_error(
+            PairError::UserDenied,
+            StatusCode::FORBIDDEN,
+            "user_denied",
+            "user denied",
+        );
+        assert_pair_error(
+            PairError::Timeout,
+            StatusCode::REQUEST_TIMEOUT,
+            "pair_timeout",
+            "user did not respond",
+        );
+        assert_pair_error(
+            PairError::Backend("storage failed".to_owned()),
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "internal",
+            "backend: storage failed",
+        );
+    }
 }
