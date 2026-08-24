@@ -12,10 +12,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let config: Value = serde_json::from_str(&config_text)
         .map_err(|error| invalid_config(format!("tauri.conf.json is not valid JSON: {error}")))?;
 
-    emit_env(
-        "SAPO_PRODUCT_NAME",
-        required_string(&config, &["productName"])?,
-    )?;
+    let product_name = required_string(&config, &["productName"])?;
+    emit_env("SAPO_PRODUCT_NAME", product_name)?;
+    emit_env("SAPO_APP_SLUG", &slugify(product_name))?;
     emit_env("SAPO_APP_VERSION", required_string(&config, &["version"])?)?;
     emit_env(
         "SAPO_UPDATER_PUBKEY",
@@ -82,6 +81,24 @@ fn validate_env_value(path: &str, value: &str) -> Result<(), io::Error> {
         )));
     }
     Ok(())
+}
+
+fn slugify(value: &str) -> String {
+    let mut slug = String::with_capacity(value.len());
+    let mut prev_hyphen = false;
+    for ch in value.chars() {
+        if ch.is_ascii_alphanumeric() {
+            slug.push(ch.to_ascii_lowercase());
+            prev_hyphen = false;
+        } else if !slug.is_empty() && !prev_hyphen {
+            slug.push('-');
+            prev_hyphen = true;
+        }
+    }
+    while slug.ends_with('-') {
+        slug.pop();
+    }
+    slug
 }
 
 fn emit_env(name: &str, value: &str) -> Result<(), io::Error> {

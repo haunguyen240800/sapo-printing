@@ -38,16 +38,13 @@ pub fn run() {
     };
     use tauri::Manager;
 
-    init_logging();
-
     if rustls::crypto::aws_lc_rs::default_provider()
         .install_default()
         .is_err()
     {
+        // No subscriber yet; this is a no-op until logging is initialized in setup().
         tracing::debug!("rustls CryptoProvider already installed");
     }
-
-    let dirs = bootstrap::dirs::init_directories();
 
     tauri::Builder::default()
         .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
@@ -58,6 +55,11 @@ pub fn run() {
             }
         }))
         .setup(move |app| {
+            // Resolve OS-standard data/log dirs, then initialize logging first so
+            // subsequent startup steps are captured.
+            let dirs = bootstrap::dirs::init_directories(app.handle());
+            init_logging(&dirs.log_dir);
+
             #[cfg(target_os = "windows")]
             setup_windows_titlebar(app);
 

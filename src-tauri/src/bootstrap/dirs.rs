@@ -1,21 +1,24 @@
 use std::path::PathBuf;
 
-/// Các đường dẫn thư mục cần thiết cho app, được khởi tạo một lần lúc startup.
+use tauri::{AppHandle, Manager};
+
+const APP_DIR_NAME: &str = env!("SAPO_APP_SLUG");
+
 pub struct AppDirs {
     pub data_dir: PathBuf,
     pub temp_dir: PathBuf,
+    pub log_dir: PathBuf,
     pub db_path: PathBuf,
     pub db_path_str: String,
 }
 
-/// Tạo và kiểm tra tất cả các thư mục cần thiết.
-/// Gọi `std::process::exit(1)` nếu có lỗi không thể phục hồi.
-pub fn init_directories() -> AppDirs {
-    let home = std::env::var("USERPROFILE")
-        .or_else(|_| std::env::var("HOME"))
-        .unwrap_or_else(|_| ".".to_string());
+pub fn init_directories(app: &AppHandle) -> AppDirs {
+    let base = app.path().data_dir().unwrap_or_else(|e| {
+        eprintln!("Cannot resolve OS data directory: {e}");
+        std::process::exit(1);
+    });
 
-    let data_dir = PathBuf::from(&home).join(".sapo-printer");
+    let data_dir = base.join(APP_DIR_NAME);
     std::fs::create_dir_all(&data_dir).unwrap_or_else(|e| {
         eprintln!("Cannot create data directory: {e}");
         std::process::exit(1);
@@ -26,6 +29,8 @@ pub fn init_directories() -> AppDirs {
         eprintln!("Cannot create temp directory: {e}");
         std::process::exit(1);
     });
+
+    let log_dir = data_dir.join("logs");
 
     let db_path = data_dir.join("config.db");
     let db_path_str = db_path
@@ -39,6 +44,7 @@ pub fn init_directories() -> AppDirs {
     AppDirs {
         data_dir,
         temp_dir,
+        log_dir,
         db_path,
         db_path_str,
     }
