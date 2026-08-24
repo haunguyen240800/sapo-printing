@@ -111,7 +111,7 @@ export default function PrinterPage() {
     total: metrics?.total_jobs || 0,
     success: metrics?.completed || 0,
     failed: metrics?.failed || 0,
-    printTime: metrics?.avg_print_time_secs ? `${metrics.avg_print_time_secs.toFixed(1)}s` : null,
+    printTime: metrics?.last_print_time_secs ? `${metrics.last_print_time_secs.toFixed(1)}s` : null,
     downloadProgress: calculateDownloadProgress(),
     printProgress: calculatePrintProgress(),
   };

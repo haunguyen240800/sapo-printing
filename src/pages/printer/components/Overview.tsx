@@ -100,7 +100,7 @@ export function Overview({ printerConfig, stats }: Props) {
               Thời gian in:
             </Text>
             <Text as="span" variant="bodyMd">
-              {stats.printTime || "Chưa có"}
+              {stats.printTime || "---"}
             </Text>
             <Text as="span" variant="bodyMd">
               Tổng:

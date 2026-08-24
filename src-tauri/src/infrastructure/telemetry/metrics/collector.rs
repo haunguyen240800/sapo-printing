@@ -1,37 +1,20 @@
-use std::sync::Arc;
-use std::time::{SystemTime, UNIX_EPOCH};
-
-use rusqlite::Connection;
+use rusqlite::{Connection, OptionalExtension};
 
 use crate::application::errors::Error;
-use crate::application::ports::{
-    JobMetrics, MetricsPort, MetricsSnapshot, PerformanceMetrics, PrinterJobStats, PrinterMetrics,
-    QueueMetrics, QueuePort,
-};
+use crate::application::ports::{MetricsPort, MetricsSnapshot};
 use crate::infrastructure::configs::db::DbPool;
 use crate::infrastructure::errors::InfrastructureError;
 
 pub struct MetricsCollector {
     pool: DbPool,
-    queue_manager: Arc<dyn QueuePort>,
 }
 
 impl MetricsCollector {
-    pub fn new(pool: DbPool, queue_manager: Arc<dyn QueuePort>) -> Self {
-        Self {
-            pool,
-            queue_manager,
-        }
+    pub fn new(pool: DbPool) -> Self {
+        Self { pool }
     }
 
     pub fn collect_metrics(&self) -> Result<MetricsSnapshot, InfrastructureError> {
-        let current_depth =
-            self.queue_manager
-                .queue_depth()
-                .map_err(|e| InfrastructureError::DatabaseError {
-                    reason: format!("Failed to read queue depth: {}", e),
-                })?;
-
         tracing::debug!(
             target = "sapo_printer::metrics",
             "MetricsCollector: acquiring pooled connection"
@@ -49,10 +32,8 @@ impl MetricsCollector {
             "MetricsCollector: connection acquired, collecting metrics"
         );
 
-        let job_metrics = self.collect_job_metrics(&conn)?;
-        let queue_metrics = self.collect_queue_metrics(&conn, current_depth)?;
-        let printer_metrics = self.collect_printer_metrics(&conn)?;
-        let performance_metrics = self.collect_performance_metrics(&conn)?;
+        let (total_jobs, completed, failed) = self.fetch_job_counts(&conn)?;
+        let last_print_time_secs = self.fetch_last_print_duration(&conn)?;
 
         drop(conn);
 
@@ -61,21 +42,18 @@ impl MetricsCollector {
             "MetricsCollector: connection released"
         );
 
-        let collected_at = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .unwrap_or_default()
-            .as_secs() as i64;
-
         Ok(MetricsSnapshot {
-            collected_at,
-            job_metrics,
-            queue_metrics,
-            printer_metrics,
-            performance_metrics,
+            total_jobs,
+            completed,
+            failed,
+            last_print_time_secs,
         })
     }
 
-    fn collect_job_metrics(&self, conn: &Connection) -> Result<JobMetrics, InfrastructureError> {
+    fn fetch_job_counts(
+        &self,
+        conn: &Connection,
+    ) -> Result<(u64, u64, u64), InfrastructureError> {
         let mut stmt = conn
             .prepare("SELECT status, COUNT(*) FROM print_jobs GROUP BY status")
             .map_err(|e| InfrastructureError::DatabaseError {
@@ -100,14 +78,8 @@ impl MetricsCollector {
             counts.insert(status, count);
         }
 
-        let pending = counts.get("PENDING").copied().unwrap_or(0);
-        let queued = counts.get("QUEUED").copied().unwrap_or(0);
-        let downloaded = counts.get("DOWNLOADED").copied().unwrap_or(0);
-        let submitted = counts.get("SUBMITTED_TO_QUEUE").copied().unwrap_or(0);
-        let printing = counts.get("PRINTING").copied().unwrap_or(0);
         let completed = counts.get("COMPLETED").copied().unwrap_or(0);
         let failed = counts.get("FAILED").copied().unwrap_or(0);
-        let cancelled = counts.get("CANCELLED").copied().unwrap_or(0);
 
         let total_jobs: u64 = conn
             .query_row("SELECT COUNT(*) FROM print_jobs", [], |row| row.get(0))
@@ -115,208 +87,38 @@ impl MetricsCollector {
                 reason: format!("Failed to count total jobs: {}", e),
             })?;
 
-        let terminal = completed + failed;
-        let success_rate = if terminal > 0 {
-            (completed as f64 / terminal as f64) * 100.0
-        } else {
-            0.0
-        };
-
-        Ok(JobMetrics {
-            total_jobs,
-            pending,
-            queued,
-            downloaded,
-            submitted,
-            printing,
-            completed,
-            failed,
-            cancelled,
-            success_rate,
-        })
+        Ok((total_jobs, completed, failed))
     }
 
-    fn collect_queue_metrics(
+    fn fetch_last_print_duration(
         &self,
         conn: &Connection,
-        current_depth: usize,
-    ) -> Result<QueueMetrics, InfrastructureError> {
-        let avg_wait_time_secs: f64 = conn
+    ) -> Result<f64, InfrastructureError> {
+        let result: Option<f64> = conn
             .query_row(
-                "SELECT COALESCE(AVG(CAST(e.timestamp AS FLOAT) - CAST(j.created_at AS FLOAT)), 0.0)
-                 FROM print_jobs j
-                 JOIN events e ON j.id = e.aggregate_id
-                 WHERE e.event_type = 'PrintJobQueued'
-                   AND e.timestamp >= j.created_at
-                   AND e.sequence_number = (
-                       SELECT MIN(e2.sequence_number)
-                       FROM events e2
-                       WHERE e2.aggregate_id = j.id
-                         AND e2.event_type = 'PrintJobQueued'
-                   )",
+                "SELECT CAST(c.timestamp AS FLOAT) - CAST(p.timestamp AS FLOAT)
+                 FROM events c
+                 JOIN events p ON c.aggregate_id = p.aggregate_id
+                     AND p.event_type = 'PrintJobPrinting'
+                     AND p.sequence_number = (
+                         SELECT MAX(p2.sequence_number)
+                         FROM events p2
+                         WHERE p2.aggregate_id = c.aggregate_id
+                           AND p2.event_type = 'PrintJobPrinting'
+                           AND p2.sequence_number < c.sequence_number
+                     )
+                 WHERE c.event_type = 'PrintJobCompleted'
+                   AND c.timestamp >= p.timestamp
+                 ORDER BY c.timestamp DESC, c.sequence_number DESC
+                 LIMIT 1",
                 [],
                 |row| row.get(0),
             )
+            .optional()
             .map_err(|e| InfrastructureError::DatabaseError {
-                reason: format!("Failed to query avg wait time: {}", e),
+                reason: format!("Failed to query last print duration: {}", e),
             })?;
-
-        Ok(QueueMetrics {
-            current_depth,
-            avg_wait_time_secs,
-        })
-    }
-
-    fn collect_printer_metrics(
-        &self,
-        conn: &Connection,
-    ) -> Result<PrinterMetrics, InfrastructureError> {
-        let mut stmt = conn
-            .prepare(
-                "SELECT printer_name,
-                        COUNT(*) as total,
-                        SUM(CASE WHEN status = 'COMPLETED' THEN 1 ELSE 0 END) as completed
-                 FROM print_jobs
-                 GROUP BY printer_name
-                 ORDER BY printer_name",
-            )
-            .map_err(|e| InfrastructureError::DatabaseError {
-                reason: format!("Failed to prepare printer query: {}", e),
-            })?;
-
-        let printers = stmt
-            .query_map([], |row| {
-                let printer_name: String = row.get(0)?;
-                let total_jobs: u64 = row.get(1)?;
-                let completed_jobs: u64 = row.get(2)?;
-                Ok((printer_name, total_jobs, completed_jobs))
-            })
-            .map_err(|e| InfrastructureError::DatabaseError {
-                reason: format!("Failed to query printers: {}", e),
-            })?;
-
-        let mut result = Vec::new();
-        for row in printers {
-            let (printer_name, total_jobs, completed_jobs) =
-                row.map_err(|e| InfrastructureError::DatabaseError {
-                    reason: format!("Row error: {}", e),
-                })?;
-            let utilization_percent = if total_jobs > 0 {
-                (completed_jobs as f64 / total_jobs as f64) * 100.0
-            } else {
-                0.0
-            };
-            result.push(PrinterJobStats {
-                printer_name,
-                total_jobs,
-                completed_jobs,
-                utilization_percent,
-            });
-        }
-
-        Ok(PrinterMetrics { printers: result })
-    }
-
-    fn collect_performance_metrics(
-        &self,
-        conn: &Connection,
-    ) -> Result<PerformanceMetrics, InfrastructureError> {
-        let durations = self.fetch_completed_durations(conn)?;
-
-        let avg_job_duration_secs = if durations.is_empty() {
-            0.0
-        } else {
-            durations.iter().sum::<f64>() / durations.len() as f64
-        };
-
-        let mut sorted = durations.clone();
-        sorted.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
-
-        let p50_job_duration_secs = percentile(&sorted, 50.0);
-        let p95_job_duration_secs = percentile(&sorted, 95.0);
-        let p99_job_duration_secs = percentile(&sorted, 99.0);
-
-        let avg_download_time_secs =
-            self.fetch_step_duration(conn, "PrintJobQueued", "PrintJobDownloaded")?;
-        let avg_render_time_secs =
-            self.fetch_step_duration(conn, "PrintJobDownloaded", "PrintJobSubmitted")?;
-        let avg_print_time_secs =
-            self.fetch_step_duration(conn, "PrintJobPrinting", "PrintJobCompleted")?;
-
-        Ok(PerformanceMetrics {
-            avg_job_duration_secs,
-            p50_job_duration_secs,
-            p95_job_duration_secs,
-            p99_job_duration_secs,
-            avg_download_time_secs,
-            avg_render_time_secs,
-            avg_print_time_secs,
-        })
-    }
-
-    fn fetch_completed_durations(
-        &self,
-        conn: &Connection,
-    ) -> Result<Vec<f64>, InfrastructureError> {
-        let mut stmt = conn
-            .prepare(
-                "SELECT CAST(completed_at AS FLOAT) - CAST(created_at AS FLOAT)
-                 FROM print_jobs
-                 WHERE status = 'COMPLETED'
-                   AND completed_at IS NOT NULL
-                   AND completed_at >= created_at",
-            )
-            .map_err(|e| InfrastructureError::DatabaseError {
-                reason: format!("Failed to prepare durations query: {}", e),
-            })?;
-
-        let rows = stmt.query_map([], |row| row.get(0)).map_err(|e| {
-            InfrastructureError::DatabaseError {
-                reason: format!("Failed to query durations: {}", e),
-            }
-        })?;
-
-        let mut durations = Vec::new();
-        for row in rows {
-            let val: f64 = row.map_err(|e| InfrastructureError::DatabaseError {
-                reason: format!("Row error: {}", e),
-            })?;
-            durations.push(val);
-        }
-        Ok(durations)
-    }
-
-    fn fetch_step_duration(
-        &self,
-        conn: &Connection,
-        from_event: &str,
-        to_event: &str,
-    ) -> Result<f64, InfrastructureError> {
-        let result: f64 = conn
-            .query_row(
-                "SELECT COALESCE(AVG(CAST(e2.timestamp AS FLOAT) - CAST(e1.timestamp AS FLOAT)), 0.0)
-                 FROM events e1
-                 JOIN events e2 ON e1.aggregate_id = e2.aggregate_id
-                     AND e2.event_type = ?2
-                     AND e2.sequence_number = (
-                         SELECT MIN(e3.sequence_number)
-                         FROM events e3
-                         WHERE e3.aggregate_id = e1.aggregate_id
-                           AND e3.event_type = ?2
-                           AND e3.sequence_number > e1.sequence_number
-                     )
-                 WHERE e1.event_type = ?1
-                   AND e2.timestamp >= e1.timestamp",
-                rusqlite::params![from_event, to_event],
-                |row| row.get(0),
-            )
-            .map_err(|e| InfrastructureError::DatabaseError {
-                reason: format!(
-                    "Failed to query step duration {} -> {}: {}",
-                    from_event, to_event, e
-                ),
-            })?;
-        Ok(result)
+        Ok(result.unwrap_or(0.0))
     }
 }
 
@@ -326,53 +128,13 @@ impl MetricsPort for MetricsCollector {
     }
 }
 
-fn percentile(sorted_values: &[f64], p: f64) -> f64 {
-    if sorted_values.is_empty() {
-        return 0.0;
-    }
-    if sorted_values.len() == 1 {
-        return sorted_values[0];
-    }
-    let rank = (p / 100.0) * (sorted_values.len() - 1) as f64;
-    let lower = rank.floor() as usize;
-    let upper = rank.ceil() as usize;
-    let frac = rank - lower as f64;
-    sorted_values[lower] * (1.0 - frac) + sorted_values[upper] * frac
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::application::ports::QueueError;
-    use crate::domain::print_job::{PrintJob, PrintJobId};
     use crate::infrastructure::configs::db::run_migrations;
+    use std::time::{SystemTime, UNIX_EPOCH};
 
-    struct MockQueueManager {
-        depth: usize,
-    }
-
-    impl MockQueueManager {
-        fn new(depth: usize) -> Self {
-            Self { depth }
-        }
-    }
-
-    impl QueuePort for MockQueueManager {
-        fn push(&self, _job_id: &PrintJobId) -> Result<(), QueueError> {
-            Ok(())
-        }
-        fn pop(&self) -> Result<Option<PrintJob>, QueueError> {
-            Ok(None)
-        }
-        fn requeue(&self, _job_id: &PrintJobId, _delay_secs: u64) -> Result<(), QueueError> {
-            Ok(())
-        }
-        fn queue_depth(&self) -> Result<usize, QueueError> {
-            Ok(self.depth)
-        }
-    }
-
-    fn setup() -> (DbPool, Arc<MockQueueManager>) {
+    fn setup() -> DbPool {
         let nanos = SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .unwrap()
@@ -384,8 +146,7 @@ mod tests {
             let mut conn = pool.get().unwrap();
             run_migrations(&mut *conn).unwrap();
         }
-        let qm = Arc::new(MockQueueManager::new(5));
-        (pool, qm)
+        pool
     }
 
     fn insert_job_with_status(
@@ -421,7 +182,7 @@ mod tests {
 
     #[test]
     fn test_job_metrics_counting() {
-        let (pool, qm) = setup();
+        let pool = setup();
         {
             let c = pool.get().unwrap();
             insert_job_with_status(
@@ -429,38 +190,6 @@ mod tests {
                 "00000000-0000-0000-0000-000000000001",
                 "HP",
                 "PENDING",
-                1000,
-                None,
-            );
-            insert_job_with_status(
-                &c,
-                "00000000-0000-0000-0000-000000000002",
-                "HP",
-                "QUEUED",
-                1000,
-                None,
-            );
-            insert_job_with_status(
-                &c,
-                "00000000-0000-0000-0000-000000000003",
-                "HP",
-                "DOWNLOADED",
-                1000,
-                None,
-            );
-            insert_job_with_status(
-                &c,
-                "00000000-0000-0000-0000-000000000004",
-                "HP",
-                "SUBMITTED_TO_QUEUE",
-                1000,
-                None,
-            );
-            insert_job_with_status(
-                &c,
-                "00000000-0000-0000-0000-000000000005",
-                "HP",
-                "PRINTING",
                 1000,
                 None,
             );
@@ -488,225 +217,50 @@ mod tests {
                 1000,
                 None,
             );
-            insert_job_with_status(
-                &c,
-                "00000000-0000-0000-0000-000000000009",
-                "HP",
-                "CANCELLED",
-                1000,
-                None,
-            );
         }
 
-        let collector = MetricsCollector::new(pool.clone(), qm);
+        let collector = MetricsCollector::new(pool.clone());
         let snapshot = collector.collect_metrics().unwrap();
 
-        assert_eq!(snapshot.job_metrics.total_jobs, 9);
-        assert_eq!(snapshot.job_metrics.pending, 1);
-        assert_eq!(snapshot.job_metrics.queued, 1);
-        assert_eq!(snapshot.job_metrics.downloaded, 1);
-        assert_eq!(snapshot.job_metrics.submitted, 1);
-        assert_eq!(snapshot.job_metrics.printing, 1);
-        assert_eq!(snapshot.job_metrics.completed, 2);
-        assert_eq!(snapshot.job_metrics.failed, 1);
-        assert_eq!(snapshot.job_metrics.cancelled, 1);
+        assert_eq!(snapshot.total_jobs, 4);
+        assert_eq!(snapshot.completed, 2);
+        assert_eq!(snapshot.failed, 1);
     }
 
     #[test]
-    fn test_success_rate_calculation() {
-        let (pool, qm) = setup();
+    fn test_last_print_duration_from_events() {
+        let pool = setup();
         {
             let c = pool.get().unwrap();
-            for i in 0..8 {
-                let id = format!("00000000-0000-0000-0000-{:012}", i + 1);
-                insert_job_with_status(&c, &id, "HP", "COMPLETED", 1000, Some(2000));
-            }
-            for i in 0..2 {
-                let id = format!("00000000-0000-0000-0000-{:012}", i + 100);
-                insert_job_with_status(&c, &id, "HP", "FAILED", 1000, None);
-            }
+
+            let older = "00000000-0000-0000-0000-000000000001";
+            insert_job_with_status(&c, older, "HP", "COMPLETED", 1000, Some(1100));
+            insert_event(&c, older, 1, "PrintJobPrinting", 1050);
+            insert_event(&c, older, 2, "PrintJobCompleted", 1100);
+
+            let newer = "00000000-0000-0000-0000-000000000002";
+            insert_job_with_status(&c, newer, "HP", "COMPLETED", 2000, Some(2200));
+            insert_event(&c, newer, 1, "PrintJobPrinting", 2150);
+            insert_event(&c, newer, 2, "PrintJobCompleted", 2200);
         }
 
-        let collector = MetricsCollector::new(pool.clone(), qm);
+        let collector = MetricsCollector::new(pool.clone());
         let snapshot = collector.collect_metrics().unwrap();
 
-        assert_eq!(snapshot.job_metrics.completed, 8);
-        assert_eq!(snapshot.job_metrics.failed, 2);
-        assert!((snapshot.job_metrics.success_rate - 80.0).abs() < f64::EPSILON);
-    }
-
-    #[test]
-    fn test_success_rate_zero_terminal_jobs() {
-        let (pool, qm) = setup();
-        {
-            let c = pool.get().unwrap();
-            insert_job_with_status(
-                &c,
-                "00000000-0000-0000-0000-000000000001",
-                "HP",
-                "PENDING",
-                1000,
-                None,
-            );
-            insert_job_with_status(
-                &c,
-                "00000000-0000-0000-0000-000000000002",
-                "HP",
-                "QUEUED",
-                1000,
-                None,
-            );
-        }
-
-        let collector = MetricsCollector::new(pool.clone(), qm);
-        let snapshot = collector.collect_metrics().unwrap();
-
-        assert!((snapshot.job_metrics.success_rate - 0.0).abs() < f64::EPSILON);
-    }
-
-    #[test]
-    fn test_queue_depth_from_mock() {
-        let (pool, qm) = setup();
-
-        let collector = MetricsCollector::new(pool.clone(), qm);
-        let snapshot = collector.collect_metrics().unwrap();
-
-        assert_eq!(snapshot.queue_metrics.current_depth, 5);
-    }
-
-    #[test]
-    fn test_percentile_calculation() {
-        let values: Vec<f64> = (1..=10).map(|i| i as f64).collect();
-        let sorted = values;
-
-        assert!((percentile(&sorted, 50.0) - 5.5).abs() < 0.01);
-        assert!((percentile(&sorted, 95.0) - 9.55).abs() < 0.01);
-        assert!((percentile(&sorted, 99.0) - 9.91).abs() < 0.01);
-    }
-
-    #[test]
-    fn test_percentile_empty() {
-        let empty: Vec<f64> = vec![];
-        assert!((percentile(&empty, 50.0) - 0.0).abs() < f64::EPSILON);
-    }
-
-    #[test]
-    fn test_percentile_single_value() {
-        let single = vec![42.0];
-        assert!((percentile(&single, 50.0) - 42.0).abs() < f64::EPSILON);
-        assert!((percentile(&single, 95.0) - 42.0).abs() < f64::EPSILON);
-        assert!((percentile(&single, 99.0) - 42.0).abs() < f64::EPSILON);
-    }
-
-    #[test]
-    fn test_printer_utilization() {
-        let (pool, qm) = setup();
-        {
-            let c = pool.get().unwrap();
-            insert_job_with_status(
-                &c,
-                "00000000-0000-0000-0000-000000000001",
-                "PrinterA",
-                "COMPLETED",
-                1000,
-                Some(2000),
-            );
-            insert_job_with_status(
-                &c,
-                "00000000-0000-0000-0000-000000000002",
-                "PrinterA",
-                "COMPLETED",
-                1000,
-                Some(2000),
-            );
-            insert_job_with_status(
-                &c,
-                "00000000-0000-0000-0000-000000000003",
-                "PrinterA",
-                "FAILED",
-                1000,
-                None,
-            );
-            insert_job_with_status(
-                &c,
-                "00000000-0000-0000-0000-000000000004",
-                "PrinterB",
-                "COMPLETED",
-                1000,
-                Some(2000),
-            );
-            insert_job_with_status(
-                &c,
-                "00000000-0000-0000-0000-000000000005",
-                "PrinterB",
-                "COMPLETED",
-                1000,
-                Some(2000),
-            );
-        }
-
-        let collector = MetricsCollector::new(pool.clone(), qm);
-        let snapshot = collector.collect_metrics().unwrap();
-
-        let printers = &snapshot.printer_metrics.printers;
-        assert_eq!(printers.len(), 2);
-
-        let a = printers
-            .iter()
-            .find(|p| p.printer_name == "PrinterA")
-            .unwrap();
-        assert_eq!(a.total_jobs, 3);
-        assert_eq!(a.completed_jobs, 2);
-        assert!((a.utilization_percent - 66.666).abs() < 0.1);
-
-        let b = printers
-            .iter()
-            .find(|p| p.printer_name == "PrinterB")
-            .unwrap();
-        assert_eq!(b.total_jobs, 2);
-        assert_eq!(b.completed_jobs, 2);
-        assert!((b.utilization_percent - 100.0).abs() < f64::EPSILON);
-    }
-
-    #[test]
-    fn test_step_duration_from_events() {
-        let (pool, qm) = setup();
-        {
-            let c = pool.get().unwrap();
-            let job_id = "00000000-0000-0000-0000-000000000001";
-            insert_job_with_status(&c, job_id, "HP", "COMPLETED", 1000, Some(2000));
-            insert_event(&c, job_id, 1, "PrintJobCreated", 1000);
-            insert_event(&c, job_id, 2, "PrintJobQueued", 1010);
-            insert_event(&c, job_id, 3, "PrintJobDownloaded", 1030);
-            insert_event(&c, job_id, 4, "PrintJobSubmitted", 1040);
-            insert_event(&c, job_id, 5, "PrintJobPrinting", 1050);
-            insert_event(&c, job_id, 6, "PrintJobCompleted", 1100);
-        }
-
-        let collector = MetricsCollector::new(pool.clone(), qm);
-        let snapshot = collector.collect_metrics().unwrap();
-
-        assert!((snapshot.performance_metrics.avg_download_time_secs - 20.0).abs() < f64::EPSILON);
-        assert!((snapshot.performance_metrics.avg_render_time_secs - 10.0).abs() < f64::EPSILON);
-        assert!((snapshot.performance_metrics.avg_print_time_secs - 50.0).abs() < f64::EPSILON);
+        // Most recent completed job: 2200 - 2150 = 50s
+        assert!((snapshot.last_print_time_secs - 50.0).abs() < f64::EPSILON);
     }
 
     #[test]
     fn test_empty_database() {
-        let (pool, qm) = setup();
+        let pool = setup();
 
-        let collector = MetricsCollector::new(pool.clone(), qm);
+        let collector = MetricsCollector::new(pool.clone());
         let snapshot = collector.collect_metrics().unwrap();
 
-        assert_eq!(snapshot.job_metrics.total_jobs, 0);
-        assert_eq!(snapshot.job_metrics.pending, 0);
-        assert_eq!(snapshot.job_metrics.completed, 0);
-        assert!((snapshot.job_metrics.success_rate - 0.0).abs() < f64::EPSILON);
-        assert_eq!(snapshot.queue_metrics.current_depth, 5);
-        assert!((snapshot.queue_metrics.avg_wait_time_secs - 0.0).abs() < f64::EPSILON);
-        assert!(snapshot.printer_metrics.printers.is_empty());
-        assert!((snapshot.performance_metrics.avg_job_duration_secs - 0.0).abs() < f64::EPSILON);
-        assert!((snapshot.performance_metrics.p50_job_duration_secs - 0.0).abs() < f64::EPSILON);
-        assert!((snapshot.performance_metrics.avg_download_time_secs - 0.0).abs() < f64::EPSILON);
+        assert_eq!(snapshot.total_jobs, 0);
+        assert_eq!(snapshot.completed, 0);
+        assert_eq!(snapshot.failed, 0);
+        assert!((snapshot.last_print_time_secs - 0.0).abs() < f64::EPSILON);
     }
 }

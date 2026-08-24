@@ -23,10 +23,7 @@ pub use config_port::{ConfigPort, PrintConfigSnapshot};
 pub use download_port::DownloadPort;
 pub use event_bus::{EventBus, EventBusError, EventHandler};
 pub use event_store::{EventStore, StoredEventData};
-pub use metrics_port::{
-    JobMetrics, MetricsPort, MetricsSnapshot, PerformanceMetrics, PrinterJobStats, PrinterMetrics,
-    QueueMetrics,
-};
+pub use metrics_port::{MetricsPort, MetricsSnapshot};
 pub use print_port::PrintPort;
 pub use printer_port::{PrinterAvailability, PrinterPort};
 pub use queue_port::{QueueError, QueuePort};

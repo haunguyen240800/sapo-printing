@@ -27,7 +27,7 @@ impl GetMetricsUseCase {
         tracing::info!(
             target = "sapo_printer::application::use_case::get_metrics",
             duration_ms = duration.as_millis(),
-            total_jobs = snapshot.job_metrics.total_jobs,
+            total_jobs = snapshot.total_jobs,
             "GetMetricsUseCase: completed"
         );
 

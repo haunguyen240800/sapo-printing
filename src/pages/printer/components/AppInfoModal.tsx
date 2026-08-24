@@ -10,7 +10,7 @@ type Props = {
 };
 
 export const AppInfoModal = ({ open, onClose }: Props) => {
-  const { state, checkUpdate, installUpdate, restartApp, isInstalling } = useAppUpdate();
+  const { state, checkUpdate, installUpdate, restartApp, reset, isChecking, isInstalling } = useAppUpdate();
   const [version, setVersion] = useState("");
   const [installationStarted, setInstallationStarted] = useState(false);
 
@@ -23,9 +23,9 @@ export const AppInfoModal = ({ open, onClose }: Props) => {
   useEffect(() => {
     if (open) {
       setInstallationStarted(false);
-      checkUpdate();
+      reset();
     }
-  }, [open, checkUpdate]);
+  }, [open, reset]);
 
   const handleInstallUpdate = () => {
     setInstallationStarted(true);
@@ -42,8 +42,14 @@ export const AppInfoModal = ({ open, onClose }: Props) => {
     switch (state.status) {
       case "idle":
       case "checking":
-      case "up-to-date":
         return null;
+
+      case "up-to-date":
+        return (
+          <Banner tone="info" hideDismiss>
+            <Text as="p">Không có phiên bản mới</Text>
+          </Banner>
+        );
 
       case "update-available":
       case "downloading":
@@ -93,8 +99,9 @@ export const AppInfoModal = ({ open, onClose }: Props) => {
           </Banner>
         );
 
-      case "error":
-        if (!installationStarted) {
+      case "error": {
+        const isCheckError = state.stage === "check";
+        if (!isCheckError && !installationStarted) {
           return null;
         }
 
@@ -102,25 +109,43 @@ export const AppInfoModal = ({ open, onClose }: Props) => {
           <Banner tone="critical" hideDismiss>
             <BlockStack gap="1">
               <Text as="p" fontWeight="medium">
-                {state.stage === "apply" ? "Không thể mở trình cài đặt" : "Cập nhật thất bại"}
+                {isCheckError
+                  ? "Không thể kiểm tra phiên bản"
+                  : state.stage === "apply"
+                    ? "Không thể mở trình cài đặt"
+                    : "Cập nhật thất bại"}
               </Text>
               <Text as="p" tone="subdued">
                 {state.message}
               </Text>
-              <InlineStack>
-                <Button
-                  variant="outline"
-                  onClick={state.stage === "apply" ? restartApp : handleInstallUpdate}
-                  disabled={state.stage === "check"}
-                >
-                  Thử lại
-                </Button>
-              </InlineStack>
+              {!isCheckError && (
+                <InlineStack>
+                  <Button variant="outline" onClick={state.stage === "apply" ? restartApp : handleInstallUpdate}>
+                    Thử lại
+                  </Button>
+                </InlineStack>
+              )}
             </BlockStack>
           </Banner>
         );
+      }
     }
   };
+
+  const showCheckAction =
+    state.status === "idle" ||
+    state.status === "checking" ||
+    state.status === "up-to-date" ||
+    (state.status === "error" && state.stage === "check");
+
+  const primaryAction = showCheckAction
+    ? {
+        content: "Kiểm tra phiên bản",
+        onAction: checkUpdate,
+        loading: isChecking,
+        disabled: isChecking,
+      }
+    : undefined;
 
   return (
     <Modal
@@ -129,6 +154,7 @@ export const AppInfoModal = ({ open, onClose }: Props) => {
       title="Thông tin"
       size="small"
       sectioned
+      primaryAction={primaryAction}
       secondaryActions={[
         {
           content: "Đóng",

@@ -23,6 +23,13 @@ export function useAppUpdate() {
   const [isInstalling, setIsInstalling] = useState(false);
   const [targetVersion, setTargetVersion] = useState("");
 
+  const reset = useCallback(() => {
+    setState({ status: "idle" });
+    setIsChecking(false);
+    setIsInstalling(false);
+    setTargetVersion("");
+  }, []);
+
   const checkUpdate = useCallback(async () => {
     setIsChecking(true);
     setState({ status: "checking" });
@@ -72,6 +79,7 @@ export function useAppUpdate() {
     checkUpdate,
     installUpdate,
     restartApp,
+    reset,
     isChecking,
     isInstalling,
     isBusy: isChecking || isInstalling,

@@ -146,7 +146,7 @@ pub fn build_app_state(
 
     // --- Metrics ---
     let metrics_provider: Arc<dyn MetricsPort> =
-        Arc::new(MetricsCollector::new(pool.clone(), queue_manager.clone()));
+        Arc::new(MetricsCollector::new(pool.clone()));
 
     // --- Audit cleanup ---
     match audit_service::cleanup_old_events(&event_store, 30) {
