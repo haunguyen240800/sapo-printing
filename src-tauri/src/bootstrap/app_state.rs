@@ -8,8 +8,8 @@ use crate::{
             print_job_failed_handler::PrintJobFailedHandler,
         },
         ports::{
-            event_bus::EventBus, ConfigPort, DownloadPort, EventStore, MetricsPort, PrintPort,
-            PrinterPort, QueuePort, SecretPort, TempFilePort,
+            ConfigPort, DownloadPort, EventStore, MetricsPort, PrintPort, PrinterPort, QueuePort,
+            SecretPort, TempFilePort, event_bus::EventBus,
         },
         services::audit_service,
         use_cases::{
@@ -27,8 +27,7 @@ use crate::{
         },
         persistence::{EventRepository, JobQueueBroker, PrintJobRepository},
         platform::{
-            printer_api::SystemPrinterManager,
-            printing::DefaultPrintService,
+            printer_api::SystemPrinterManager, printing::DefaultPrintService,
             updater::update_checker::InstallGuard,
         },
         telemetry::metrics::MetricsCollector,
@@ -37,12 +36,12 @@ use crate::{
     },
 };
 
-#[cfg(target_os = "windows")]
-use crate::infrastructure::platform::keychain::WindowsCredentialManager;
-#[cfg(target_os = "macos")]
-use crate::infrastructure::platform::keychain::MacOSKeychain;
 #[cfg(target_os = "linux")]
 use crate::infrastructure::platform::keychain::LinuxSecretService;
+#[cfg(target_os = "macos")]
+use crate::infrastructure::platform::keychain::MacOSKeychain;
+#[cfg(target_os = "windows")]
+use crate::infrastructure::platform::keychain::WindowsCredentialManager;
 
 use tauri::AppHandle;
 
@@ -50,6 +49,7 @@ use tauri::AppHandle;
 pub fn build_app_state(
     pool: DbPool,
     temp_dir: &std::path::Path,
+    print_config_path: &std::path::Path,
     app_handle: AppHandle,
     resource_dir: Option<std::path::PathBuf>,
 ) -> AppContextState {
@@ -70,17 +70,15 @@ pub fn build_app_state(
     let secret_manager: Arc<dyn SecretPort> = Arc::new(MacOSKeychain::new());
 
     #[cfg(target_os = "linux")]
-    let secret_manager: Arc<dyn SecretPort> = Arc::new(
-        match LinuxSecretService::new() {
-            Ok(s) => s,
-            Err(e) => {
-                eprintln!("Warning: Secret Service unavailable: {e}");
-                eprintln!("Device tokens and secrets will not be persisted securely.");
-                eprintln!("Install gnome-keyring or use environment variables for secrets.");
-                std::process::exit(1);
-            }
-        },
-    );
+    let secret_manager: Arc<dyn SecretPort> = Arc::new(match LinuxSecretService::new() {
+        Ok(s) => s,
+        Err(e) => {
+            eprintln!("Warning: Secret Service unavailable: {e}");
+            eprintln!("Device tokens and secrets will not be persisted securely.");
+            eprintln!("Install gnome-keyring or use environment variables for secrets.");
+            std::process::exit(1);
+        }
+    });
 
     // --- Event store & bus ---
     let event_store: Arc<dyn EventStore> =
@@ -104,20 +102,18 @@ pub fn build_app_state(
     );
 
     // --- Infrastructure ports ---
-    let downloader: Arc<dyn DownloadPort> = Arc::new(ReqwestDownloader::new());
-    let render_strategy = Arc::new(
-        BitmapRenderStrategy::new()
-            .unwrap_or_else(|e| {
-                eprintln!("BitmapRenderStrategy init failed: {e}");
-                std::process::exit(1);
-            }),
-    );
-    let print_service: Arc<dyn PrintPort> =
-        Arc::new(DefaultPrintService::new(render_strategy));
+    let downloader: Arc<dyn DownloadPort> =
+        Arc::new(ReqwestDownloader::new(temp_dir.to_path_buf()));
+    let render_strategy = Arc::new(BitmapRenderStrategy::new().unwrap_or_else(|e| {
+        eprintln!("BitmapRenderStrategy init failed: {e}");
+        std::process::exit(1);
+    }));
+    let print_service: Arc<dyn PrintPort> = Arc::new(DefaultPrintService::new(render_strategy));
     let temp_files: Arc<dyn TempFilePort> =
         Arc::new(FilesystemTempFileManager::new(temp_dir.to_path_buf()));
     let printer_manager: Arc<dyn PrinterPort> = Arc::new(SystemPrinterManager::new());
-    let config_provider: Arc<dyn ConfigPort> = Arc::new(JsonFileConfigProvider::new());
+    let config_provider: Arc<dyn ConfigPort> =
+        Arc::new(JsonFileConfigProvider::new(print_config_path.to_path_buf()));
 
     // --- Use cases ---
     let process_use_case = Arc::new(ProcessPrintJobUseCase::new(
@@ -145,8 +141,7 @@ pub fn build_app_state(
     tracing::info!(target = "sapo_printer::startup", "Queue worker started");
 
     // --- Metrics ---
-    let metrics_provider: Arc<dyn MetricsPort> =
-        Arc::new(MetricsCollector::new(pool.clone()));
+    let metrics_provider: Arc<dyn MetricsPort> = Arc::new(MetricsCollector::new(pool.clone()));
 
     // --- Audit cleanup ---
     match audit_service::cleanup_old_events(&event_store, 30) {
@@ -180,6 +175,7 @@ pub fn build_app_state(
         list_printers_uc: Arc::new(ListPrintersUseCase::new(Arc::clone(&printer_manager))),
         queue_worker: worker,
         app_handle,
+        print_config_path: print_config_path.to_path_buf(),
         install_guard: InstallGuard::new(),
         last_emitted_update_version: std::sync::Mutex::new(None),
         pending_update: std::sync::Mutex::new(None),

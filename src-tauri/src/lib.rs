@@ -18,6 +18,7 @@ pub struct AppContextState {
     pub list_printers_uc: Arc<ListPrintersUseCase>,
     pub queue_worker: Arc<infrastructure::worker::QueueWorker>,
     pub app_handle: tauri::AppHandle,
+    pub print_config_path: std::path::PathBuf,
     pub install_guard: infrastructure::platform::updater::update_checker::InstallGuard,
     pub last_emitted_update_version: std::sync::Mutex<Option<String>>,
     /// Bản đã tải bằng Tauri updater, chờ user xác nhận mở installer (handle + bytes).
@@ -61,6 +62,7 @@ pub fn run() {
             let state = bootstrap::app_state::build_app_state(
                 pool.clone(),
                 &dirs.temp_dir,
+                &dirs.print_config_path,
                 app.handle().clone(),
                 resource_dir,
             );

@@ -115,10 +115,12 @@ Tauri commands phục vụ UI desktop gồm printer discovery/config/status/cate
 - SQLite nằm tại OS data directory: `<data_dir>/sapo-printer-pro-max/config.db`.
 - SQLite chỉ giữ `print_jobs`, `events`, `api_tokens` và `app_settings`.
 - `app_settings` hiện chỉ có `temp_file_retention_hours`; không thêm setting không có consumer.
-- Cấu hình in nằm tại `~/.sapo-printer/print-config.json` (Windows dùng `USERPROFILE`). Save/load config phải đi qua `infrastructure/configs/app/app_print_config.rs` hoặc `ConfigPort`.
+- SQLite, logs, temporary downloads, `agent.json` và cấu hình in đều dùng một OS data root có slug `sapo-printer-pro-max`. Cấu hình in nằm tại `<data_dir>/sapo-printer-pro-max/print-config.json`; mọi path runtime được tạo trong `bootstrap/dirs.rs` rồi inject vào adapter, không tự dựng từ `HOME`/`USERPROFILE`.
 - Print-job settings được serialize riêng vào `print_jobs.settings_json` để giữ snapshot tại thời điểm tạo job.
 - Secret dùng OS keychain: Windows Credential Manager, macOS Keychain hoặc Linux Secret Service.
 - Logs và temp files nằm dưới OS data directory; temp retention mặc định là 24 giờ.
+
+Các chuỗi tên khác slug data root được giữ có chủ đích: binary là `sapo-printer`, crate/tracing namespace là `sapo_printer`, bundle và keychain identity là `com.sapo.printer`, còn frontend localStorage dùng `sapo-printer.pending-update-version`. Đây là technical identity/compatibility key, không phải runtime storage folder và không được đổi chỉ để đồng nhất cách viết tên sản phẩm.
 
 Khi chỉnh `migrations.rs`, phải đối chiếu mọi table/column/index với SQL consumer trong `infrastructure/persistence`, `infrastructure/telemetry` và `temp_file.rs`. Vì app chưa phát hành, baseline có thể được gộp lại; sau khi đổi baseline cần tạo lại database development đã migrate bằng schema cũ.
 

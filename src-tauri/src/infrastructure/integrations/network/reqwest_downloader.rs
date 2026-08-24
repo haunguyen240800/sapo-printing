@@ -19,15 +19,16 @@ const MAX_DOWNLOAD_BYTES: usize = 100 * 1024 * 1024;
 pub struct ReqwestDownloader {
     pub(crate) client: Client,
     pub(crate) circuit_breaker: Mutex<CircuitBreaker>,
+    temp_dir: PathBuf,
 }
 
 impl ReqwestDownloader {
-    pub fn new() -> Self {
-        Self::with_timeout(std::time::Duration::from_secs(30))
+    pub fn new(temp_dir: PathBuf) -> Self {
+        Self::with_timeout(temp_dir, std::time::Duration::from_secs(30))
     }
 
     #[doc(hidden)]
-    pub fn with_timeout(timeout: std::time::Duration) -> Self {
+    pub fn with_timeout(temp_dir: PathBuf, timeout: std::time::Duration) -> Self {
         let client = Client::builder()
             .timeout(timeout)
             .build()
@@ -36,6 +37,7 @@ impl ReqwestDownloader {
         Self {
             client,
             circuit_breaker: Mutex::new(CircuitBreaker::new()),
+            temp_dir,
         }
     }
 
@@ -44,8 +46,8 @@ impl ReqwestDownloader {
         url: &str,
         job_id: &PrintJobId,
     ) -> Result<PathBuf, InfrastructureError> {
-        let temp_path = temp_file_path(job_id, "tmp")?;
-        let final_path = temp_file_path(job_id, "pdf")?;
+        let temp_path = self.temp_file_path(job_id, "tmp");
+        let final_path = self.temp_file_path(job_id, "pdf");
 
         // Ensure temp directory exists
         if let Some(parent) = temp_path.parent() {
@@ -60,6 +62,10 @@ impl ReqwestDownloader {
         }
 
         result
+    }
+
+    fn temp_file_path(&self, job_id: &PrintJobId, ext: &str) -> PathBuf {
+        self.temp_dir.join(format!("{}.{}", job_id, ext))
     }
 
     fn do_download(
@@ -140,12 +146,6 @@ impl ReqwestDownloader {
     }
 }
 
-impl Default for ReqwestDownloader {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
 impl DownloadPort for ReqwestDownloader {
     fn download(&self, url: &str, job_id: &PrintJobId) -> Result<PathBuf, Error> {
         validate_url(url)?;
@@ -190,19 +190,10 @@ fn validate_url(url: &str) -> Result<(), InfrastructureError> {
     Ok(())
 }
 
-fn temp_file_path(job_id: &PrintJobId, ext: &str) -> Result<PathBuf, InfrastructureError> {
-    let home = home::home_dir().ok_or_else(|| {
-        InfrastructureError::ValidationError("Cannot resolve home directory".into())
-    })?;
-    Ok(home
-        .join(".sapo-printer")
-        .join("temp")
-        .join(format!("{}.{}", job_id, ext)))
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::infrastructure::temp_file::TempPdfFile;
     use std::io::Write;
 
     fn make_temp_dir() -> PathBuf {
@@ -287,8 +278,43 @@ mod tests {
 
     #[test]
     fn test_reqwest_downloader_trait_object() {
+        let dir = make_temp_dir();
         let _downloader: std::sync::Arc<dyn DownloadPort> =
-            std::sync::Arc::new(ReqwestDownloader::new());
+            std::sync::Arc::new(ReqwestDownloader::new(dir.clone()));
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn test_download_paths_use_injected_temp_directory() {
+        let dir = make_temp_dir();
+        let downloader = ReqwestDownloader::new(dir.clone());
+        let job_id = PrintJobId::new();
+
+        assert_eq!(
+            downloader.temp_file_path(&job_id, "tmp"),
+            dir.join(format!("{}.tmp", job_id))
+        );
+        assert_eq!(
+            downloader.temp_file_path(&job_id, "pdf"),
+            dir.join(format!("{}.pdf", job_id))
+        );
+
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn test_downloaded_path_is_accepted_by_temp_file_manager() {
+        let dir = make_temp_dir();
+        let downloader = ReqwestDownloader::new(dir.clone());
+        let path = downloader.temp_file_path(&PrintJobId::new(), "pdf");
+        write_bytes(&path, b"%PDF-1.4 test");
+
+        let managed = TempPdfFile::try_new(path.clone(), &dir).unwrap();
+        assert_eq!(managed.path(), path);
+        drop(managed);
+        assert!(!path.exists());
+
+        let _ = fs::remove_dir_all(dir);
     }
 
     #[test]

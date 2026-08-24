@@ -8,6 +8,7 @@ pub struct AppDirs {
     pub data_dir: PathBuf,
     pub temp_dir: PathBuf,
     pub log_dir: PathBuf,
+    pub print_config_path: PathBuf,
     pub db_path: PathBuf,
     pub db_path_str: String,
 }
@@ -31,6 +32,7 @@ pub fn init_directories(app: &AppHandle) -> AppDirs {
     });
 
     let log_dir = data_dir.join("logs");
+    let print_config_path = data_dir.join("print-config.json");
 
     let db_path = data_dir.join("config.db");
     let db_path_str = db_path
@@ -45,6 +47,7 @@ pub fn init_directories(app: &AppHandle) -> AppDirs {
         data_dir,
         temp_dir,
         log_dir,
+        print_config_path,
         db_path,
         db_path_str,
     }

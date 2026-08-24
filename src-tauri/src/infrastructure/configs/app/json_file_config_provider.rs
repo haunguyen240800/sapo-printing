@@ -1,24 +1,21 @@
 use crate::application::errors::Error;
 use crate::application::ports::{ConfigPort, PrintConfigSnapshot};
 use crate::infrastructure::configs::app::app_print_config;
+use std::path::PathBuf;
 
-pub struct JsonFileConfigProvider;
-
-impl JsonFileConfigProvider {
-    pub fn new() -> Self {
-        Self
-    }
+pub struct JsonFileConfigProvider {
+    config_path: PathBuf,
 }
 
-impl Default for JsonFileConfigProvider {
-    fn default() -> Self {
-        Self::new()
+impl JsonFileConfigProvider {
+    pub fn new(config_path: PathBuf) -> Self {
+        Self { config_path }
     }
 }
 
 impl ConfigPort for JsonFileConfigProvider {
     fn load_print_config(&self) -> Result<Option<PrintConfigSnapshot>, Error> {
-        match app_print_config::load_config() {
+        match app_print_config::load_config(&self.config_path) {
             Ok(Some(cfg)) => Ok(Some(PrintConfigSnapshot {
                 printer_id: cfg.printer_name,
                 paper_size: cfg.paper_size,

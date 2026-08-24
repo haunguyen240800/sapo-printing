@@ -1,5 +1,11 @@
 # Deferred Work
 
+## Deferred from: unify runtime configuration paths review (2026-08-24)
+
+- **Atomic print-config persistence** — `app_print_config::save_config` vẫn dùng `fs::write`, nên process interruption hoặc save/load đồng thời có thể để lại JSON bị truncate. Cần một thay đổi riêng dùng sibling temp file + atomic replace và cơ chế đồng bộ phù hợp.
+- **Download size enforcement without reliable Content-Length** — Downloader hiện kiểm tra giới hạn 100 MiB qua header rồi buffer toàn bộ response. Server bỏ hoặc khai báo thiếu `Content-Length` vẫn có thể gây memory pressure; cần stream và đếm byte khi tải.
+- **Existing final PDF blocks retry on Windows** — Retry cùng `job_id` có thể gặp `<job_id>.pdf` còn tồn tại; `fs::rename` từ `.tmp` sang final path có thể thất bại trên Windows. Cần policy rõ ràng để validate/remove hoặc atomically replace file stale.
+
 ## Deferred from: visible updater review (2026-08-19)
 
 - **Privileged agent log retention** — `sapo_printer_cert_manager` writes daily rolling logs without retention/size cleanup; add a bounded retention policy in a focused observability change.

@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 use std::fs;
-use std::path::PathBuf;
+use std::path::Path;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AppPrintConfig {
@@ -42,29 +42,17 @@ impl Default for AppPrintConfig {
     }
 }
 
-fn get_config_file_path() -> Result<PathBuf, String> {
-    let home = std::env::var("USERPROFILE")
-        .or_else(|_| std::env::var("HOME"))
-        .map_err(|_| "Cannot determine home directory")?;
-
-    let config_dir = PathBuf::from(&home).join(".sapo-printer");
-
-    // Create directory if not exists
-    if !config_dir.exists() {
-        fs::create_dir_all(&config_dir)
-            .map_err(|e| format!("Không thể tạo thư mục cấu hình: {}", e))?;
+pub fn save_config(config_path: &Path, config: &AppPrintConfig) -> Result<(), String> {
+    if let Some(parent) = config_path.parent() {
+        fs::create_dir_all(parent)
+            .map_err(|e| format!("Không thể tạo thư mục cấu hình {}: {}", parent.display(), e))?;
     }
-
-    Ok(config_dir.join("print-config.json"))
-}
-
-pub fn save_config(config: &AppPrintConfig) -> Result<(), String> {
-    let config_path = get_config_file_path()?;
 
     let json = serde_json::to_string_pretty(config)
         .map_err(|e| format!("Không thể serialize cấu hình: {}", e))?;
 
-    fs::write(&config_path, json).map_err(|e| format!("Không thể lưu cấu hình: {}", e))?;
+    fs::write(config_path, json)
+        .map_err(|e| format!("Không thể lưu cấu hình {}: {}", config_path.display(), e))?;
 
     tracing::info!(
         target = "sapo_printer::config_store",
@@ -75,9 +63,7 @@ pub fn save_config(config: &AppPrintConfig) -> Result<(), String> {
     Ok(())
 }
 
-pub fn load_config() -> Result<Option<AppPrintConfig>, String> {
-    let config_path = get_config_file_path()?;
-
+pub fn load_config(config_path: &Path) -> Result<Option<AppPrintConfig>, String> {
     if !config_path.exists() {
         tracing::debug!(
             target = "sapo_printer::config_store",
@@ -87,11 +73,11 @@ pub fn load_config() -> Result<Option<AppPrintConfig>, String> {
         return Ok(None);
     }
 
-    let json =
-        fs::read_to_string(&config_path).map_err(|e| format!("Không thể đọc cấu hình: {}", e))?;
+    let json = fs::read_to_string(config_path)
+        .map_err(|e| format!("Không thể đọc cấu hình {}: {}", config_path.display(), e))?;
 
-    let config: AppPrintConfig =
-        serde_json::from_str(&json).map_err(|e| format!("Không thể parse cấu hình: {}", e))?;
+    let config: AppPrintConfig = serde_json::from_str(&json)
+        .map_err(|e| format!("Không thể parse cấu hình {}: {}", config_path.display(), e))?;
 
     tracing::info!(
         target = "sapo_printer::config_store",
@@ -142,5 +128,30 @@ mod tests {
         assert_eq!(config.printer_name, "Test Printer");
         assert_eq!(config.paper_size, "A4");
         assert_eq!(config.margin_left, 10.0);
+    }
+
+    #[test]
+    fn save_and_load_config_at_injected_path() {
+        let root = std::env::temp_dir().join(format!("sapo_config_{}", uuid::Uuid::new_v4()));
+        let config_path = root.join("nested").join("print-config.json");
+        let mut expected = AppPrintConfig::default();
+        expected.printer_name = "Injected Printer".to_string();
+
+        save_config(&config_path, &expected).unwrap();
+        let loaded = load_config(&config_path).unwrap().unwrap();
+
+        assert_eq!(loaded.printer_name, expected.printer_name);
+        assert_eq!(loaded.paper_size, expected.paper_size);
+        assert!(config_path.exists());
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn load_missing_config_does_not_create_parent_directory() {
+        let root = std::env::temp_dir().join(format!("sapo_config_{}", uuid::Uuid::new_v4()));
+        let config_path = root.join("print-config.json");
+
+        assert!(load_config(&config_path).unwrap().is_none());
+        assert!(!root.exists());
     }
 }

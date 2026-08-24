@@ -1,7 +1,9 @@
 use tauri::State;
 
 use crate::AppContextState;
-use crate::application::models::{PrinterConfigRequest, PrinterConfigResponse, PrinterResponse, PrinterStatusResponse};
+use crate::application::models::{
+    PrinterConfigRequest, PrinterConfigResponse, PrinterResponse, PrinterStatusResponse,
+};
 
 #[tauri::command]
 pub fn list_printers(ctx: State<'_, AppContextState>) -> Result<Vec<PrinterResponse>, String> {
@@ -14,7 +16,7 @@ pub fn list_printers(ctx: State<'_, AppContextState>) -> Result<Vec<PrinterRespo
 #[tauri::command]
 pub fn save_printer_config(
     config: PrinterConfigRequest,
-    _app_ctx: State<'_, AppContextState>,
+    app_ctx: State<'_, AppContextState>,
 ) -> Result<(), String> {
     use crate::infrastructure::configs::app::app_print_config;
 
@@ -67,18 +69,18 @@ pub fn save_printer_config(
         buffer_size_kb: config.buffer_size_kb,
     };
 
-    app_print_config::save_config(&print_config)?;
+    app_print_config::save_config(&app_ctx.print_config_path, &print_config)?;
 
     Ok(())
 }
 
 #[tauri::command]
 pub fn get_printer_config(
-    _app_ctx: State<'_, AppContextState>,
+    app_ctx: State<'_, AppContextState>,
 ) -> Result<PrinterConfigResponse, String> {
     use crate::infrastructure::configs::app::app_print_config;
 
-    let config = app_print_config::load_config()?;
+    let config = app_print_config::load_config(&app_ctx.print_config_path)?;
 
     match config {
         Some(cfg) => Ok(PrinterConfigResponse {

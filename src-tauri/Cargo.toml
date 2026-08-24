@@ -1,6 +1,6 @@
 [package]
 name = "sapo-printer-pro-max"
-version = "1.0.7"
+version = "1.0.9"
 description = "Sapo Printer Pro Max"
 authors = ["SAPO Team"]
 edition = "2024"
@@ -69,7 +69,6 @@ regex = "1"
 uuid = { version = "1", features = ["v4", "serde"] }
 reqwest = { version = "0.12", features = ["json", "blocking"] }
 url = "2.5"
-home = "0.5"
 
 # HMAC signing for audit trail
 hmac = "0.12"
