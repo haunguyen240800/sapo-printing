@@ -12,8 +12,6 @@ pub fn build_layer() -> CorsLayer {
             HeaderName::from_static("authorization"),
         ])
         .allow_credentials(false)
-        // Chromium Private Network Access preflights HTTPS origins before they
-        // may call a plain HTTP service on the loopback address.
         .allow_private_network(true)
         .max_age(Duration::from_secs(3600))
 }

@@ -38,7 +38,6 @@ pub struct ServerHandles {
     pub port: u16,
 }
 
-/// Bind a loopback port and start the plain HTTP Axum server.
 pub async fn start_server(
     state_builder: impl FnOnce(u16) -> HttpServerState,
 ) -> Result<ServerHandles, InfrastructureError> {

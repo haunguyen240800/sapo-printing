@@ -4,7 +4,6 @@ use crate::AppContextState;
 use crate::application::models::UpdateCheckResponse;
 use crate::infrastructure::platform::updater::update_checker;
 
-/// Check whether an application update is available.
 #[tauri::command]
 pub async fn check_for_updates(app: AppHandle) -> Result<UpdateCheckResponse, String> {
     let result = update_checker::check_for_updates(&app).await?;
@@ -15,9 +14,6 @@ pub async fn check_for_updates(app: AppHandle) -> Result<UpdateCheckResponse, St
     })
 }
 
-/// Download the available update into memory and wait for explicit user confirmation.
-///
-/// Application updates deliberately stay in the interactive user session.
 #[tauri::command]
 pub async fn install_update(
     app: AppHandle,
@@ -28,7 +24,6 @@ pub async fn install_update(
         .try_acquire()
         .ok_or_else(|| "An update is already being installed".to_string())?;
 
-    // Reset dedup so periodic check re-notifies if user doesn't restart.
     if let Ok(mut version) = ctx.last_emitted_update_version.lock() {
         *version = None;
     }
@@ -51,7 +46,6 @@ pub async fn install_update(
     Ok(target_version)
 }
 
-/// Open the downloaded installer in passive mode when the user confirms.
 #[tauri::command]
 pub fn restart_app(ctx: State<'_, AppContextState>) -> Result<(), String> {
     let _guard = ctx
@@ -71,7 +65,6 @@ pub fn restart_app(ctx: State<'_, AppContextState>) -> Result<(), String> {
     Ok(())
 }
 
-/// Thoát hẳn app — dùng cho nhánh forced update khi user chọn "Thoát" sau khi update thất bại.
 #[tauri::command]
 pub fn quit_app(app: AppHandle) -> Result<(), String> {
     app.exit(0);
