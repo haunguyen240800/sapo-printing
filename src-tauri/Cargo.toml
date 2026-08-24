@@ -78,19 +78,12 @@ rand = "0.8"
 hex = "0.4"
 base64 = "0.22"
 
-# TLS + HTTPS local server
-rcgen = { version = "0.13", features = ["x509-parser"] }
-rustls = "0.23"
-rustls-pemfile = "2"
+# Plain HTTP local server (loopback only)
 axum = { version = "0.7", features = ["macros"] }
-axum-server = { version = "0.7", features = ["tls-rustls"] }
 tokio-stream = { version = "0.1", features = ["sync"] }
 tower-http = { version = "0.5", features = ["cors", "trace"] }
 tower_governor = "0.4"
 subtle = "2.5"
-notify = "6"
-time = { version = "0.3", features = ["formatting", "parsing"] }
-x509-parser = "0.16"
 futures = "0.3"
 
 # PDF rendering
@@ -99,7 +92,6 @@ pdfium-render = { version = "0.9", features = ["thread_safe"] }
 # Auto-update
 tauri-plugin-updater = "2"
 # Verify minisign signature của installer trước khi service (SYSTEM) chạy nó.
-minisign-verify = "0.2"
 
 # Dialog plugin for native file dialogs
 tauri-plugin-dialog = "2"
@@ -119,8 +111,6 @@ image = "0.25.10"
 [target.'cfg(windows)'.dependencies]
 windows = { version = "0.52", features = ["Win32_Foundation", "Win32_Graphics_Dwm", "Win32_Graphics_Gdi", "Win32_Graphics_Printing", "Win32_Security", "Win32_Security_Authorization", "Win32_Security_Credentials", "Win32_Storage_Xps", "Win32_System_Threading", "Win32_System_RemoteDesktop", "Win32_System_StationsAndDesktops", "Win32_System_SystemServices"] }
 winreg = "0.52"
-# SCM integration: chạy cert-manager như Windows Service thật.
-windows-service = "0.7"
 
 [target.'cfg(target_os = "macos")'.dependencies]
 security-framework = "2.9"
@@ -139,7 +129,3 @@ tempfile = "3"
 [[bin]]
 name = "sapo-printer"
 path = "src/main.rs"
-
-[[bin]]
-name = "sapo-printer-cert-manager"
-path = "src/bin/sapo_printer_cert_manager.rs"

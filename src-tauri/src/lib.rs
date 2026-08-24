@@ -1,12 +1,12 @@
-pub mod bootstrap;
-pub mod interface;
 pub mod application;
+pub mod bootstrap;
 pub mod domain;
 pub mod infrastructure;
+pub mod interface;
 
 use application::use_cases::{
-    CreatePrintJobUseCase, GetAuditTrailUseCase,
-    GetJobStatusUseCase, GetMetricsUseCase, ListPrintersUseCase,
+    CreatePrintJobUseCase, GetAuditTrailUseCase, GetJobStatusUseCase, GetMetricsUseCase,
+    ListPrintersUseCase,
 };
 use std::sync::Arc;
 
@@ -31,20 +31,12 @@ pub fn run() {
         autostart_command::{get_autostart_enabled, set_autostart_enabled},
         metrics_command::get_metrics,
         printer_command::{
-            detect_printer_category, get_printer_config, get_printer_status,
-            list_printers, save_printer_config,
+            detect_printer_category, get_printer_config, get_printer_status, list_printers,
+            save_printer_config,
         },
         update_command::{check_for_updates, install_update, quit_app, restart_app},
     };
     use tauri::Manager;
-
-    if rustls::crypto::aws_lc_rs::default_provider()
-        .install_default()
-        .is_err()
-    {
-        // No subscriber yet; this is a no-op until logging is initialized in setup().
-        tracing::debug!("rustls CryptoProvider already installed");
-    }
 
     tauri::Builder::default()
         .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
@@ -63,8 +55,7 @@ pub fn run() {
             #[cfg(target_os = "windows")]
             setup_windows_titlebar(app);
 
-            let pool =
-                bootstrap::database::init_database(&dirs.db_path_str, &dirs.temp_dir);
+            let pool = bootstrap::database::init_database(&dirs.db_path_str, &dirs.temp_dir);
 
             let resource_dir = app.path().resource_dir().ok();
             let state = bootstrap::app_state::build_app_state(

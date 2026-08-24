@@ -4,15 +4,14 @@ use tauri::{App, Emitter, Manager};
 
 use crate::{
     AppContextState,
-    infrastructure::{configs::db::DbPool, persistence::ApiTokenRepository, platform::tls},
+    infrastructure::{configs::db::DbPool, persistence::ApiTokenRepository},
     interface::http_server,
     interface::tauri::commands::auth_command::AgentState,
 };
 
-/// Khởi động HTTPS agent server trong background task.
+/// Khởi động HTTP loopback agent server trong background task.
 /// Emit `agent-pair-request` về frontend khi có pairing request mới.
 pub fn start_http_server(app: &App, pool: DbPool, data_dir: &std::path::Path) {
-    let cert_dir = tls::shared_cert_dir();
     let data_dir = data_dir.to_path_buf();
 
     let token_manager: Arc<dyn crate::application::ports::ApiTokenPort> =
@@ -27,7 +26,6 @@ pub fn start_http_server(app: &App, pool: DbPool, data_dir: &std::path::Path) {
 
     tauri::async_runtime::spawn(async move {
         match http_server::start_bootstrap(
-            &cert_dir,
             &data_dir,
             token_manager,
             event_bus,
@@ -38,7 +36,7 @@ pub fn start_http_server(app: &App, pool: DbPool, data_dir: &std::path::Path) {
         .await
         {
             Ok(result) => {
-                tracing::info!(port = result.port, "HTTPS agent started");
+                tracing::info!(port = result.port, "HTTP loopback agent started");
 
                 let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
                 result.token_manager.set_ui_sink(tx).await;
@@ -62,7 +60,7 @@ pub fn start_http_server(app: &App, pool: DbPool, data_dir: &std::path::Path) {
             Err(e) => {
                 tracing::error!(
                     error = %e,
-                    "HTTPS agent bootstrap failed — webapp integration disabled"
+                    "HTTP agent bootstrap failed — webapp integration disabled"
                 );
             }
         }

@@ -23,9 +23,9 @@ Hướng dẫn tích hợp webapp (React/Vue/vanilla JS) với Sapo Printer Pro 
 ## 1. Tổng quan kiến trúc
 
 ```
-┌─────────────────────────┐        HTTPS         ┌────────────────────────────┐
+┌─────────────────────────┐         HTTP         ┌────────────────────────────┐
 │  Webapp (browser)       │ ───────────────────► │ Sapo Printer Pro Max       │
-│  https://*.mysapo.net   │ ◄─────── SSE ─────── │  https://local.mysapo.net  │
+│  https://*.mysapo.net   │ ◄─────── SSE ─────── │  http://127.0.0.1          │
 └─────────────────────────┘                       │  :18901 (fallback 18902…) │
                                                   └────────────────────────────┘
                                                              │
@@ -34,10 +34,9 @@ Hướng dẫn tích hợp webapp (React/Vue/vanilla JS) với Sapo Printer Pro 
                                                        Printer System API
 ```
 
-- Desktop app expose HTTPS server local với self-signed CA đã install vào trust store.
+- Desktop app expose HTTP server chỉ trên IPv4 loopback.
 - Webapp gọi REST API tạo print job, subscribe SSE nhận trạng thái real-time.
-- Hostname `local.mysapo.net` là DNS record public trỏ về `127.0.0.1`.
-- Cert trusted qua system store nên browser không hiện cert warning.
+- Webapp kết nối trực tiếp tới `127.0.0.1`; không cần DNS hay certificate local.
 
 ---
 
@@ -57,17 +56,14 @@ Chỉ các origin sau được desktop agent chấp nhận (CORS whitelist):
 - `localhost`, `127.0.0.1` (dùng desktop app nếu dev).
 - Domain khác `mysapo.net`.
 
-### DNS
-`local.mysapo.net` phải resolve thành `127.0.0.1`. Do team Sapo publish public DNS record.
-
 ### Desktop app installed
-User phải cài Sapo Printer Pro Max + helper service (`sapo-printer-cert-manager`) đang chạy. Nếu chưa có → hiển thị `AgentSetupGuide` với link tải.
+User phải cài và chạy Sapo Printer Pro Max. Nếu chưa có → hiển thị `AgentSetupGuide` với link tải.
 
 ---
 
 ## 3. API Reference
 
-Base URL: `https://local.mysapo.net:<port>/api/v1` (port từ discovery, mặc định 18901).
+Base URL: `http://127.0.0.1:<port>/api/v1` (port từ discovery, mặc định 18901).
 
 ### 3.1. `GET /ping`
 
@@ -336,7 +332,7 @@ COMPLETED / FAILED → toast + remove from active list
 ```typescript
 // services/print-agent-client.ts
 
-export const AGENT_HOST = 'local.mysapo.net';
+export const AGENT_HOST = '127.0.0.1';
 export const AGENT_PORT_RANGE = [18901, 18902, 18903, 18904, 18905, 18906, 18907, 18908, 18909, 18910] as const;
 const PORT_CACHE_KEY = 'sapo_agent_port';
 const TOKEN_KEY = 'sapo_print_token';
@@ -389,7 +385,7 @@ export class PrintAgentClient {
 
   private baseUrl(): string {
     if (!this.port) throw new AgentUnavailableError('Port not discovered');
-    return `https://${AGENT_HOST}:${this.port}/api/v1`;
+    return `http://${AGENT_HOST}:${this.port}/api/v1`;
   }
 
   /** Loop ping 18901-18910, return port đầu tiên OK. Cache localStorage. */
@@ -403,7 +399,7 @@ export class PrintAgentClient {
       try {
         const ctrl = new AbortController();
         const timer = setTimeout(() => ctrl.abort(), 300);
-        const res = await fetch(`https://${AGENT_HOST}:${port}/api/v1/ping`, {
+        const res = await fetch(`http://${AGENT_HOST}:${port}/api/v1/ping`, {
           signal: ctrl.signal,
         });
         clearTimeout(timer);
@@ -715,7 +711,6 @@ function BulkPrintButton({ orders }: { orders: Order[] }) {
 | Tình huống | Detect | Xử lý |
 |-----------|--------|-------|
 | Desktop chưa cài / không chạy | `discoverPort()` return null | Hiện `AgentSetupGuide` với link tải |
-| Cert chưa trusted (browser cảnh báo) | Ping fail `net::ERR_CERT_...` | Hướng dẫn user chạy lại installer (helper service chưa install CA) |
 | Token expired (90 ngày không dùng) | Bất kỳ authed request → 401 | Clear token, trigger pair lại |
 | User deny pair | `POST /pair` → 403 | Hiển thị "Vui lòng bấm Cho phép" |
 | User không phản hồi 60s | 408 | Retry với back-off |
@@ -747,7 +742,7 @@ es.onopen = () => { reconnectAttempts = 0; };
 
 ### 8.1. Manual test checklist
 
-- [ ] `curl -k https://local.mysapo.net:18901/api/v1/ping` → 200
+- [ ] `curl http://127.0.0.1:18901/api/v1/ping` → 200
 - [ ] Chrome DevTools: fetch `/ping` từ tab `https://admin.mysapo.net` không có CORS error
 - [ ] `POST /pair` → toast xuất hiện trên desktop → Allow → token nhận
 - [ ] Token lưu localStorage
@@ -761,7 +756,7 @@ es.onopen = () => { reconnectAttempts = 0; };
 
 ### 8.2. Automated (mock server)
 
-Dùng MSW hoặc mock server tại `https://local.mysapo.net:18901`:
+Dùng MSW hoặc mock server tại `http://127.0.0.1:18901`:
 
 ```typescript
 // vitest.setup.ts
@@ -769,13 +764,13 @@ import { setupServer } from 'msw/node';
 import { http, HttpResponse } from 'msw';
 
 export const server = setupServer(
-  http.get('https://local.mysapo.net:18901/api/v1/ping', () =>
+  http.get('http://127.0.0.1:18901/api/v1/ping', () =>
     HttpResponse.json({ status: 'ok', version: '0.1.0', min_webapp_version: '1.0.0', features: ['sse', 'pair'], port: 18901 })
   ),
-  http.post('https://local.mysapo.net:18901/api/v1/pair', () =>
+  http.post('http://127.0.0.1:18901/api/v1/pair', () =>
     HttpResponse.json({ api_token: 'test-token', expires_at: 9999999999 })
   ),
-  http.post('https://local.mysapo.net:18901/api/v1/jobs', () =>
+  http.post('http://127.0.0.1:18901/api/v1/jobs', () =>
     HttpResponse.json({ job_ids: ['test-job-1'] })
   ),
 );
@@ -805,8 +800,8 @@ test('bulk print end-to-end', async ({ page }) => {
 
 ## 9. FAQ
 
-**Q: Vì sao dùng `local.mysapo.net` mà không phải `localhost`?**
-A: Safari + một số version Chrome có edge case chặn mixed-content khi target là `localhost` từ HTTPS parent origin. `local.mysapo.net` là public DNS record trỏ `127.0.0.1` — pattern chuẩn (Plex, Discord, Zoom dùng).
+**Q: Vì sao dùng `127.0.0.1` thay vì hostname?**
+A: Địa chỉ IPv4 loopback bảo đảm server không expose ra LAN và không phụ thuộc DNS hay trust store.
 
 **Q: Token có expire không?**
 A: Có. Sliding expiry 90 ngày. Mỗi lần verify pass thì gia hạn thêm 90 ngày kể từ thời điểm đó. Nếu 90 ngày không hoạt động → hết hạn.

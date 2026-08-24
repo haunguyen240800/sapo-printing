@@ -17,8 +17,7 @@ pub async fn check_for_updates(app: AppHandle) -> Result<UpdateCheckResponse, St
 
 /// Download the available update into memory and wait for explicit user confirmation.
 ///
-/// Application updates deliberately stay in the interactive user session. The certificate
-/// manager service remains responsible for certificates only and must not install app updates.
+/// Application updates deliberately stay in the interactive user session.
 #[tauri::command]
 pub async fn install_update(
     app: AppHandle,

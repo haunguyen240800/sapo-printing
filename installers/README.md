@@ -1,62 +1,14 @@
-# Sapo Printer Pro Max Installers
+# Installer packaging
 
-Install-time scripts + service unit files. Chạy trong context installer với quyền elevated.
+Ứng dụng phát hành Windows bằng NSIS ở chế độ per-user (`currentUser` trong cấu hình Tauri). Installer chỉ ghi tài
+nguyên trong phạm vi tài khoản hiện tại và không đăng ký service hay sửa system
+trust store, vì vậy không cần quyền administrator.
 
-## Windows (Wix MSI / NSIS)
+Local API chạy plain HTTP và chỉ bind vào IPv4 loopback:
 
-1. Build binary chính (`sapo-printer.exe`) + cert-manager (`sapo-printer-cert-manager.exe`) vào `%INSTALL_DIR%`.
-2. Copy `windows/install-ca-cert.ps1` + `windows/uninstall-ca-cert.ps1` vào `%INSTALL_DIR%`.
-3. Custom action lúc install:
-   ```
-   powershell.exe -ExecutionPolicy Bypass -File "%INSTALL_DIR%\install-ca-cert.ps1"
-   ```
-4. Custom action lúc uninstall:
-   ```
-   powershell.exe -ExecutionPolicy Bypass -File "%INSTALL_DIR%\uninstall-ca-cert.ps1"
-   ```
-
-Script tự chạy `sapo-printer-cert-manager --install-ca` để sinh CA + server cert và install CA vào `LocalMachine\Root`.
-
-Cấu hình bundle:
-- Wix (MSI): `windows/wix-fragment.wxs` — include qua `tauri.conf.json > bundle > windows > wix > fragmentPaths`.
-- NSIS: `windows/nsis-hooks.nsh` — include qua `tauri.conf.json > bundle > windows > nsis > installerHooks`.
-
-## macOS (pkg)
-
-1. Bundle binary vào `/Applications/Sapo Printer Pro Max.app`.
-2. `postinstall`:
-   - Copy `com.sapo.printer.agent.plist` → `/Library/LaunchDaemons/`.
-   - Chạy `sapo-printer-cert-manager --install-ca`.
-   - `launchctl load /Library/LaunchDaemons/com.sapo.printer.agent.plist`.
-3. `preremove`:
-   - `launchctl unload ...`.
-   - Chạy `sapo-printer-cert-manager --uninstall-ca`.
-   - Xóa plist.
-
-## Linux (deb / rpm)
-
-1. Binary → `/usr/bin/sapo-printer` + `/usr/bin/sapo-printer-cert-manager`.
-2. `postinst`:
-   - Copy `sapo-printer-cert-manager.service` → `/etc/systemd/system/`.
-   - `getent group sapo-printer || groupadd -r sapo-printer`.
-   - Add current user to group: `usermod -a -G sapo-printer $SUDO_USER`.
-   - `sapo-printer-cert-manager --install-ca`.
-   - `systemctl daemon-reload && systemctl enable --now sapo-printer-cert-manager.service`.
-3. `prerm`:
-   - `systemctl stop sapo-printer-cert-manager.service`.
-   - `systemctl disable sapo-printer-cert-manager.service`.
-   - `sapo-printer-cert-manager --uninstall-ca`.
-   - Xóa service file.
-
-## Verify
-
-Sau install, chạy:
+```text
+http://127.0.0.1:18901/api/v1/ping
 ```
-sapo-printer-cert-manager --check
-```
-Trả `Ok` → cert healthy.
 
-```
-curl -k https://local.mysapo.net:18901/api/v1/ping
-```
-Trả JSON với `status: ok`.
+Nếu `18901` bận, app thử lần lượt `18902..=18910` và ghi cổng đã chọn vào
+`agent.json`. Auto-update vẫn do Tauri updater thực hiện trong user session.

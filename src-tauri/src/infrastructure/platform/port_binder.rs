@@ -1,7 +1,4 @@
-//! Port binder với fallback range.
-//!
-//! Preferred `18901`. Nếu bị chiếm (EADDRINUSE) → thử `18902..=18910`.
-//! Trả về `TcpListener` + port thực tế. Caller ghi ra `agent.json` cho webapp discover.
+//! Bind the local HTTP API to IPv4 loopback with a deterministic fallback range.
 
 use std::net::{Ipv4Addr, SocketAddr, TcpListener};
 use std::ops::RangeInclusive;
@@ -15,23 +12,19 @@ pub fn bind_with_fallback(
 ) -> std::io::Result<(TcpListener, u16)> {
     match try_bind(preferred) {
         Ok(listener) => return Ok((listener, preferred)),
-        Err(e) if is_addr_in_use(&e) => {
+        Err(error) if is_addr_in_use(&error) => {
             tracing::warn!(port = preferred, "Preferred port in use, trying fallback");
         }
-        Err(e) => return Err(e),
+        Err(error) => return Err(error),
     }
-
     for port in range {
         if port == preferred {
             continue;
         }
         match try_bind(port) {
-            Ok(listener) => {
-                tracing::info!(port, "Bound to fallback port");
-                return Ok((listener, port));
-            }
-            Err(e) if is_addr_in_use(&e) => continue,
-            Err(e) => return Err(e),
+            Ok(listener) => return Ok((listener, port)),
+            Err(error) if is_addr_in_use(&error) => continue,
+            Err(error) => return Err(error),
         }
     }
     Err(std::io::Error::new(
@@ -44,8 +37,8 @@ fn try_bind(port: u16) -> std::io::Result<TcpListener> {
     TcpListener::bind(SocketAddr::from((Ipv4Addr::LOCALHOST, port)))
 }
 
-fn is_addr_in_use(e: &std::io::Error) -> bool {
-    e.kind() == std::io::ErrorKind::AddrInUse
+fn is_addr_in_use(error: &std::io::Error) -> bool {
+    error.kind() == std::io::ErrorKind::AddrInUse
 }
 
 #[cfg(test)]
@@ -53,11 +46,10 @@ mod tests {
     use super::*;
 
     #[test]
-    fn binds_preferred_when_free() {
-        // Dùng port cao random để tránh xung đột trong CI.
+    fn binds_preferred_to_ipv4_loopback() {
         let (listener, port) = bind_with_fallback(29901, 29901..=29910).unwrap();
         assert_eq!(port, 29901);
-        drop(listener);
+        assert_eq!(listener.local_addr().unwrap().ip(), Ipv4Addr::LOCALHOST);
     }
 
     #[test]
@@ -65,14 +57,13 @@ mod tests {
         let _hold = TcpListener::bind((Ipv4Addr::LOCALHOST, 29911)).unwrap();
         let (listener, port) = bind_with_fallback(29911, 29911..=29915).unwrap();
         assert!(port > 29911 && port <= 29915);
-        drop(listener);
+        assert_eq!(listener.local_addr().unwrap().ip(), Ipv4Addr::LOCALHOST);
     }
 
     #[test]
     fn returns_err_when_all_taken() {
         let _h1 = TcpListener::bind((Ipv4Addr::LOCALHOST, 29921)).unwrap();
         let _h2 = TcpListener::bind((Ipv4Addr::LOCALHOST, 29922)).unwrap();
-        let result = bind_with_fallback(29921, 29921..=29922);
-        assert!(result.is_err());
+        assert!(bind_with_fallback(29921, 29921..=29922).is_err());
     }
 }

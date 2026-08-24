@@ -1,11 +1,10 @@
-use std::path::{Path, PathBuf};
-use std::sync::Arc;
+use std::path::Path;
 
-use axum_server::tls_rustls::RustlsConfig;
+use axum::Router;
 use serde::{Deserialize, Serialize};
 
 use crate::infrastructure::errors::InfrastructureError;
-use crate::infrastructure::platform::tls::port_binder::{self, DEFAULT_PORT, FALLBACK_RANGE};
+use crate::infrastructure::platform::port_binder::{self, DEFAULT_PORT, FALLBACK_RANGE};
 
 use super::router;
 use super::state::HttpServerState;
@@ -21,65 +20,72 @@ impl AgentMetadata {
     pub fn write(&self, data_dir: &Path) -> Result<(), InfrastructureError> {
         let path = data_dir.join("agent.json");
         let json = serde_json::to_string_pretty(self).map_err(|e| {
-            InfrastructureError::SerializationError(format!("serialize agent.json: {}", e))
+            InfrastructureError::SerializationError(format!("serialize agent.json: {e}"))
         })?;
-        std::fs::write(&path, json)?;
+        std::fs::write(path, json)?;
         Ok(())
     }
 
     pub fn read(data_dir: &Path) -> Result<Self, InfrastructureError> {
         let path = data_dir.join("agent.json");
-        let s = std::fs::read_to_string(&path)?;
-        serde_json::from_str(&s).map_err(|e| {
-            InfrastructureError::SerializationError(format!("parse agent.json: {}", e))
-        })
+        let contents = std::fs::read_to_string(path)?;
+        serde_json::from_str(&contents)
+            .map_err(|e| InfrastructureError::SerializationError(format!("parse agent.json: {e}")))
     }
 }
 
 pub struct ServerHandles {
     pub port: u16,
-    pub tls_config: Arc<RustlsConfig>,
 }
 
-/// Bind port + load TLS + start axum-server. Returns immediately after spawn.
+/// Bind a loopback port and start the plain HTTP Axum server.
 pub async fn start_server(
-    server_pem: PathBuf,
-    server_key: PathBuf,
     state_builder: impl FnOnce(u16) -> HttpServerState,
 ) -> Result<ServerHandles, InfrastructureError> {
     let (std_listener, port) = port_binder::bind_with_fallback(DEFAULT_PORT, FALLBACK_RANGE)
-        .map_err(|e| InfrastructureError::BindError(format!("bind port: {}", e)))?;
+        .map_err(|e| InfrastructureError::BindError(format!("bind port: {e}")))?;
     std_listener
         .set_nonblocking(true)
-        .map_err(|e| InfrastructureError::IoError(format!("set_nonblocking: {}", e)))?;
+        .map_err(|e| InfrastructureError::IoError(format!("set_nonblocking: {e}")))?;
 
-    let tls = load_rustls_config(&server_pem, &server_key).await?;
-    let state = state_builder(port);
-    let app = router::build(state);
-
+    let app = router::build(state_builder(port));
     let listener = tokio::net::TcpListener::from_std(std_listener)
-        .map_err(|e| InfrastructureError::IoError(format!("from_std listener: {}", e)))?
-        .into_std()
-        .map_err(|e| InfrastructureError::IoError(format!("into_std listener: {}", e)))?;
+        .map_err(|e| InfrastructureError::IoError(format!("from_std listener: {e}")))?;
 
-    let tls_arc = Arc::new(tls);
-    let tls_for_server = tls_arc.clone();
-    tokio::spawn(async move {
-        let server = axum_server::from_tcp_rustls(listener, (*tls_for_server).clone())
-            .serve(app.into_make_service());
-        if let Err(e) = server.await {
-            tracing::error!(error = %e, "HTTPS server exited");
-        }
-    });
+    spawn_server(listener, app);
 
-    Ok(ServerHandles {
-        port,
-        tls_config: tls_arc,
-    })
+    Ok(ServerHandles { port })
 }
 
-async fn load_rustls_config(cert: &Path, key: &Path) -> Result<RustlsConfig, InfrastructureError> {
-    RustlsConfig::from_pem_file(cert, key)
-        .await
-        .map_err(|e| InfrastructureError::TlsError(format!("load TLS pem: {}", e)))
+fn spawn_server(listener: tokio::net::TcpListener, app: Router) {
+    tokio::spawn(async move {
+        if let Err(e) = axum::serve(listener, app.into_make_service()).await {
+            tracing::error!(error = %e, "HTTP server exited");
+        }
+    });
+}
+
+#[cfg(test)]
+mod tests {
+    use axum::{http::StatusCode, routing::get};
+
+    use super::*;
+
+    #[tokio::test]
+    async fn serves_ping_over_plain_http_without_certificates() {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let address = listener.local_addr().unwrap();
+        let app = Router::new().route(
+            "/api/v1/ping",
+            get(|| async { (StatusCode::OK, r#"{"status":"ok"}"#) }),
+        );
+
+        spawn_server(listener, app);
+
+        let response = reqwest::get(format!("http://{address}/api/v1/ping"))
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+        assert_eq!(response.text().await.unwrap(), r#"{"status":"ok"}"#);
+    }
 }
