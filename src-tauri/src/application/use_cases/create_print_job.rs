@@ -1,7 +1,7 @@
-﻿use std::sync::Arc;
+use std::sync::Arc;
 
-use crate::application::models::PrintJobCreateRequest;
 use crate::application::errors::Error;
+use crate::application::models::PrintJobCreateRequest;
 use crate::application::ports::event_bus::EventBus;
 use crate::application::ports::{ConfigPort, EventStore, PrinterAvailability, PrinterPort};
 use crate::domain::print_job::{

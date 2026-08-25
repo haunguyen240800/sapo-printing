@@ -1,5 +1,5 @@
-﻿use crate::application::models::PrinterResponse;
 use crate::application::errors::Error;
+use crate::application::models::PrinterResponse;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum PrinterAvailability {

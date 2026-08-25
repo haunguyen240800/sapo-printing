@@ -1,7 +1,7 @@
-﻿use std::sync::Arc;
+use std::sync::Arc;
 
-use crate::application::models::PrintJobStatusResponse;
 use crate::application::errors::Error;
+use crate::application::models::PrintJobStatusResponse;
 use crate::domain::print_job::{PrintJobId, PrintJobRepository};
 
 pub struct GetJobStatusUseCase {

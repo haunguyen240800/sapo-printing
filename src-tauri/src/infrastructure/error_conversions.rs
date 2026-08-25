@@ -53,7 +53,6 @@ impl From<InfrastructureError> for Error {
             I::CircuitOpenError => {
                 Self::Unavailable("Circuit breaker is open — request rejected".to_string())
             }
-            I::SecretServiceUnavailable(msg) => Self::Unavailable(msg),
             other => Self::Operation(other.to_string()),
         }
     }

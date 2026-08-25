@@ -1,4 +1,4 @@
-﻿use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Serialize};
 
 /// Print job lifecycle states.
 ///
@@ -189,5 +189,3 @@ mod tests {
         assert!(!PrintStatus::Cancelled.can_transition_to(&PrintStatus::Failed));
     }
 }
-
-

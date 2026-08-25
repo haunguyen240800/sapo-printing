@@ -44,7 +44,7 @@ Quy tắc bắt buộc:
 2. Use case và orchestration nằm trong `application`; business state transition nằm trong `domain`.
 3. HTTP print-job handlers chỉ chuyển đổi input-output và gọi use case. Một số Tauri command hiện vẫn tự validate và gọi adapter/plugin trực tiếp; không mở rộng pattern này sang print-job flow.
 4. Mọi print request phải tạo `PrintJob`, persist job/event rồi đi qua `QueuePort` và `QueueWorker`.
-5. Adapter SQLite, HTTP download, PDFium, keychain và printer API nằm trong `infrastructure`.
+5. Adapter SQLite, HTTP download, PDFium và printer API nằm trong `infrastructure`.
 6. Các transition do use case điều khiển sinh domain event và persist event trước khi publish in-memory. Durable queue hiện claim `PENDING -> QUEUED -> PROCESSING` trực tiếp trong SQLite để bảo đảm atomicity và chưa phát event riêng cho các bước này.
 7. Không thêm lại `PrinterRepository` hoặc bảng `printer_configs`: cấu hình in được lưu bằng JSON.
 
@@ -67,7 +67,7 @@ src-tauri/src/
     persistence/                          # print jobs, queue, events, API tokens
     integrations/network/                 # Reqwest downloader + circuit breaker
     integrations/pdf_engine/              # PDFium bitmap renderer
-    platform/                             # printer APIs, spooler, keychain, updater, port binder
+    platform/                             # printer APIs, spooler, updater, port binder
     telemetry/                            # structured logging và metrics
     worker/                               # QueueWorker polling SQLite queue
   interface/
@@ -112,15 +112,17 @@ Tauri commands phục vụ UI desktop gồm printer discovery/config/status/cate
 
 ## Persistence và file cấu hình
 
-- SQLite nằm tại OS data directory: `<data_dir>/sapo-printer-pro-max/config.db`.
+- Data root là **thư mục cài đặt (cạnh file exe)** để mọi Windows user dùng chung DB/config/logs. `bootstrap/dirs.rs` resolve root bằng `std::env::current_exe()` trong release; debug build fallback về OS data dir (`<data_dir>/sapo-printer-pro-max`) để không làm bẩn `target/`. SQLite nằm tại `<install_dir>/config.db`.
 - SQLite chỉ giữ `print_jobs`, `events`, `api_tokens` và `app_settings`.
 - `app_settings` hiện chỉ có `temp_file_retention_hours`; không thêm setting không có consumer.
-- SQLite, logs, temporary downloads, `agent.json` và cấu hình in đều dùng một OS data root có slug `sapo-printer-pro-max`. Cấu hình in nằm tại `<data_dir>/sapo-printer-pro-max/print-config.json`; mọi path runtime được tạo trong `bootstrap/dirs.rs` rồi inject vào adapter, không tự dựng từ `HOME`/`USERPROFILE`.
+- SQLite, logs, temporary downloads, `agent.json` và cấu hình in (`<install_dir>/print-config.json`) đều nằm dưới data root; mọi path runtime được tạo trong `bootstrap/dirs.rs` rồi inject vào adapter, không tự dựng từ `HOME`/`USERPROFILE`.
 - Print-job settings được serialize riêng vào `print_jobs.settings_json` để giữ snapshot tại thời điểm tạo job.
-- Secret dùng OS keychain: Windows Credential Manager, macOS Keychain hoặc Linux Secret Service.
-- Logs và temp files nằm dưới OS data directory; temp retention mặc định là 24 giờ.
+- Không có secret store: app không dùng OS keychain và không còn HMAC signing key. Vì DB dùng chung cho mọi user, key nằm cạnh dữ liệu sẽ vô nghĩa cho việc chống giả mạo; audit trail chỉ lưu lịch sử event (bảng `events`), không ký HMAC.
+- Logs và temp files nằm dưới data root; temp retention mặc định là 24 giờ.
 
-Các chuỗi tên khác slug data root được giữ có chủ đích: binary là `sapo-printer`, crate/tracing namespace là `sapo_printer`, bundle và keychain identity là `com.sapo.printer`, còn frontend localStorage dùng `sapo-printer.pending-update-version`. Đây là technical identity/compatibility key, không phải runtime storage folder và không được đổi chỉ để đồng nhất cách viết tên sản phẩm.
+Vì cài `perMachine` và data nằm cạnh exe: khuyến nghị cài ổ D/E (root ổ non-system cho Users quyền ghi mặc định). Cài ổ C (`Program Files` hoặc root C) thì user thường không ghi được DB → phải chạy admin. Không có NSIS hook cấp quyền ghi (giống mô hình BigSeller).
+
+Các chuỗi tên slug được giữ có chủ đích: binary là `sapo-printer`, crate/tracing namespace là `sapo_printer`, bundle identity là `com.sapo.printer`, còn frontend localStorage dùng `sapo-printer.pending-update-version`. Đây là technical identity/compatibility key, không được đổi chỉ để đồng nhất cách viết tên sản phẩm.
 
 Khi chỉnh `migrations.rs`, phải đối chiếu mọi table/column/index với SQL consumer trong `infrastructure/persistence`, `infrastructure/telemetry` và `temp_file.rs`. Vì app chưa phát hành, baseline có thể được gộp lại; sau khi đổi baseline cần tạo lại database development đã migrate bằng schema cũ.
 

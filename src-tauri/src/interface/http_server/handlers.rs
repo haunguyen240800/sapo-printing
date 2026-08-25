@@ -1,4 +1,4 @@
-﻿//! REST handlers.
+//! REST handlers.
 
 use axum::{
     Json,
@@ -8,8 +8,8 @@ use axum::{
 };
 use serde::{Deserialize, Serialize};
 
-use crate::application::models::PrintJobCreateRequest;
 use crate::application::errors::Error;
+use crate::application::models::PrintJobCreateRequest;
 use crate::application::ports::PairError;
 
 use super::cors;

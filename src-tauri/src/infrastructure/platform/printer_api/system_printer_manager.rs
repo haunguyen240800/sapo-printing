@@ -1,8 +1,8 @@
 use std::sync::Mutex;
 use std::time::{Duration, Instant};
 
-use crate::application::models::PrinterResponse;
 use crate::application::errors::Error;
+use crate::application::models::PrinterResponse;
 use crate::application::ports::{PrinterAvailability, PrinterPort};
 use crate::infrastructure::errors::InfrastructureError;
 

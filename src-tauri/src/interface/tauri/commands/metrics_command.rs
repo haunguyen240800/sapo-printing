@@ -1,4 +1,4 @@
-﻿use tauri::State;
+use tauri::State;
 
 use crate::AppContextState;
 use crate::application::ports::MetricsSnapshot;

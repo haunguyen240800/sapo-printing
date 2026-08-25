@@ -36,7 +36,6 @@ CREATE TABLE events (
     event_type TEXT NOT NULL,
     payload TEXT NOT NULL,
     timestamp INTEGER NOT NULL,
-    hmac TEXT,
     UNIQUE(aggregate_id, sequence_number)
 );
 CREATE INDEX idx_events_aggregate ON events(aggregate_id);

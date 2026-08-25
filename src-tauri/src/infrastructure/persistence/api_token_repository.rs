@@ -1,4 +1,4 @@
-﻿use std::collections::HashMap;
+use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
@@ -308,4 +308,3 @@ mod tests {
         assert_ne!(hash_token("abc", "salt1"), hash_token("abc", "salt2"));
     }
 }
-

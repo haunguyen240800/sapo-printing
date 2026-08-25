@@ -12,8 +12,6 @@ pub struct PrintJobResponse {
     pub error_message: Option<String>,
 }
 
-
-
 impl From<PrintJob> for PrintJobResponse {
     fn from(job: PrintJob) -> Self {
         Self {

@@ -1,4 +1,4 @@
-﻿use crate::application::ports::{QueueError, QueuePort};
+use crate::application::ports::{QueueError, QueuePort};
 use crate::domain::print_job::{PrintJob, PrintJobId, PrintStatus, PrinterId};
 use crate::infrastructure::configs::db::{DbPool, SqliteConn};
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -623,5 +623,3 @@ mod tests {
         cleanup(&path);
     }
 }
-
-

@@ -9,7 +9,6 @@ pub struct StoredEventData {
     pub event_type: String,
     pub payload: String,
     pub timestamp: i64,
-    pub hmac: Option<String>,
 }
 
 pub trait EventStore: Send + Sync {

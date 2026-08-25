@@ -13,7 +13,6 @@ pub mod metrics_port;
 pub mod print_port;
 pub mod printer_port;
 pub mod queue_port;
-pub mod secret_port;
 pub mod temp_file_port;
 
 pub use api_token_port::{
@@ -27,5 +26,4 @@ pub use metrics_port::{MetricsPort, MetricsSnapshot};
 pub use print_port::PrintPort;
 pub use printer_port::{PrinterAvailability, PrinterPort};
 pub use queue_port::{QueueError, QueuePort};
-pub use secret_port::SecretPort;
 pub use temp_file_port::{TempFileHandle, TempFilePort};

@@ -9,7 +9,7 @@ use crate::{
         },
         ports::{
             ConfigPort, DownloadPort, EventStore, MetricsPort, PrintPort, PrinterPort, QueuePort,
-            SecretPort, TempFilePort, event_bus::EventBus,
+            TempFilePort, event_bus::EventBus,
         },
         services::audit_service,
         use_cases::{
@@ -36,13 +36,6 @@ use crate::{
     },
 };
 
-#[cfg(target_os = "linux")]
-use crate::infrastructure::platform::keychain::LinuxSecretService;
-#[cfg(target_os = "macos")]
-use crate::infrastructure::platform::keychain::MacOSKeychain;
-#[cfg(target_os = "windows")]
-use crate::infrastructure::platform::keychain::WindowsCredentialManager;
-
 use tauri::AppHandle;
 
 /// Wires up tất cả dependencies và trả về `AppContextState` sẵn sàng `.manage()`.
@@ -62,27 +55,8 @@ pub fn build_app_state(
     let job_repo: Arc<dyn crate::domain::print_job::PrintJobRepository> =
         Arc::new(PrintJobRepository::new(pool.clone()));
 
-    // --- Secret manager (platform-specific) ---
-    #[cfg(target_os = "windows")]
-    let secret_manager: Arc<dyn SecretPort> = Arc::new(WindowsCredentialManager::new());
-
-    #[cfg(target_os = "macos")]
-    let secret_manager: Arc<dyn SecretPort> = Arc::new(MacOSKeychain::new());
-
-    #[cfg(target_os = "linux")]
-    let secret_manager: Arc<dyn SecretPort> = Arc::new(match LinuxSecretService::new() {
-        Ok(s) => s,
-        Err(e) => {
-            eprintln!("Warning: Secret Service unavailable: {e}");
-            eprintln!("Device tokens and secrets will not be persisted securely.");
-            eprintln!("Install gnome-keyring or use environment variables for secrets.");
-            std::process::exit(1);
-        }
-    });
-
     // --- Event store & bus ---
-    let event_store: Arc<dyn EventStore> =
-        Arc::new(EventRepository::new(pool.clone(), secret_manager.clone()));
+    let event_store: Arc<dyn EventStore> = Arc::new(EventRepository::new(pool.clone()));
 
     let event_bus: Arc<dyn EventBus> = Arc::new(InMemoryEventBus::new());
 
@@ -168,10 +142,7 @@ pub fn build_app_state(
         }),
         get_job_status_uc: Arc::new(GetJobStatusUseCase::new(Arc::clone(&job_repo))),
         get_metrics_uc: Arc::new(GetMetricsUseCase::new(Arc::clone(&metrics_provider))),
-        get_audit_trail_uc: Arc::new(GetAuditTrailUseCase::new(
-            Arc::clone(&event_store),
-            Arc::clone(&secret_manager),
-        )),
+        get_audit_trail_uc: Arc::new(GetAuditTrailUseCase::new(Arc::clone(&event_store))),
         list_printers_uc: Arc::new(ListPrintersUseCase::new(Arc::clone(&printer_manager))),
         queue_worker: worker,
         app_handle,

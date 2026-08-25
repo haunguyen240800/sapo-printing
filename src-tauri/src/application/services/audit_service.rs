@@ -1,88 +1,14 @@
-use hmac::{Hmac, Mac};
-use sha2::Sha256;
 use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use crate::application::ports::{EventStore, StoredEventData};
 use crate::domain::print_job::PrintJobError;
 
-type HmacSha256 = Hmac<Sha256>;
-
-#[derive(Clone, Debug)]
-pub struct AuditIntegrityReport {
-    pub aggregate_id: String,
-    pub total_events: u64,
-    pub valid_events: u64,
-    pub tampered_events: Vec<i64>,
-    pub chain_valid: bool,
-}
-
-pub fn verify_event_integrity(
-    event: &StoredEventData,
-    secret_key: &str,
-) -> Result<bool, PrintJobError> {
-    let stored_hmac = match &event.hmac {
-        Some(h) => h,
-        None => {
-            return Err(PrintJobError::RepositoryError {
-                reason: format!(
-                    "Event {} has no HMAC (sequence_number={})",
-                    event.aggregate_id, event.sequence_number
-                ),
-            });
-        }
-    };
-
-    let stored_bytes = hex::decode(stored_hmac).map_err(|e| PrintJobError::RepositoryError {
-        reason: format!("Invalid hex in stored HMAC: {}", e),
-    })?;
-
-    let message = format!(
-        "{}|{}|{}|{}|{}",
-        event.aggregate_id, event.sequence_number, event.event_type, event.payload, event.timestamp
-    );
-    let key_bytes = hex::decode(secret_key).map_err(|e| PrintJobError::RepositoryError {
-        reason: format!("Invalid hex in signing key: {}", e),
-    })?;
-    let mut mac = HmacSha256::new_from_slice(&key_bytes).expect("HMAC can take key of any size");
-    mac.update(message.as_bytes());
-    Ok(mac.verify_slice(&stored_bytes).is_ok())
-}
-
 pub fn get_audit_trail(
     store: &Arc<dyn EventStore>,
     aggregate_id: &str,
 ) -> Result<Vec<StoredEventData>, PrintJobError> {
     store.find_by_aggregate(aggregate_id)
-}
-
-pub fn verify_audit_trail_integrity(
-    store: &Arc<dyn EventStore>,
-    aggregate_id: &str,
-    secret_key: &str,
-) -> Result<AuditIntegrityReport, PrintJobError> {
-    let events = get_audit_trail(store, aggregate_id)?;
-    let total = events.len() as u64;
-    let mut valid = 0u64;
-    let mut tampered = Vec::new();
-
-    for event in &events {
-        if verify_event_integrity(event, secret_key)? {
-            valid += 1;
-        } else {
-            tampered.push(event.sequence_number);
-        }
-    }
-
-    let chain_valid = tampered.is_empty();
-
-    Ok(AuditIntegrityReport {
-        aggregate_id: aggregate_id.to_string(),
-        total_events: total,
-        valid_events: valid,
-        tampered_events: tampered,
-        chain_valid,
-    })
 }
 
 pub fn cleanup_old_events(

@@ -50,10 +50,7 @@ impl MetricsCollector {
         })
     }
 
-    fn fetch_job_counts(
-        &self,
-        conn: &Connection,
-    ) -> Result<(u64, u64, u64), InfrastructureError> {
+    fn fetch_job_counts(&self, conn: &Connection) -> Result<(u64, u64, u64), InfrastructureError> {
         let mut stmt = conn
             .prepare("SELECT status, COUNT(*) FROM print_jobs GROUP BY status")
             .map_err(|e| InfrastructureError::DatabaseError {
@@ -90,10 +87,7 @@ impl MetricsCollector {
         Ok((total_jobs, completed, failed))
     }
 
-    fn fetch_last_print_duration(
-        &self,
-        conn: &Connection,
-    ) -> Result<f64, InfrastructureError> {
+    fn fetch_last_print_duration(&self, conn: &Connection) -> Result<f64, InfrastructureError> {
         let result: Option<f64> = conn
             .query_row(
                 "SELECT CAST(c.timestamp AS FLOAT) - CAST(p.timestamp AS FLOAT)

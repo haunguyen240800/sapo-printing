@@ -1,7 +1,7 @@
 use tauri::{AppHandle, Emitter, Manager};
 
-use crate::{AppContextState, application::models::UpdateCheckResponse};
 use crate::infrastructure::platform::updater::update_checker;
+use crate::{AppContextState, application::models::UpdateCheckResponse};
 
 /// Đăng ký tauri-plugin-updater và spawn background task kiểm tra update.
 /// - Lần đầu: kiểm tra ngay khi startup.

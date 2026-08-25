@@ -1,7 +1,7 @@
-﻿use std::sync::Arc;
+use std::sync::Arc;
 
-use crate::application::models::PrinterResponse;
 use crate::application::errors::Error;
+use crate::application::models::PrinterResponse;
 use crate::application::ports::PrinterPort;
 
 pub struct ListPrintersUseCase {

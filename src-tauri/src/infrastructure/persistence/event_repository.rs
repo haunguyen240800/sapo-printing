@@ -1,35 +1,11 @@
-﻿use hmac::{Hmac, Mac};
-use rand::RngCore;
-use rand::rngs::OsRng;
 use rusqlite::Connection;
 use serde::{Deserialize, Serialize};
-use sha2::Sha256;
-use std::sync::{Arc, Mutex};
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use crate::application::ports::{EventStore, SecretPort};
+use crate::application::ports::EventStore;
 use crate::domain::print_job::PrintJobError;
 use crate::domain::print_job::events::DomainEvent;
 use crate::infrastructure::configs::db::{DbPool, SqliteConn};
-
-type HmacSha256 = Hmac<Sha256>;
-
-pub fn compute_hmac(
-    secret_key: &str,
-    aggregate_id: &str,
-    sequence_number: i64,
-    event_type: &str,
-    payload: &str,
-    timestamp: i64,
-) -> Result<String, PrintJobError> {
-    let message = format!("{aggregate_id}|{sequence_number}|{event_type}|{payload}|{timestamp}");
-    let key_bytes = hex::decode(secret_key).map_err(|e| PrintJobError::RepositoryError {
-        reason: format!("Invalid hex in signing key: {}", e),
-    })?;
-    let mut mac = HmacSha256::new_from_slice(&key_bytes).expect("HMAC can take key of any size");
-    mac.update(message.as_bytes());
-    Ok(hex::encode(mac.finalize().into_bytes()))
-}
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct StoredEvent {
@@ -39,22 +15,15 @@ pub struct StoredEvent {
     pub event_type: String,
     pub payload: String,
     pub timestamp: i64,
-    pub hmac: Option<String>,
 }
 
 pub struct EventRepository {
     pool: DbPool,
-    secret_manager: Arc<dyn SecretPort>,
-    cached_signing_key: Mutex<Option<String>>,
 }
 
 impl EventRepository {
-    pub fn new(pool: DbPool, secret_manager: Arc<dyn SecretPort>) -> Self {
-        Self {
-            pool,
-            secret_manager,
-            cached_signing_key: Mutex::new(None),
-        }
+    pub fn new(pool: DbPool) -> Self {
+        Self { pool }
     }
 
     fn acquire(&self) -> Result<SqliteConn, PrintJobError> {
@@ -63,108 +32,11 @@ impl EventRepository {
         })
     }
 
-    pub fn get_or_create_signing_key(&self) -> Result<String, PrintJobError> {
-        tracing::info!(
-            target = "sapo_printer::repository::event_store",
-            "get_or_create_signing_key() - checking cache"
-        );
-
-        {
-            let cache = self.cached_signing_key.lock().unwrap();
-            if let Some(ref key) = *cache {
-                tracing::info!(
-                    target = "sapo_printer::repository::event_store",
-                    "get_or_create_signing_key() - found in cache"
-                );
-                return Ok(key.clone());
-            }
-        }
-
-        tracing::info!(
-            target = "sapo_printer::repository::event_store",
-            "get_or_create_signing_key() - calling secret_manager.retrieve()"
-        );
-
-        match self.secret_manager.retrieve("hmac_signing_key") {
-            Ok(Some(key)) => {
-                tracing::info!(
-                    target = "sapo_printer::repository::event_store",
-                    "get_or_create_signing_key() - retrieved from secret manager"
-                );
-                let mut cache = self.cached_signing_key.lock().unwrap();
-                *cache = Some(key.clone());
-                return Ok(key);
-            }
-            Ok(None) => {
-                tracing::info!(
-                    target = "sapo_printer::repository::event_store",
-                    "get_or_create_signing_key() - key not found, will generate new one"
-                );
-            }
-            Err(e) => {
-                tracing::error!(
-                    target = "sapo_printer::repository::event_store",
-                    error = %e,
-                    "get_or_create_signing_key() - failed to retrieve from secret manager"
-                );
-                return Err(PrintJobError::RepositoryError {
-                    reason: format!("Failed to retrieve signing key: {}", e),
-                });
-            }
-        }
-
-        tracing::info!(
-            target = "sapo_printer::repository::event_store",
-            "get_or_create_signing_key() - generating new key"
-        );
-
-        let mut key_bytes = [0u8; 32];
-        OsRng.fill_bytes(&mut key_bytes);
-        let key_hex = hex::encode(key_bytes);
-
-        tracing::info!(
-            target = "sapo_printer::repository::event_store",
-            "get_or_create_signing_key() - storing new key"
-        );
-
-        self.secret_manager
-            .store("hmac_signing_key", &key_hex)
-            .map_err(|e| {
-                tracing::error!(
-                    target = "sapo_printer::repository::event_store",
-                    error = %e,
-                    "get_or_create_signing_key() - failed to store new key"
-                );
-                PrintJobError::RepositoryError {
-                    reason: format!("Failed to store signing key: {}", e),
-                }
-            })?;
-
-        tracing::info!(
-            target = "sapo_printer::repository::event_store",
-            "get_or_create_signing_key() - caching new key"
-        );
-
-        {
-            let mut cache = self.cached_signing_key.lock().unwrap();
-            *cache = Some(key_hex.clone());
-        }
-
-        tracing::info!(
-            target = "sapo_printer::repository::event_store",
-            "Generated new HMAC signing key"
-        );
-
-        Ok(key_hex)
-    }
-
     pub fn save_event(
         &self,
         aggregate_id: &str,
         event: &dyn DomainEvent,
     ) -> Result<(), PrintJobError> {
-        let signing_key = self.get_or_create_signing_key()?;
-
         let mut conn = self.acquire()?;
         let tx = conn
             .transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)
@@ -178,22 +50,14 @@ impl EventRepository {
             .duration_since(UNIX_EPOCH)
             .unwrap()
             .as_secs() as i64;
-        let hmac_value = compute_hmac(
-            &signing_key,
-            aggregate_id,
-            seq,
-            event.event_name(),
-            &payload,
-            now,
-        )?;
 
         tx.execute(
-            "INSERT INTO events (aggregate_id, sequence_number, event_type, payload, timestamp, hmac)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
-            rusqlite::params![aggregate_id, seq, event.event_name(), payload, now, hmac_value],
+            "INSERT INTO events (aggregate_id, sequence_number, event_type, payload, timestamp)
+             VALUES (?1, ?2, ?3, ?4, ?5)",
+            rusqlite::params![aggregate_id, seq, event.event_name(), payload, now],
         )
-            .map_err(|e| {
-                tracing::error!(
+        .map_err(|e| {
+            tracing::error!(
                 target = "sapo_printer::repository::event_store",
                 operation = "save_event",
                 aggregate_id = aggregate_id,
@@ -201,10 +65,10 @@ impl EventRepository {
                 error = %e,
                 "Failed to save event"
             );
-                PrintJobError::RepositoryError {
-                    reason: format!("Failed to save event: {}", e),
-                }
-            })?;
+            PrintJobError::RepositoryError {
+                reason: format!("Failed to save event: {}", e),
+            }
+        })?;
 
         tx.commit().map_err(|e| PrintJobError::RepositoryError {
             reason: format!("Failed to commit save_event transaction: {}", e),
@@ -229,17 +93,6 @@ impl EventRepository {
         if events.is_empty() {
             return Ok(());
         }
-
-        // IMPORTANT: Get signing key BEFORE locking connection to avoid deadlock
-        tracing::info!(
-            target = "sapo_printer::repository::event_store",
-            "save_all() - calling get_or_create_signing_key()"
-        );
-        let signing_key = self.get_or_create_signing_key()?;
-        tracing::info!(
-            target = "sapo_printer::repository::event_store",
-            "save_all() - signing key retrieved successfully"
-        );
 
         let mut conn = self.acquire()?;
 
@@ -274,19 +127,10 @@ impl EventRepository {
                 .unwrap()
                 .as_secs() as i64;
 
-            let hmac_value = compute_hmac(
-                &signing_key,
-                aggregate_id,
-                seq,
-                event.event_name(),
-                &payload,
-                now,
-            )?;
-
             if let Err(e) = tx.execute(
-                "INSERT INTO events (aggregate_id, sequence_number, event_type, payload, timestamp, hmac)
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
-                rusqlite::params![aggregate_id, seq, event.event_name(), payload, now, hmac_value],
+                "INSERT INTO events (aggregate_id, sequence_number, event_type, payload, timestamp)
+                 VALUES (?1, ?2, ?3, ?4, ?5)",
+                rusqlite::params![aggregate_id, seq, event.event_name(), payload, now],
             ) {
                 // Drop tx to trigger automatic rollback (rusqlite rolls back on uncommitted drop).
                 // We intentionally do NOT call tx.rollback() here because it takes ownership of self,
@@ -317,7 +161,7 @@ impl EventRepository {
 
         let mut stmt = conn
             .prepare(
-                "SELECT id, aggregate_id, sequence_number, event_type, payload, timestamp, hmac
+                "SELECT id, aggregate_id, sequence_number, event_type, payload, timestamp
                  FROM events WHERE aggregate_id = ?1 ORDER BY sequence_number ASC",
             )
             .map_err(|e| {
@@ -342,7 +186,6 @@ impl EventRepository {
                     event_type: row.get(3)?,
                     payload: row.get(4)?,
                     timestamp: row.get(5)?,
-                    hmac: row.get(6)?,
                 })
             })
             .map_err(|e| {
@@ -441,7 +284,6 @@ impl EventStore for EventRepository {
                     event_type: e.event_type,
                     payload: e.payload,
                     timestamp: e.timestamp,
-                    hmac: e.hmac,
                 })
                 .collect()
         })
@@ -451,4 +293,3 @@ impl EventStore for EventRepository {
         self.delete_events_before(cutoff_timestamp)
     }
 }
-

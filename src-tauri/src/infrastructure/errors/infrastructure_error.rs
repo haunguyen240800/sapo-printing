@@ -3,10 +3,6 @@ pub enum InfrastructureError {
     PrinterError {
         reason: String,
     },
-    SecretStoreError(String),
-    SecretRetrieveError(String),
-    SecretDeleteError(String),
-    SecretServiceUnavailable(String),
     /// HTTP/network failure (DNS error, connection refused, TLS error, etc.)
     NetworkError(String),
     /// Downloaded content failed validation (e.g. not a valid PDF)
@@ -33,12 +29,6 @@ impl std::fmt::Display for InfrastructureError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::PrinterError { reason } => write!(f, "Printer error: {}", reason),
-            Self::SecretStoreError(msg) => write!(f, "Failed to store secret: {}", msg),
-            Self::SecretRetrieveError(msg) => write!(f, "Failed to retrieve secret: {}", msg),
-            Self::SecretDeleteError(msg) => write!(f, "Failed to delete secret: {}", msg),
-            Self::SecretServiceUnavailable(msg) => {
-                write!(f, "Secret service unavailable: {}", msg)
-            }
             Self::NetworkError(msg) => write!(f, "Network error: {}", msg),
             Self::ValidationError(msg) => write!(f, "Validation error: {}", msg),
             Self::TimeoutError(msg) => write!(f, "Timeout error: {}", msg),

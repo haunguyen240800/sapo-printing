@@ -1,7 +1,8 @@
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use crate::domain::print_job::{
-    PrintJob, PrintJobError, PrintJobId, PrintJobRepository as PrintJobRepositoryPort, PrintStatus, PrinterId,
+    PrintJob, PrintJobError, PrintJobId, PrintJobRepository as PrintJobRepositoryPort, PrintStatus,
+    PrinterId,
 };
 use crate::infrastructure::configs::db::DbPool;
 
@@ -393,4 +394,3 @@ fn completed_at_for_status(status: &PrintStatus, now: i64) -> Option<i64> {
         _ => None,
     }
 }
-

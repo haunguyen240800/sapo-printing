@@ -1,4 +1,4 @@
-﻿//! Port for API token management (device pairing + bearer-token auth).
+//! Port for API token management (device pairing + bearer-token auth).
 //!
 //! The interface layer (HTTP server, Tauri agent commands) depends on this
 //! trait, not on the concrete `ApiTokenRepository` in infrastructure. Pairing
@@ -84,4 +84,3 @@ pub trait ApiTokenPort: Send + Sync {
     /// Revoke a token by its hash.
     fn revoke(&self, token_hash: &str) -> Result<(), String>;
 }
-

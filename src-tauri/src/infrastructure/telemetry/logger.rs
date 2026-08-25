@@ -65,11 +65,7 @@ fn init_logging_inner(log_dir: &Path) -> Result<(), String> {
     Ok(())
 }
 
-fn level_file_layer<S>(
-    log_dir: &Path,
-    level_name: &'static str,
-    level: Level,
-) -> impl Layer<S>
+fn level_file_layer<S>(log_dir: &Path, level_name: &'static str, level: Level) -> impl Layer<S>
 where
     S: tracing::Subscriber + for<'a> tracing_subscriber::registry::LookupSpan<'a>,
 {
@@ -175,11 +171,7 @@ struct LevelWriter {
 
 impl Write for LevelWriter {
     fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
-        let mut guard = self
-            .shared
-            .state
-            .lock()
-            .unwrap_or_else(|e| e.into_inner());
+        let mut guard = self.shared.state.lock().unwrap_or_else(|e| e.into_inner());
         self.shared.ensure_current(&mut guard)?;
         guard
             .as_mut()
@@ -189,11 +181,7 @@ impl Write for LevelWriter {
     }
 
     fn flush(&mut self) -> io::Result<()> {
-        let mut guard = self
-            .shared
-            .state
-            .lock()
-            .unwrap_or_else(|e| e.into_inner());
+        let mut guard = self.shared.state.lock().unwrap_or_else(|e| e.into_inner());
         match guard.as_mut() {
             Some(s) => s.file.flush(),
             None => Ok(()),
@@ -304,7 +292,10 @@ mod tests {
         cleanup_old_logs(&temp_dir, 7);
 
         assert!(today_path.exists(), "Today's archive should not be deleted");
-        assert!(!old_path.exists(), "Archive older than 7 days should be deleted");
+        assert!(
+            !old_path.exists(),
+            "Archive older than 7 days should be deleted"
+        );
         assert!(other_path.exists(), "Non-dated files should not be deleted");
 
         let _ = fs::remove_dir_all(&temp_dir);
@@ -374,20 +365,39 @@ mod tests {
         );
 
         tracing::subscriber::with_default(subscriber, || {
-            tracing::info!(target = "sapo_printer::test", test_field = "test_value", "info entry");
+            tracing::info!(
+                target = "sapo_printer::test",
+                test_field = "test_value",
+                "info entry"
+            );
             tracing::warn!(target = "sapo_printer::test", "warn entry");
         });
 
         std::thread::sleep(Duration::from_millis(500));
 
         let active = temp_dir.join("info.log");
-        assert!(active.exists(), "info.log should be created at the log root");
+        assert!(
+            active.exists(),
+            "info.log should be created at the log root"
+        );
 
         let content = fs::read_to_string(&active).unwrap_or_default();
-        assert!(content.contains("info entry"), "info file should contain the info event");
-        assert!(!content.contains("warn entry"), "info file must not contain warn events");
-        assert!(content.contains("\"timestamp\""), "should be JSON with a timestamp field");
-        assert!(content.contains("\"level\""), "should be JSON with a level field");
+        assert!(
+            content.contains("info entry"),
+            "info file should contain the info event"
+        );
+        assert!(
+            !content.contains("warn entry"),
+            "info file must not contain warn events"
+        );
+        assert!(
+            content.contains("\"timestamp\""),
+            "should be JSON with a timestamp field"
+        );
+        assert!(
+            content.contains("\"level\""),
+            "should be JSON with a level field"
+        );
 
         let _ = fs::remove_dir_all(&temp_dir);
     }
@@ -417,13 +427,19 @@ mod tests {
             let date = (Local::now().date_naive() - chrono::Duration::days(days_ago))
                 .format("error.%Y-%m-%d.log")
                 .to_string();
-            assert!(error_dir.join(&date).exists(), "day {days_ago} should be kept");
+            assert!(
+                error_dir.join(&date).exists(),
+                "day {days_ago} should be kept"
+            );
         }
         for days_ago in 8..=10 {
             let date = (Local::now().date_naive() - chrono::Duration::days(days_ago))
                 .format("error.%Y-%m-%d.log")
                 .to_string();
-            assert!(!error_dir.join(&date).exists(), "day {days_ago} should be deleted");
+            assert!(
+                !error_dir.join(&date).exists(),
+                "day {days_ago} should be deleted"
+            );
         }
 
         let _ = fs::remove_dir_all(&temp_dir);
