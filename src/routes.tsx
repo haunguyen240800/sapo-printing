@@ -1,8 +1,8 @@
-import { createBrowserRouter } from "react-router-dom";
+import { lazy } from "react";
+import { createBrowserRouter, Navigate } from "react-router-dom";
 
 import { AppLayout } from "./components/AppLayout";
-import PrinterPage from "./pages/printer/PrinterPage";
-import Settings from "./pages/settings/Settings";
+import { withSuspense } from "./utils/withSuspense";
 
 export const router = createBrowserRouter([
   {
@@ -11,15 +11,15 @@ export const router = createBrowserRouter([
     children: [
       {
         index: true,
-        element: <PrinterPage />,
+        element: <Navigate to="printer" replace />,
       },
       {
         path: "printer",
-        element: <PrinterPage />,
+        element: withSuspense(lazy(() => import("./pages/printer/PrinterPage"))),
       },
       {
         path: "settings",
-        element: <Settings />,
+        element: withSuspense(lazy(() => import("./pages/settings/Settings"))),
       },
     ],
   },
