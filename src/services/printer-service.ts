@@ -29,6 +29,10 @@ export async function getMetrics(): Promise<MetricsDto> {
   return invoke<MetricsDto>("get_metrics");
 }
 
+export async function clearJobHistory(): Promise<number> {
+  return invoke<number>("clear_job_history");
+}
+
 export async function getAutostartEnabled(): Promise<boolean> {
   return invoke<boolean>("get_autostart_enabled");
 }

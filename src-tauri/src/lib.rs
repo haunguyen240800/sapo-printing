@@ -5,8 +5,8 @@ pub mod infrastructure;
 pub mod interface;
 
 use application::use_cases::{
-    CreatePrintJobUseCase, GetAuditTrailUseCase, GetJobStatusUseCase, GetMetricsUseCase,
-    ListPrintersUseCase,
+    ClearHistoryUseCase, CreatePrintJobUseCase, GetAuditTrailUseCase, GetJobStatusUseCase,
+    GetMetricsUseCase, ListPrintersUseCase,
 };
 use std::sync::Arc;
 
@@ -16,6 +16,7 @@ pub struct AppContextState {
     pub get_metrics_uc: Arc<GetMetricsUseCase>,
     pub get_audit_trail_uc: Arc<GetAuditTrailUseCase>,
     pub list_printers_uc: Arc<ListPrintersUseCase>,
+    pub clear_history_uc: Arc<ClearHistoryUseCase>,
     pub queue_worker: Arc<infrastructure::worker::QueueWorker>,
     pub app_handle: tauri::AppHandle,
     pub print_config_path: std::path::PathBuf,
@@ -30,6 +31,7 @@ pub fn run() {
     use interface::tauri::commands::{
         auth_command::approve_pairing_request,
         autostart_command::{get_autostart_enabled, set_autostart_enabled},
+        clear_command::clear_job_history,
         metrics_command::get_metrics,
         printer_command::{
             detect_printer_category, get_printer_config, get_printer_status, list_printers,
@@ -100,6 +102,7 @@ pub fn run() {
             get_autostart_enabled,
             set_autostart_enabled,
             approve_pairing_request,
+            clear_job_history,
         ])
         .on_window_event(|window, event| {
             if let tauri::WindowEvent::CloseRequested { api, .. } = event {

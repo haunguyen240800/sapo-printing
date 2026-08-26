@@ -5,7 +5,6 @@ use serde::{Deserialize, Serialize};
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct PrintJobCreated {
     pub job_id: PrintJobId,
-    // TODO(1-N PrintJob): replace `pdf_url` with a list of documents
     pub pdf_url: String,
     pub printer_id: PrinterId,
     pub timestamp: u64,

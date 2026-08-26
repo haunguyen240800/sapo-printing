@@ -6,8 +6,6 @@ use serde::{Deserialize, Serialize};
 pub struct PrintJobFailed {
     pub job_id: PrintJobId,
     pub reason: String,
-    /// Stable machine-readable error code (see `application::errors::Error::code`).
-    /// Lets the frontend branch/record the failure without parsing `reason`.
     pub error_code: String,
     pub retry_count: u32,
     pub timestamp: u64,

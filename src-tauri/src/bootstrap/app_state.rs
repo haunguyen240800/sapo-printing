@@ -13,8 +13,8 @@ use crate::{
         },
         services::audit_service,
         use_cases::{
-            CreatePrintJobUseCase, GetAuditTrailUseCase, GetJobStatusUseCase, GetMetricsUseCase,
-            ListPrintersUseCase, ProcessPrintJobUseCase,
+            ClearHistoryUseCase, CreatePrintJobUseCase, GetAuditTrailUseCase, GetJobStatusUseCase,
+            GetMetricsUseCase, ListPrintersUseCase, ProcessPrintJobUseCase,
         },
     },
     infrastructure::{
@@ -144,6 +144,7 @@ pub fn build_app_state(
         get_metrics_uc: Arc::new(GetMetricsUseCase::new(Arc::clone(&metrics_provider))),
         get_audit_trail_uc: Arc::new(GetAuditTrailUseCase::new(Arc::clone(&event_store))),
         list_printers_uc: Arc::new(ListPrintersUseCase::new(Arc::clone(&printer_manager))),
+        clear_history_uc: Arc::new(ClearHistoryUseCase::new(Arc::clone(&job_repo))),
         queue_worker: worker,
         app_handle,
         print_config_path: print_config_path.to_path_buf(),

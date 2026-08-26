@@ -7,9 +7,9 @@ import { openUrl } from "@tauri-apps/plugin-opener";
 import { ActionListButton } from "src/components/ActionListButton";
 import { ConfirmModal } from "src/components/ConfirmModal";
 import { type JobStatusPayload, onJobStatusChanged } from "src/services/event-listener";
-import { getMetrics, getPrinterConfig, type MetricsDto } from "src/services/printer-service";
+import { clearJobHistory, getMetrics, getPrinterConfig, type MetricsDto } from "src/services/printer-service";
 import type { PrinterConfig } from "src/types/printer";
-import { showErrorToast } from "src/utils/toast";
+import { showErrorToast, showToast } from "src/utils/toast";
 
 import { AppInfoModal } from "./components/AppInfoModal";
 import { Overview } from "./components/Overview";
@@ -24,7 +24,7 @@ export default function PrinterPage() {
   const [printerConfig, setPrinterConfig] = useState<PrinterConfig>();
   const [metrics, setMetrics] = useState<MetricsDto | null>(null);
   const [activeJobs, setActiveJobs] = useState<Map<string, JobStatusPayload>>(new Map());
-  const metricsIntervalRef = useRef<number | null>(null);
+  const [isClearingCache, setIsClearingCache] = useState(false);
   const removalTimeoutsRef = useRef<Map<string, number>>(new Map());
 
   useEffect(() => {
@@ -50,17 +50,27 @@ export default function PrinterPage() {
     setMetrics(result);
   }, []);
 
+  const handleClearCache = useCallback(async () => {
+    setIsClearingCache(true);
+    try {
+      await clearJobHistory();
+      await loadMetrics();
+      setActiveJobs(new Map());
+      showToast("Đã xóa dữ liệu cache");
+      setModalName(undefined);
+    } catch {
+      showErrorToast("Không xóa được dữ liệu cache");
+    } finally {
+      setIsClearingCache(false);
+    }
+  }, [loadMetrics]);
+
   useEffect(() => {
     let isMounted = true;
     const removalTimeouts = removalTimeoutsRef.current;
 
     loadPrinterConfig().catch(() => showErrorToast("Không tải được cấu hình máy in"));
     loadMetrics();
-
-    // Start polling metrics every 5 seconds (reduced frequency to avoid deadlock)
-    metricsIntervalRef.current = window.setInterval(() => {
-      loadMetrics();
-    }, 5000);
 
     // Subscribe to job status events
     const setupEventListener = async () => {
@@ -77,6 +87,9 @@ export default function PrinterPage() {
 
           // Schedule removal of terminal jobs outside the state updater
           if (payload.status === "COMPLETED" || payload.status === "FAILED" || payload.status === "CANCELLED") {
+            // Metrics only change when a job reaches a terminal state
+            loadMetrics();
+
             const existing = removalTimeouts.get(payload.job_id);
             if (existing) clearTimeout(existing);
 
@@ -101,9 +114,6 @@ export default function PrinterPage() {
 
     return () => {
       isMounted = false;
-      if (metricsIntervalRef.current) {
-        clearInterval(metricsIntervalRef.current);
-      }
       // Clear pending job-removal timeouts
       removalTimeouts.forEach((id) => clearTimeout(id));
       removalTimeouts.clear();
@@ -174,12 +184,14 @@ export default function PrinterPage() {
         </InlineStack>
       }
       body="Bạn có xác nhận xóa cache dữ liệu không?"
-      onDismiss={() => setModalName(undefined)}
+      onDismiss={() => {
+        if (isClearingCache) return;
+        setModalName(undefined);
+      }}
       confirmAction={{
         content: "Xác nhận",
-        onAction: () => {
-          setModalName(undefined);
-        },
+        loading: isClearingCache,
+        onAction: handleClearCache,
       }}
     />
   );

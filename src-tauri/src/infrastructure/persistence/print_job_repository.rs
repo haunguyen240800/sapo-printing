@@ -339,6 +339,55 @@ impl PrintJobRepositoryPort for PrintJobRepository {
 
         Ok(jobs)
     }
+
+    fn clear_terminal(&self) -> Result<u64, PrintJobError> {
+        let mut conn = self.acquire()?;
+
+        tracing::debug!(
+            target = "sapo_printer::repository::print_job",
+            operation = "clear_terminal",
+            "DELETE terminal print_jobs and their events"
+        );
+
+        let tx = conn.transaction().map_err(|e| PrintJobError::RepositoryError {
+            reason: format!("Failed to begin transaction: {}", e),
+        })?;
+
+        const TERMINAL: &str = "('COMPLETED', 'FAILED', 'CANCELLED')";
+
+        tx.execute(
+            &format!(
+                "DELETE FROM events WHERE aggregate_id IN \
+                 (SELECT id FROM print_jobs WHERE status IN {TERMINAL})"
+            ),
+            [],
+        )
+        .map_err(|e| PrintJobError::RepositoryError {
+            reason: format!("Failed to delete events: {}", e),
+        })?;
+
+        let deleted = tx
+            .execute(
+                &format!("DELETE FROM print_jobs WHERE status IN {TERMINAL}"),
+                [],
+            )
+            .map_err(|e| PrintJobError::RepositoryError {
+                reason: format!("Failed to delete print jobs: {}", e),
+            })?;
+
+        tx.commit().map_err(|e| PrintJobError::RepositoryError {
+            reason: format!("Failed to commit transaction: {}", e),
+        })?;
+
+        tracing::info!(
+            target = "sapo_printer::repository::print_job",
+            operation = "clear_terminal",
+            deleted_jobs = deleted,
+            "Cleared terminal print jobs"
+        );
+
+        Ok(deleted as u64)
+    }
 }
 
 fn row_to_print_job(row: &rusqlite::Row<'_>) -> Result<PrintJob, rusqlite::Error> {
