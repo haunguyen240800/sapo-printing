@@ -33,7 +33,7 @@ export function Overview({ printerConfig, stats }: Props) {
             </Text>
           </InlineGrid>
 
-          <InlineGrid columns="100px 120px 100px 80px 100px 80px" gap="4" alignItems="center">
+          <InlineGrid columns="100px 140px 100px 80px 100px 80px" gap="4" alignItems="center">
             <Text as="span" color="subdued">
               Khổ giấy:
             </Text>
@@ -54,7 +54,7 @@ export function Overview({ printerConfig, stats }: Props) {
             </Text>
           </InlineGrid>
 
-          <InlineGrid columns="100px 120px 100px 80px 100px 80px" gap="4" alignItems="center">
+          <InlineGrid columns="100px 140px 100px 80px 100px 80px" gap="4" alignItems="center">
             <Text as="span" color="subdued">
               Cân lề trái:
             </Text>
@@ -69,7 +69,7 @@ export function Overview({ printerConfig, stats }: Props) {
             </Text>
           </InlineGrid>
 
-          <InlineGrid columns="100px 120px 100px 80px 100px 80px" gap="4" alignItems="center">
+          <InlineGrid columns="100px 140px 100px 80px 100px 80px" gap="4" alignItems="center">
             <Text as="span" color="subdued">
               Cân lề trên:
             </Text>
