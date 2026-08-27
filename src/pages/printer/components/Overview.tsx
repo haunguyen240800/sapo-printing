@@ -99,7 +99,7 @@ export function Overview({ printerConfig, stats }: Props) {
             <Text as="span" variant="bodyMd">
               Thời gian in:
             </Text>
-            <Text as="span" variant="bodyMd">
+            <Text as="span" variant="bodyMd" fontWeight="bold">
               {stats.printTime || "---"}
             </Text>
             <Text as="span" variant="bodyMd">
@@ -112,13 +112,13 @@ export function Overview({ printerConfig, stats }: Props) {
             <Text as="span" variant="bodyMd">
               In thành công:
             </Text>
-            <Text as="span" variant="bodyMd" tone="success">
+            <Text as="span" variant="bodyMd" tone="success" fontWeight="bold">
               {stats.success}
             </Text>
             <Text as="span" variant="bodyMd">
               In thất bại:
             </Text>
-            <Text as="span" variant="bodyMd" tone="critical">
+            <Text as="span" variant="bodyMd" tone="critical" fontWeight="bold">
               {stats.failed}
             </Text>
           </InlineGrid>
