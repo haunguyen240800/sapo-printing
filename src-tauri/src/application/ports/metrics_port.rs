@@ -7,7 +7,8 @@ pub struct MetricsSnapshot {
     pub total_jobs: u64,
     pub completed: u64,
     pub failed: u64,
-    pub last_print_time_secs: f64,
+    /// Unix epoch (seconds) of the most recent completed print. 0 when none.
+    pub last_print_at: i64,
 }
 
 pub trait MetricsPort: Send + Sync {

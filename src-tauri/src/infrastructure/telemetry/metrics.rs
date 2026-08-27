@@ -33,7 +33,7 @@ impl MetricsCollector {
         );
 
         let (total_jobs, completed, failed) = self.fetch_job_counts(&conn)?;
-        let last_print_time_secs = self.fetch_last_print_duration(&conn)?;
+        let last_print_at = self.fetch_last_print_at(&conn)?;
 
         drop(conn);
 
@@ -46,7 +46,7 @@ impl MetricsCollector {
             total_jobs,
             completed,
             failed,
-            last_print_time_secs,
+            last_print_at,
         })
     }
 
@@ -87,32 +87,22 @@ impl MetricsCollector {
         Ok((total_jobs, completed, failed))
     }
 
-    fn fetch_last_print_duration(&self, conn: &Connection) -> Result<f64, InfrastructureError> {
-        let result: Option<f64> = conn
+    fn fetch_last_print_at(&self, conn: &Connection) -> Result<i64, InfrastructureError> {
+        let result: Option<i64> = conn
             .query_row(
-                "SELECT CAST(c.timestamp AS FLOAT) - CAST(p.timestamp AS FLOAT)
-                 FROM events c
-                 JOIN events p ON c.aggregate_id = p.aggregate_id
-                     AND p.event_type = 'PrintJobPrinting'
-                     AND p.sequence_number = (
-                         SELECT MAX(p2.sequence_number)
-                         FROM events p2
-                         WHERE p2.aggregate_id = c.aggregate_id
-                           AND p2.event_type = 'PrintJobPrinting'
-                           AND p2.sequence_number < c.sequence_number
-                     )
-                 WHERE c.event_type = 'PrintJobCompleted'
-                   AND c.timestamp >= p.timestamp
-                 ORDER BY c.timestamp DESC, c.sequence_number DESC
+                "SELECT timestamp
+                 FROM events
+                 WHERE event_type = 'PrintJobCompleted'
+                 ORDER BY timestamp DESC, sequence_number DESC
                  LIMIT 1",
                 [],
                 |row| row.get(0),
             )
             .optional()
             .map_err(|e| InfrastructureError::DatabaseError {
-                reason: format!("Failed to query last print duration: {}", e),
+                reason: format!("Failed to query last print timestamp: {}", e),
             })?;
-        Ok(result.unwrap_or(0.0))
+        Ok(result.unwrap_or(0))
     }
 }
 
@@ -222,7 +212,7 @@ mod tests {
     }
 
     #[test]
-    fn test_last_print_duration_from_events() {
+    fn test_last_print_at_from_events() {
         let pool = setup();
         {
             let c = pool.get().unwrap();
@@ -241,8 +231,8 @@ mod tests {
         let collector = MetricsCollector::new(pool.clone());
         let snapshot = collector.collect_metrics().unwrap();
 
-        // Most recent completed job: 2200 - 2150 = 50s
-        assert!((snapshot.last_print_time_secs - 50.0).abs() < f64::EPSILON);
+        // Timestamp of the most recent PrintJobCompleted event
+        assert_eq!(snapshot.last_print_at, 2200);
     }
 
     #[test]
@@ -255,6 +245,6 @@ mod tests {
         assert_eq!(snapshot.total_jobs, 0);
         assert_eq!(snapshot.completed, 0);
         assert_eq!(snapshot.failed, 0);
-        assert!((snapshot.last_print_time_secs - 0.0).abs() < f64::EPSILON);
+        assert_eq!(snapshot.last_print_at, 0);
     }
 }

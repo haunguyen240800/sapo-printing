@@ -6,7 +6,7 @@ export interface MetricsDto {
   total_jobs: number;
   completed: number;
   failed: number;
-  last_print_time_secs: number;
+  last_print_at: number;
 }
 
 export async function listPrinters(): Promise<Printer[]> {

@@ -9,6 +9,7 @@ import { ConfirmModal } from "src/components/ConfirmModal";
 import { type JobStatusPayload, onJobStatusChanged } from "src/services/event-listener";
 import { clearJobHistory, getMetrics, getPrinterConfig, type MetricsDto } from "src/services/printer-service";
 import type { PrinterConfig } from "src/types/printer";
+import { formatDateTime } from "src/utils/datetime";
 import { showErrorToast, showToast } from "src/utils/toast";
 
 import { AppInfoModal } from "./components/AppInfoModal";
@@ -126,7 +127,7 @@ export default function PrinterPage() {
     total: metrics?.total_jobs || 0,
     success: metrics?.completed || 0,
     failed: metrics?.failed || 0,
-    printTime: metrics?.last_print_time_secs ? `${metrics.last_print_time_secs.toFixed(1)}s` : null,
+    printTime: metrics?.last_print_at ? formatDateTime(metrics.last_print_at) : null,
     downloadProgress: calculateDownloadProgress(),
     printProgress: calculatePrintProgress(),
   };
