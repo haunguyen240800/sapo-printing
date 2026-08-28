@@ -21,7 +21,6 @@ pub trait GraphicsBackend {
     fn end_page(&mut self);
     fn end_document(&mut self) -> Result<(), String>;
     fn abort_document(&mut self);
-    fn wait_all_printed(&mut self) -> Result<(), String>;
 }
 
 pub struct GraphicsBackendFactory;
