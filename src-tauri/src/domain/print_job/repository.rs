@@ -11,6 +11,8 @@ pub trait PrintJobRepository: Send + Sync {
 
     fn find_by_status(&self, status: &PrintStatus) -> Result<Vec<PrintJob>, PrintJobError>;
 
+    fn find_by_slip_id(&self, slip_id: &str) -> Result<Vec<PrintJob>, PrintJobError>;
+
     fn find_all(&self) -> Result<Vec<PrintJob>, PrintJobError>;
 
     fn clear_terminal(&self) -> Result<u64, PrintJobError>;

@@ -61,10 +61,11 @@ impl PrintJobRepositoryPort for PrintJobRepository {
 
         let rows = conn
             .execute(
-                "INSERT INTO print_jobs (id, printer_name, document_url, status, retry_count, created_at, updated_at, completed_at, error_message, output_path, settings_json)
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
+                "INSERT INTO print_jobs (id, slip_id, printer_name, document_url, status, retry_count, created_at, updated_at, completed_at, error_message, output_path, settings_json)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)",
                 rusqlite::params![
                     job.id().to_string(),
+                    job.slip_id(),
                     job.printer_id().as_str(),
                     job.pdf_url(),
                     job.status().to_db_string(),
@@ -187,7 +188,7 @@ impl PrintJobRepositoryPort for PrintJobRepository {
 
         let mut stmt = conn
             .prepare(
-                "SELECT id, printer_name, document_url, status, retry_count, created_at, completed_at, error_message, output_path, settings_json
+                "SELECT id, slip_id, printer_name, document_url, status, retry_count, created_at, completed_at, error_message, output_path, settings_json
                  FROM print_jobs WHERE id = ?1",
             )
             .map_err(|e| {
@@ -235,7 +236,7 @@ impl PrintJobRepositoryPort for PrintJobRepository {
 
         let mut stmt = conn
             .prepare(
-                "SELECT id, printer_name, document_url, status, retry_count, created_at, completed_at, error_message, output_path, settings_json
+                "SELECT id, slip_id, printer_name, document_url, status, retry_count, created_at, completed_at, error_message, output_path, settings_json
                  FROM print_jobs WHERE status = ?1",
             )
             .map_err(|e| {
@@ -282,6 +283,41 @@ impl PrintJobRepositoryPort for PrintJobRepository {
         Ok(jobs)
     }
 
+    fn find_by_slip_id(&self, slip_id: &str) -> Result<Vec<PrintJob>, PrintJobError> {
+        let conn = self.acquire()?;
+
+        tracing::debug!(
+            target = "sapo_printer::repository::print_job",
+            operation = "find_by_slip_id",
+            slip_id = slip_id,
+            "SELECT FROM print_jobs WHERE slip_id"
+        );
+
+        let mut stmt = conn
+            .prepare(
+                "SELECT id, slip_id, printer_name, document_url, status, retry_count, created_at, completed_at, error_message, output_path, settings_json
+                 FROM print_jobs WHERE slip_id = ?1",
+            )
+            .map_err(|e| PrintJobError::RepositoryError {
+                reason: format!("Failed to prepare query: {}", e),
+            })?;
+
+        let job_iter = stmt
+            .query_map([slip_id], |row| row_to_print_job(row))
+            .map_err(|e| PrintJobError::RepositoryError {
+                reason: format!("Failed to query print jobs: {}", e),
+            })?;
+
+        let mut jobs = Vec::new();
+        for job_result in job_iter {
+            jobs.push(job_result.map_err(|e| PrintJobError::RepositoryError {
+                reason: format!("Failed to read print job row: {}", e),
+            })?);
+        }
+
+        Ok(jobs)
+    }
+
     fn find_all(&self) -> Result<Vec<PrintJob>, PrintJobError> {
         let conn = self.acquire()?;
 
@@ -293,7 +329,7 @@ impl PrintJobRepositoryPort for PrintJobRepository {
 
         let mut stmt = conn
             .prepare(
-                "SELECT id, printer_name, document_url, status, retry_count, created_at, completed_at, error_message, output_path, settings_json
+                "SELECT id, slip_id, printer_name, document_url, status, retry_count, created_at, completed_at, error_message, output_path, settings_json
                  FROM print_jobs",
             )
             .map_err(|e| {
@@ -349,9 +385,11 @@ impl PrintJobRepositoryPort for PrintJobRepository {
             "DELETE terminal print_jobs and their events"
         );
 
-        let tx = conn.transaction().map_err(|e| PrintJobError::RepositoryError {
-            reason: format!("Failed to begin transaction: {}", e),
-        })?;
+        let tx = conn
+            .transaction()
+            .map_err(|e| PrintJobError::RepositoryError {
+                reason: format!("Failed to begin transaction: {}", e),
+            })?;
 
         const TERMINAL: &str = "('COMPLETED', 'FAILED', 'CANCELLED')";
 
@@ -392,15 +430,16 @@ impl PrintJobRepositoryPort for PrintJobRepository {
 
 fn row_to_print_job(row: &rusqlite::Row<'_>) -> Result<PrintJob, rusqlite::Error> {
     let id_str: String = row.get(0)?;
-    let printer_id_raw: String = row.get(1)?;
-    let document_url: String = row.get(2)?;
-    let status_str: String = row.get(3)?;
-    let retry_count: i64 = row.get(4)?;
-    let created_at: i64 = row.get(5)?;
-    let completed_at: Option<i64> = row.get(6)?;
-    let error_message: Option<String> = row.get(7)?;
-    let output_path: Option<String> = row.get(8)?;
-    let settings_json: Option<String> = row.get(9)?;
+    let slip_id: String = row.get(1)?;
+    let printer_id_raw: String = row.get(2)?;
+    let document_url: String = row.get(3)?;
+    let status_str: String = row.get(4)?;
+    let retry_count: i64 = row.get(5)?;
+    let created_at: i64 = row.get(6)?;
+    let completed_at: Option<i64> = row.get(7)?;
+    let error_message: Option<String> = row.get(8)?;
+    let output_path: Option<String> = row.get(9)?;
+    let settings_json: Option<String> = row.get(10)?;
 
     let id: PrintJobId = id_str.parse().map_err(|e: uuid::Error| {
         rusqlite::Error::InvalidColumnType(
@@ -425,6 +464,7 @@ fn row_to_print_job(row: &rusqlite::Row<'_>) -> Result<PrintJob, rusqlite::Error
 
     Ok(PrintJob::reconstruct(
         id,
+        slip_id,
         status,
         retry_count as u32,
         document_url,

@@ -1,5 +1,10 @@
 # Deferred Work
 
+## Deferred from: rename CancelPrintJobUseCase review (2026-08-28)
+
+- **Cancellation concurrency is not atomic** — `CancelPrintJobUseCase` reads jobs and later updates them, while `ProcessPrintJobUseCase` performs only one cancellation check before submission. Cancellation can race with worker transitions or arrive after the check, allowing a cancelled job to be printed or a stale aggregate to overwrite a newer status. Address in a focused cancellation-consistency change using an atomic conditional claim/update or equivalent repository operation.
+- **Cancellation event and job status can diverge** — the cancellation event is persisted before the job update without a shared transaction. If the repository update fails, the audit trail can report cancellation while the job remains printable. Add a repository/application operation that commits job state and its events atomically.
+
 ## Deferred from: unify runtime configuration paths review (2026-08-24)
 
 - **Atomic print-config persistence** — `app_print_config::save_config` vẫn dùng `fs::write`, nên process interruption hoặc save/load đồng thời có thể để lại JSON bị truncate. Cần một thay đổi riêng dùng sibling temp file + atomic replace và cơ chế đồng bộ phù hợp.

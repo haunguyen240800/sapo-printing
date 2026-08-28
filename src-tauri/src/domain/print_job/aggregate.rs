@@ -10,6 +10,7 @@ pub const MAX_RETRY_COUNT: u32 = 3;
 #[derive(Debug, Serialize, Deserialize)]
 pub struct PrintJob {
     id: PrintJobId,
+    slip_id: String,
     status: PrintStatus,
     retry_count: u32,
     pdf_url: String,
@@ -27,6 +28,7 @@ impl Clone for PrintJob {
     fn clone(&self) -> Self {
         Self {
             id: self.id.clone(),
+            slip_id: self.slip_id.clone(),
             status: self.status.clone(),
             retry_count: self.retry_count,
             pdf_url: self.pdf_url.clone(),
@@ -49,11 +51,17 @@ impl PrintJob {
             .as_secs() as i64
     }
 
-    pub fn new(pdf_url: String, printer_id: PrinterId, settings: PrintJobSettings) -> Self {
-        Self::new_with_output_path(pdf_url, printer_id, settings, None)
+    pub fn new(
+        slip_id: String,
+        pdf_url: String,
+        printer_id: PrinterId,
+        settings: PrintJobSettings,
+    ) -> Self {
+        Self::new_with_output_path(slip_id, pdf_url, printer_id, settings, None)
     }
 
     pub fn new_with_output_path(
+        slip_id: String,
         pdf_url: String,
         printer_id: PrinterId,
         settings: PrintJobSettings,
@@ -63,6 +71,7 @@ impl PrintJob {
         let created_at = Self::now();
         let mut job = Self {
             id: id.clone(),
+            slip_id,
             status: PrintStatus::Pending,
             retry_count: 0,
             pdf_url,
@@ -82,8 +91,10 @@ impl PrintJob {
         job
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub fn reconstruct(
         id: PrintJobId,
+        slip_id: String,
         status: PrintStatus,
         retry_count: u32,
         pdf_url: String,
@@ -96,6 +107,7 @@ impl PrintJob {
     ) -> Self {
         Self {
             id,
+            slip_id,
             status,
             retry_count,
             pdf_url,
@@ -245,6 +257,10 @@ impl PrintJob {
 
     pub fn id(&self) -> &PrintJobId {
         &self.id
+    }
+
+    pub fn slip_id(&self) -> &str {
+        &self.slip_id
     }
 
     pub fn status(&self) -> &PrintStatus {

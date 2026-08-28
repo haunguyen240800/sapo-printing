@@ -22,6 +22,7 @@ pub fn start_http_server(app: &App, pool: DbPool, data_dir: &std::path::Path) {
     let event_bus = ctx.create_print_job_uc.event_bus.clone();
     let create_uc = ctx.create_print_job_uc.clone();
     let get_status_uc = ctx.get_job_status_uc.clone();
+    let cancel_print_job_uc = ctx.cancel_print_job_uc.clone();
     let app_handle = app.handle().clone();
 
     tauri::async_runtime::spawn(async move {
@@ -31,6 +32,7 @@ pub fn start_http_server(app: &App, pool: DbPool, data_dir: &std::path::Path) {
             event_bus,
             create_uc,
             get_status_uc,
+            cancel_print_job_uc,
             env!("SAPO_APP_VERSION"),
         )
         .await

@@ -4,7 +4,9 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use crate::application::ports::ApiTokenPort;
 use crate::application::ports::event_bus::EventBus;
-use crate::application::use_cases::{CreatePrintJobUseCase, GetJobStatusUseCase};
+use crate::application::use_cases::{
+    CancelPrintJobUseCase, CreatePrintJobUseCase, GetJobStatusUseCase,
+};
 use crate::infrastructure::errors::InfrastructureError;
 
 use super::server::{self, AgentMetadata};
@@ -25,6 +27,7 @@ pub async fn start(
     event_bus: Arc<dyn EventBus>,
     create_print_job_uc: Arc<CreatePrintJobUseCase>,
     get_job_status_uc: Arc<GetJobStatusUseCase>,
+    cancel_print_job_uc: Arc<CancelPrintJobUseCase>,
     app_version: &'static str,
 ) -> Result<BootstrapResult, InfrastructureError> {
     let broadcaster = SseBroadcaster::new();
@@ -44,6 +47,7 @@ pub async fn start(
         sse_broadcaster: Some(broadcaster_for_state),
         create_print_job_uc,
         get_job_status_uc,
+        cancel_print_job_uc,
     })
     .await?;
 

@@ -5,14 +5,15 @@ pub mod infrastructure;
 pub mod interface;
 
 use application::use_cases::{
-    ClearHistoryUseCase, CreatePrintJobUseCase, GetAuditTrailUseCase, GetJobStatusUseCase,
-    GetMetricsUseCase, ListPrintersUseCase,
+    CancelPrintJobUseCase, ClearHistoryUseCase, CreatePrintJobUseCase, GetAuditTrailUseCase,
+    GetJobStatusUseCase, GetMetricsUseCase, ListPrintersUseCase,
 };
 use std::sync::Arc;
 
 pub struct AppContextState {
     pub create_print_job_uc: Arc<CreatePrintJobUseCase>,
     pub get_job_status_uc: Arc<GetJobStatusUseCase>,
+    pub cancel_print_job_uc: Arc<CancelPrintJobUseCase>,
     pub get_metrics_uc: Arc<GetMetricsUseCase>,
     pub get_audit_trail_uc: Arc<GetAuditTrailUseCase>,
     pub list_printers_uc: Arc<ListPrintersUseCase>,

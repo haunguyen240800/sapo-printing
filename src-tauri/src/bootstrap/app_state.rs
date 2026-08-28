@@ -13,8 +13,9 @@ use crate::{
         },
         services::audit_service,
         use_cases::{
-            ClearHistoryUseCase, CreatePrintJobUseCase, GetAuditTrailUseCase, GetJobStatusUseCase,
-            GetMetricsUseCase, ListPrintersUseCase, ProcessPrintJobUseCase,
+            CancelPrintJobUseCase, ClearHistoryUseCase, CreatePrintJobUseCase,
+            GetAuditTrailUseCase, GetJobStatusUseCase, GetMetricsUseCase, ListPrintersUseCase,
+            ProcessPrintJobUseCase,
         },
     },
     infrastructure::{
@@ -141,6 +142,11 @@ pub fn build_app_state(
             printer_manager: Arc::clone(&printer_manager),
         }),
         get_job_status_uc: Arc::new(GetJobStatusUseCase::new(Arc::clone(&job_repo))),
+        cancel_print_job_uc: Arc::new(CancelPrintJobUseCase::new(
+            Arc::clone(&job_repo),
+            Arc::clone(&event_store),
+            Arc::clone(&event_bus),
+        )),
         get_metrics_uc: Arc::new(GetMetricsUseCase::new(Arc::clone(&metrics_provider))),
         get_audit_trail_uc: Arc::new(GetAuditTrailUseCase::new(Arc::clone(&event_store))),
         list_printers_uc: Arc::new(ListPrintersUseCase::new(Arc::clone(&printer_manager))),

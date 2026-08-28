@@ -98,7 +98,7 @@ impl QueuePort for JobQueueBroker {
         let job_opt = {
             let mut stmt = tx
                 .prepare(
-                    "SELECT id, printer_name, document_url, retry_count, output_path, settings_json
+                    "SELECT id, slip_id, printer_name, document_url, retry_count, output_path, settings_json
                      FROM print_jobs
                      WHERE status = ?1
                        AND (scheduled_at IS NULL OR scheduled_at <= ?2)
@@ -111,11 +111,12 @@ impl QueuePort for JobQueueBroker {
                 rusqlite::params![PrintStatus::Queued.to_db_string(), now],
                 |row| {
                     let id_str: String = row.get(0)?;
-                    let printer_id_raw: String = row.get(1)?;
-                    let document_url: String = row.get(2)?;
-                    let retry_count: i64 = row.get(3)?;
-                    let output_path: Option<String> = row.get(4)?;
-                    let settings_json: Option<String> = row.get(5)?;
+                    let slip_id: String = row.get(1)?;
+                    let printer_id_raw: String = row.get(2)?;
+                    let document_url: String = row.get(3)?;
+                    let retry_count: i64 = row.get(4)?;
+                    let output_path: Option<String> = row.get(5)?;
+                    let settings_json: Option<String> = row.get(6)?;
 
                     let id: PrintJobId = id_str.parse().map_err(|e: uuid::Error| {
                         rusqlite::Error::InvalidColumnType(
@@ -135,6 +136,7 @@ impl QueuePort for JobQueueBroker {
                     // (Queued → Processing) ngay sau khi pop.
                     Ok(PrintJob::reconstruct(
                         id,
+                        slip_id,
                         PrintStatus::Queued,
                         retry_count as u32,
                         document_url,

@@ -3,7 +3,7 @@ use std::sync::Arc;
 use crate::application::errors::Error;
 use crate::application::ports::event_bus::EventBus;
 use crate::application::ports::{DownloadPort, EventStore, PrintPort, TempFilePort};
-use crate::domain::print_job::{PrintJob, PrintJobRepository};
+use crate::domain::print_job::{PrintJob, PrintJobRepository, PrintStatus};
 
 pub struct ProcessPrintJobUseCase {
     job_repo: Arc<dyn PrintJobRepository>,
@@ -59,6 +59,20 @@ impl ProcessPrintJobUseCase {
 
         let temp_file = self.temp_files.wrap(pdf_path)?;
 
+        // Cancel-gate: download là bước dài nhất, nên đây là điểm chặn chính. Nếu phiếu
+        // đã bị hủy (CancelPrintJobUseCase set CANCELLED trong DB) trong lúc download,
+        // dừng NGAY trước khi đẩy sang spooler — không in, không ghi đè trạng thái
+        // CANCELLED bằng các transition tiếp theo. temp_file drop sẽ dọn file tạm.
+        if self.is_cancelled(&job)? {
+            tracing::info!(
+                target = "sapo_printer::application::use_case::process_print_job",
+                job_id = %job.id(),
+                slip_id = job.slip_id(),
+                "Job cancelled before printing, aborting pipeline"
+            );
+            return Ok(());
+        }
+
         job.mark_downloaded()?;
         self.persist_and_publish(&mut job)?;
 
@@ -82,6 +96,19 @@ impl ProcessPrintJobUseCase {
         self.persist_and_publish(&mut job)?;
 
         Ok(())
+    }
+
+    /// Đọc lại trạng thái job từ DB để phát hiện hủy trong lúc pipeline đang chạy.
+    /// Trả về `true` nếu job đã bị đánh dấu `CANCELLED`.
+    fn is_cancelled(&self, job: &PrintJob) -> Result<bool, Error> {
+        let current = self
+            .job_repo
+            .find_by_id(job.id())
+            .map_err(|e| Error::RepositoryError(format!("Failed to reload job: {:?}", e)))?;
+        Ok(matches!(
+            current.as_ref().map(|j| j.status()),
+            Some(PrintStatus::Cancelled)
+        ))
     }
 
     fn render_or_save(

@@ -129,6 +129,7 @@ fn map_pair_error(error: PairError) -> ApiErrorResponse {
 
 #[derive(Deserialize)]
 pub struct CreateJobRequest {
+    pub slip_id: String,
     pub document_url: String,
 }
 
@@ -143,6 +144,7 @@ pub async fn create_job(
 ) -> Result<Json<CreateJobResponse>, ApiErrorResponse> {
     let use_case = state.create_print_job_uc.clone();
     let request = PrintJobCreateRequest {
+        slip_id: body.slip_id,
         pdf_url: body.document_url,
     };
 
@@ -190,6 +192,39 @@ pub async fn get_job(
     })
 }
 
+// ==================== /api/v1/jobs/cancel ====================
+
+#[derive(Deserialize)]
+pub struct CancelSlipRequest {
+    pub slip_id: String,
+}
+
+pub async fn cancel_slip(
+    State(state): State<HttpServerState>,
+    Json(body): Json<CancelSlipRequest>,
+) -> Result<StatusCode, ApiErrorResponse> {
+    let use_case = state.cancel_print_job_uc.clone();
+    let slip_id = body.slip_id;
+
+    let result = tokio::task::spawn_blocking(move || use_case.execute(&slip_id))
+        .await
+        .map_err(|e| {
+            ApiError::new(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "task_join",
+                e.to_string(),
+            )
+        })?;
+
+    map_cancel_result(result)
+}
+
+fn map_cancel_result(result: Result<usize, Error>) -> Result<StatusCode, ApiErrorResponse> {
+    result
+        .map(|_| StatusCode::NO_CONTENT)
+        .map_err(map_app_error)
+}
+
 fn map_app_error(e: Error) -> ApiErrorResponse {
     let status = match &e {
         Error::EmptyJobList => StatusCode::BAD_REQUEST,
@@ -219,7 +254,23 @@ fn map_app_error(e: Error) -> ApiErrorResponse {
 
 #[cfg(test)]
 mod tests {
+    use axum::body::to_bytes;
+
     use super::*;
+
+    async fn assert_cancel_success_has_empty_body(job_count: usize) {
+        let status = match map_cancel_result(Ok(job_count)) {
+            Ok(status) => status,
+            Err(_) => panic!("successful cancel result must map to an HTTP success response"),
+        };
+        let response = status.into_response();
+
+        assert_eq!(response.status(), StatusCode::NO_CONTENT);
+        let body = to_bytes(response.into_body(), usize::MAX)
+            .await
+            .expect("204 response body must be readable");
+        assert!(body.is_empty());
+    }
 
     fn assert_pair_error(
         error: PairError,
@@ -268,5 +319,25 @@ mod tests {
             "internal",
             "backend: storage failed",
         );
+    }
+
+    #[tokio::test]
+    async fn maps_zero_cancelled_jobs_to_empty_no_content_response() {
+        assert_cancel_success_has_empty_body(0).await;
+    }
+
+    #[tokio::test]
+    async fn maps_cancelled_jobs_to_empty_no_content_response() {
+        assert_cancel_success_has_empty_body(3).await;
+    }
+
+    #[test]
+    fn preserves_cancel_use_case_error_mapping() {
+        let response = map_cancel_result(Err(Error::RepositoryError("database failed".into())))
+            .expect_err("cancel use case errors must remain HTTP errors");
+
+        assert_eq!(response.status, StatusCode::INTERNAL_SERVER_ERROR);
+        assert_eq!(response.body.code, "repository_error");
+        assert_eq!(response.body.message, "Lỗi lưu trữ: database failed");
     }
 }

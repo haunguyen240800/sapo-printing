@@ -13,6 +13,7 @@ INSERT INTO app_settings (key, value) VALUES
 
 CREATE TABLE print_jobs (
     id TEXT PRIMARY KEY CHECK(length(id) = 36),
+    slip_id TEXT NOT NULL DEFAULT '',
     printer_name TEXT NOT NULL,
     document_url TEXT NOT NULL,
     status TEXT NOT NULL DEFAULT 'PENDING',
@@ -28,6 +29,7 @@ CREATE TABLE print_jobs (
 CREATE INDEX idx_print_jobs_status ON print_jobs(status);
 CREATE INDEX idx_print_jobs_created_at ON print_jobs(created_at);
 CREATE INDEX idx_print_jobs_scheduled ON print_jobs(scheduled_at);
+CREATE INDEX idx_print_jobs_slip_id ON print_jobs(slip_id);
 
 CREATE TABLE events (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -188,7 +190,7 @@ mod tests {
                 |row| row.get(0),
             )
             .unwrap();
-        assert_eq!(count, 3);
+        assert_eq!(count, 4);
     }
 
     #[test]
@@ -255,5 +257,33 @@ mod tests {
             columns.contains(&"settings_json".to_string()),
             "settings_json column should exist"
         );
+    }
+
+    #[test]
+    fn test_print_jobs_has_slip_id_column_and_index() {
+        let mut conn = open_test_conn();
+        run_migrations(&mut conn).unwrap();
+
+        let columns: Vec<String> = conn
+            .prepare("PRAGMA table_info(print_jobs)")
+            .unwrap()
+            .query_map([], |row| row.get::<_, String>(1))
+            .unwrap()
+            .collect::<Result<Vec<_>, _>>()
+            .unwrap();
+
+        assert!(
+            columns.contains(&"slip_id".to_string()),
+            "slip_id column should exist"
+        );
+
+        let count: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM sqlite_master WHERE type='index' AND name='idx_print_jobs_slip_id'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(count, 1, "slip_id index should exist");
     }
 }

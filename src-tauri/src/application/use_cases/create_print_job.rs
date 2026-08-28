@@ -30,6 +30,12 @@ impl CreatePrintJobUseCase {
             });
         }
 
+        if request.slip_id.trim().is_empty() {
+            return Err(Error::ValidationError {
+                reason: "slip_id must not be empty".to_string(),
+            });
+        }
+
         let config = self
             .config_provider
             .load_print_config()
@@ -74,8 +80,13 @@ impl CreatePrintJobUseCase {
             "Creating job for URL"
         );
 
-        let mut job =
-            PrintJob::new_with_output_path(request.pdf_url.clone(), printer_id, settings, None);
+        let mut job = PrintJob::new_with_output_path(
+            request.slip_id.clone(),
+            request.pdf_url.clone(),
+            printer_id,
+            settings,
+            None,
+        );
         let events = job.drain_events();
 
         self.job_repo.save(&job).map_err(|e| {
