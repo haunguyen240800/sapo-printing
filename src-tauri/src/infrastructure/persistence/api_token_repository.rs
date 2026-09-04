@@ -3,7 +3,7 @@ use std::sync::Arc;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use async_trait::async_trait;
-use rand::RngCore;
+use rand::RngExt;
 use sha2::{Digest, Sha256};
 use subtle::ConstantTimeEq;
 use tokio::sync::{Mutex, oneshot};
@@ -35,11 +35,11 @@ impl ApiTokenRepository {
 
     async fn issue_token(&self, origin: &str) -> Result<IssuedToken, InfrastructureError> {
         let mut token_bytes = [0u8; 32];
-        rand::thread_rng().fill_bytes(&mut token_bytes);
+        rand::rng().fill(&mut token_bytes);
         let plaintext = hex::encode(token_bytes);
         let salt = hex::encode({
             let mut s = [0u8; 16];
-            rand::thread_rng().fill_bytes(&mut s);
+            rand::rng().fill(&mut s);
             s
         });
         let hash = hash_token(&plaintext, &salt);

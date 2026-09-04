@@ -1,12 +1,13 @@
 use std::ffi::OsStr;
 use std::os::windows::ffi::OsStrExt;
-use windows::Win32::Foundation::{HANDLE, HWND};
 use windows::Win32::Graphics::Gdi::{
     BI_RGB, BITMAPINFO, BITMAPINFOHEADER, CreateDCW, DEVMODEW, DIB_RGB_COLORS, DeleteDC,
     GetDeviceCaps, HDC, HORZRES, HORZSIZE, LOGPIXELSX, LOGPIXELSY, SRCCOPY, StretchDIBits, VERTRES,
     VERTSIZE,
 };
-use windows::Win32::Graphics::Printing::{ClosePrinter, DocumentPropertiesW, OpenPrinterW};
+use windows::Win32::Graphics::Printing::{
+    ClosePrinter, DocumentPropertiesW, OpenPrinterW, PRINTER_HANDLE,
+};
 use windows::Win32::Storage::Xps::{AbortDoc, DOCINFOW, EndDoc, EndPage, StartDocW, StartPage};
 use windows::core::{HSTRING, PCWSTR};
 
@@ -113,14 +114,13 @@ impl WindowsGraphicsBackend {
         let printer_pcwstr = PCWSTR(printer_hstr.as_ptr());
 
         unsafe {
-            let mut hprinter = HANDLE::default();
+            let mut hprinter = PRINTER_HANDLE::default();
             if OpenPrinterW(printer_pcwstr, &mut hprinter, None).is_ok() {
-                let size =
-                    DocumentPropertiesW(HWND::default(), hprinter, printer_pcwstr, None, None, 0);
+                let size = DocumentPropertiesW(None, hprinter, printer_pcwstr, None, None, 0);
                 if size >= size_of::<DEVMODEW>() as i32 {
                     let mut buf = vec![0u8; size as usize];
                     let queried = DocumentPropertiesW(
-                        HWND::default(),
+                        None,
                         hprinter,
                         printer_pcwstr,
                         Some(buf.as_mut_ptr() as *mut DEVMODEW),
@@ -137,7 +137,7 @@ impl WindowsGraphicsBackend {
                         );
 
                         let merged = DocumentPropertiesW(
-                            HWND::default(),
+                            None,
                             hprinter,
                             printer_pcwstr,
                             Some(dm_ptr),
@@ -249,7 +249,7 @@ impl GraphicsBackend for WindowsGraphicsBackend {
         let result = unsafe { StartDocW(hdc, &doc_info) };
         if result <= 0 {
             let os_err = std::io::Error::last_os_error();
-            unsafe { DeleteDC(hdc) };
+            let _ = unsafe { DeleteDC(hdc) };
             self.hdc = None;
             let code = os_err.raw_os_error().unwrap_or(-1);
             return Err(format!(
@@ -268,13 +268,13 @@ impl GraphicsBackend for WindowsGraphicsBackend {
     fn get_dpi(&self) -> (u32, u32) {
         if let Some(hdc) = self.hdc {
             unsafe {
-                let log_x = GetDeviceCaps(hdc, LOGPIXELSX);
-                let log_y = GetDeviceCaps(hdc, LOGPIXELSY);
+                let log_x = GetDeviceCaps(Some(hdc), LOGPIXELSX);
+                let log_y = GetDeviceCaps(Some(hdc), LOGPIXELSY);
 
-                let horz_res = GetDeviceCaps(hdc, HORZRES);
-                let vert_res = GetDeviceCaps(hdc, VERTRES);
-                let horz_size = GetDeviceCaps(hdc, HORZSIZE); // in mm
-                let vert_size = GetDeviceCaps(hdc, VERTSIZE); // in mm
+                let horz_res = GetDeviceCaps(Some(hdc), HORZRES);
+                let vert_res = GetDeviceCaps(Some(hdc), VERTRES);
+                let horz_size = GetDeviceCaps(Some(hdc), HORZSIZE); // in mm
+                let vert_size = GetDeviceCaps(Some(hdc), VERTSIZE); // in mm
 
                 let phys_dpi_x = if horz_size > 0 {
                     (horz_res as f64 / (horz_size as f64 / 25.4)).round() as u32
@@ -309,8 +309,8 @@ impl GraphicsBackend for WindowsGraphicsBackend {
     fn get_page_pixels(&self) -> (u32, u32) {
         if let Some(hdc) = self.hdc {
             unsafe {
-                let w = GetDeviceCaps(hdc, HORZRES) as u32;
-                let h = GetDeviceCaps(hdc, VERTRES) as u32;
+                let w = GetDeviceCaps(Some(hdc), HORZRES) as u32;
+                let h = GetDeviceCaps(Some(hdc), VERTRES) as u32;
                 tracing::info!("Printer DC printable area: {}x{} px", w, h);
                 (w, h)
             }
@@ -408,7 +408,7 @@ impl GraphicsBackend for WindowsGraphicsBackend {
         };
 
         let end_result = unsafe { EndDoc(hdc) };
-        unsafe { DeleteDC(hdc) };
+        let _ = unsafe { DeleteDC(hdc) };
 
         // EndDoc returns > 0 on success; anything else means the document was
         // not committed to the spooler.
@@ -423,7 +423,7 @@ impl GraphicsBackend for WindowsGraphicsBackend {
         if let Some(hdc) = self.hdc.take() {
             unsafe {
                 AbortDoc(hdc);
-                DeleteDC(hdc);
+                let _ = DeleteDC(hdc);
             }
         }
     }
@@ -512,7 +512,7 @@ impl Drop for WindowsGraphicsBackend {
     fn drop(&mut self) {
         if let Some(hdc) = self.hdc.take() {
             unsafe {
-                DeleteDC(hdc);
+                let _ = DeleteDC(hdc);
             }
         }
     }

@@ -85,12 +85,12 @@ fn get_default_printer_name() -> String {
     unsafe {
         let mut size: u32 = 0;
         // First call returns false and sets `size` to the required buffer length (chars).
-        GetDefaultPrinterW(PWSTR::null(), &mut size);
+        let _ = GetDefaultPrinterW(None, &mut size);
         if size == 0 {
             return String::new();
         }
         let mut buf = vec![0u16; size as usize];
-        if GetDefaultPrinterW(PWSTR(buf.as_mut_ptr()), &mut size).as_bool() {
+        if GetDefaultPrinterW(Some(PWSTR(buf.as_mut_ptr())), &mut size).as_bool() {
             let len = buf.iter().position(|&c| c == 0).unwrap_or(buf.len());
             String::from_utf16_lossy(&buf[..len])
         } else {

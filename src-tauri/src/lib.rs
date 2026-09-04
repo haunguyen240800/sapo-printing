@@ -129,7 +129,7 @@ fn setup_windows_titlebar(app: &tauri::App) {
 
     if let Some(window) = app.get_webview_window("main") {
         if let Ok(raw) = window.hwnd() {
-            let hwnd = HWND(raw.0 as isize);
+            let hwnd = HWND(raw.0);
             let caption = COLORREF(0x00FFFFFF);
             let text = COLORREF(0x00000000);
             let size = size_of::<COLORREF>() as u32;

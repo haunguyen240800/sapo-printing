@@ -61,8 +61,8 @@ impl MetricsCollector {
         let rows = stmt
             .query_map([], |row| {
                 let status: String = row.get(0)?;
-                let count: u64 = row.get(1)?;
-                Ok((status, count))
+                let count: i64 = row.get(1)?;
+                Ok((status, count as u64))
             })
             .map_err(|e| InfrastructureError::DatabaseError {
                 reason: format!("Failed to query: {}", e),
@@ -79,13 +79,13 @@ impl MetricsCollector {
         let failed = counts.get("FAILED").copied().unwrap_or(0)
             + counts.get("CANCELLED").copied().unwrap_or(0);
 
-        let total_jobs: u64 = conn
+        let total_jobs: i64 = conn
             .query_row("SELECT COUNT(*) FROM print_jobs", [], |row| row.get(0))
             .map_err(|e| InfrastructureError::DatabaseError {
                 reason: format!("Failed to count total jobs: {}", e),
             })?;
 
-        Ok((total_jobs, completed, failed))
+        Ok((total_jobs as u64, completed, failed))
     }
 
     fn fetch_last_print_at(&self, conn: &Connection) -> Result<i64, InfrastructureError> {
