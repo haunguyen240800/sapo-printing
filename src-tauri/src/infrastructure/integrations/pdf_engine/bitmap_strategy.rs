@@ -2,8 +2,49 @@ use super::renderer::RenderStrategy;
 use crate::domain::print_job::PrintJobSettings;
 use crate::infrastructure::errors::InfrastructureError;
 use crate::infrastructure::integrations::pdf_engine::pdfium_loader::load_pdfium;
-use crate::infrastructure::platform::printer_api::backend::GraphicsBackend;
+use crate::infrastructure::platform::printer_api::backend::{GraphicsBackend, PageOrientation};
 use pdfium_render::prelude::*;
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+struct PageSetup {
+    orientation: PageOrientation,
+    physical_width_mm: f32,
+    physical_height_mm: f32,
+    effective_width_mm: f32,
+    effective_height_mm: f32,
+}
+
+impl PageSetup {
+    fn from_settings(settings: &PrintJobSettings) -> Self {
+        let orientation = PageOrientation::from_config(&settings.orientation);
+        let (physical_width_mm, physical_height_mm) = settings.paper_size.dimensions_mm();
+        let (effective_width_mm, effective_height_mm) =
+            orientation.effective_dimensions(physical_width_mm, physical_height_mm);
+
+        Self {
+            orientation,
+            physical_width_mm,
+            physical_height_mm,
+            effective_width_mm,
+            effective_height_mm,
+        }
+    }
+
+    fn begin_document(
+        self,
+        backend: &mut dyn GraphicsBackend,
+        printer_name: &str,
+    ) -> Result<(), String> {
+        backend.begin_document(
+            printer_name,
+            "Sapo Print Job",
+            None,
+            self.physical_width_mm,
+            self.physical_height_mm,
+            self.orientation,
+        )
+    }
+}
 
 pub struct BitmapRenderStrategy {
     pdfium: Pdfium,
@@ -42,7 +83,7 @@ impl RenderStrategy for BitmapRenderStrategy {
             _ => PdfPageRenderRotation::None,
         };
 
-        let (paper_w_mm, paper_h_mm) = settings.paper_size.dimensions_mm();
+        let page_setup = PageSetup::from_settings(settings);
 
         // Each PDF page is submitted as a separate spooler document.
         //
@@ -52,8 +93,8 @@ impl RenderStrategy for BitmapRenderStrategy {
         // matches how browser-based printing and label utilities work, and is
         // supported by every compliant driver.
         for page in document.pages().iter() {
-            backend
-                .begin_document(printer_name, "Sapo Print Job", None, paper_w_mm, paper_h_mm)
+            page_setup
+                .begin_document(backend, printer_name)
                 .map_err(InfrastructureError::RenderError)?;
 
             // Read DC metrics after StartDoc so the driver has fully initialised
@@ -83,10 +124,10 @@ impl RenderStrategy for BitmapRenderStrategy {
                 )
             } else {
                 // Fallback: derive from settings paper size (macOS/Linux)
-                let pw = (paper_w_mm * dpi_x_f / 25.4
+                let pw = (page_setup.effective_width_mm * dpi_x_f / 25.4
                     - (settings.margin_left + settings.margin_right) as f32 * dpi_x_f / 25.4)
                     as i32;
-                let ph = (paper_h_mm * dpi_y_f / 25.4
+                let ph = (page_setup.effective_height_mm * dpi_y_f / 25.4
                     - (settings.margin_top + settings.margin_bottom) as f32 * dpi_y_f / 25.4)
                     as i32;
                 let ml = (settings.margin_left as f32 * dpi_x_f / 25.4) as i32;
@@ -156,5 +197,98 @@ impl RenderStrategy for BitmapRenderStrategy {
         }
 
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::infrastructure::platform::printer_api::backend::NativeGraphicsContext;
+
+    #[derive(Default)]
+    struct CapturingBackend {
+        begin_document_args: Option<(f32, f32, PageOrientation)>,
+    }
+
+    impl GraphicsBackend for CapturingBackend {
+        fn begin_document(
+            &mut self,
+            _printer_name: &str,
+            _doc_name: &str,
+            _output_path: Option<&str>,
+            paper_width_mm: f32,
+            paper_height_mm: f32,
+            orientation: PageOrientation,
+        ) -> Result<(), String> {
+            self.begin_document_args = Some((paper_width_mm, paper_height_mm, orientation));
+            Ok(())
+        }
+
+        fn get_dpi(&self) -> (u32, u32) {
+            (300, 300)
+        }
+
+        fn get_page_pixels(&self) -> (u32, u32) {
+            (0, 0)
+        }
+
+        fn begin_page(&mut self) {}
+
+        fn native_context(&mut self) -> NativeGraphicsContext {
+            NativeGraphicsContext::Windows(0)
+        }
+
+        fn draw_bitmap(
+            &mut self,
+            _data: &[u8],
+            _x: i32,
+            _y: i32,
+            _width: u32,
+            _height: u32,
+            _bpp: u16,
+        ) {
+        }
+
+        fn end_page(&mut self) {}
+
+        fn end_document(&mut self) -> Result<(), String> {
+            Ok(())
+        }
+
+        fn abort_document(&mut self) {}
+    }
+
+    #[test]
+    fn landscape_page_setup_reaches_graphics_backend() {
+        let mut settings = PrintJobSettings::default();
+        settings.orientation = "Landscape".to_string();
+        let expected_physical_dimensions = settings.paper_size.dimensions_mm();
+        let setup = PageSetup::from_settings(&settings);
+        let mut backend = CapturingBackend::default();
+
+        setup.begin_document(&mut backend, "test-printer").unwrap();
+
+        assert_eq!(
+            backend.begin_document_args,
+            Some((
+                expected_physical_dimensions.0,
+                expected_physical_dimensions.1,
+                PageOrientation::Landscape,
+            ))
+        );
+    }
+
+    #[test]
+    fn page_orientation_is_independent_from_content_rotation() {
+        let mut settings = PrintJobSettings::default();
+        settings.orientation = "Landscape".to_string();
+        settings.rotate = 0.0;
+        let without_rotation = PageSetup::from_settings(&settings);
+
+        settings.rotate = 90.0;
+        let with_rotation = PageSetup::from_settings(&settings);
+
+        assert_eq!(without_rotation, with_rotation);
+        assert_eq!(with_rotation.orientation, PageOrientation::Landscape);
     }
 }

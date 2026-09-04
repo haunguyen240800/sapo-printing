@@ -2,7 +2,7 @@ use std::fs;
 use std::path::PathBuf;
 use std::process::Command;
 
-use super::backend::{GraphicsBackend, NativeGraphicsContext};
+use super::backend::{GraphicsBackend, NativeGraphicsContext, PageOrientation};
 
 pub struct MacOsGraphicsBackend {
     printer_name: String,
@@ -36,13 +36,14 @@ impl GraphicsBackend for MacOsGraphicsBackend {
         _output_path: Option<&str>,
         paper_width_mm: f32,
         paper_height_mm: f32,
+        orientation: PageOrientation,
     ) -> Result<(), String> {
         self.printer_name = printer_name.to_string();
         self.doc_name = doc_name.to_string();
         self.current_page = 0;
         self.page_files.clear();
-        self.paper_width_mm = paper_width_mm;
-        self.paper_height_mm = paper_height_mm;
+        (self.paper_width_mm, self.paper_height_mm) =
+            orientation.effective_dimensions(paper_width_mm, paper_height_mm);
 
         let temp_dir = std::env::temp_dir().join(format!("sapo_print_{}", uuid::Uuid::new_v4()));
         fs::create_dir_all(&temp_dir)

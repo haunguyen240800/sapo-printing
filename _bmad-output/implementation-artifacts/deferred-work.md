@@ -1,5 +1,12 @@
 # Deferred Work
 
+## Deferred from: fix landscape print orientation review (2026-09-04)
+
+- **DEVMODE buffer alignment** — The Windows adapter stores a variable-size `DEVMODEW` plus driver-private bytes in `Vec<u8>` and casts its pointer to `*mut DEVMODEW`. `Vec<u8>` does not formally guarantee `DEVMODEW` alignment. Replace it in a focused FFI-safety change with an explicitly aligned allocation that still preserves the variable private tail.
+- **Custom paper dimension validation** — Existing Windows conversion casts `paper_width_mm * 10` and `paper_height_mm * 10` directly to `i16` without rejecting non-finite, non-positive, or out-of-range values. Add validation at the settings/domain boundary before changing this low-level adapter.
+- **Project-wide formatting baseline** — `cargo fmt --check` rewrites the CRLF checkout because `src-tauri/rustfmt.toml` requires Unix newlines, producing a repository-wide diff unrelated to this fix. Align Git/rustfmt newline policy in a dedicated cleanup.
+- **Full Cargo test target launches the desktop binary** — `cargo test` can start `target/debug/sapo-printer.exe` and remain running instead of completing. The library suite is usable via `cargo test --lib`; correct the binary test harness configuration separately.
+
 ## Deferred from: rename CancelPrintJobUseCase review (2026-08-28)
 
 - **Cancellation concurrency is not atomic** — `CancelPrintJobUseCase` reads jobs and later updates them, while `ProcessPrintJobUseCase` performs only one cancellation check before submission. Cancellation can race with worker transitions or arrive after the check, allowing a cancelled job to be printed or a stale aggregate to overwrite a newer status. Address in a focused cancellation-consistency change using an atomic conditional claim/update or equivalent repository operation.

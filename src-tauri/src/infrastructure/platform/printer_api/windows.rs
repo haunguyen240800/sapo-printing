@@ -2,15 +2,26 @@ use std::ffi::OsStr;
 use std::os::windows::ffi::OsStrExt;
 use windows::Win32::Foundation::{HANDLE, HWND};
 use windows::Win32::Graphics::Gdi::{
-    BI_RGB, BITMAPINFO, BITMAPINFOHEADER, CreateDCW, DEVMODE_FIELD_FLAGS, DEVMODEW, DIB_RGB_COLORS,
-    DeleteDC, GetDeviceCaps, HDC, HORZRES, HORZSIZE, LOGPIXELSX, LOGPIXELSY, SRCCOPY,
-    StretchDIBits, VERTRES, VERTSIZE,
+    BI_RGB, BITMAPINFO, BITMAPINFOHEADER, CreateDCW, DEVMODEW, DIB_RGB_COLORS, DeleteDC,
+    GetDeviceCaps, HDC, HORZRES, HORZSIZE, LOGPIXELSX, LOGPIXELSY, SRCCOPY, StretchDIBits, VERTRES,
+    VERTSIZE,
 };
 use windows::Win32::Graphics::Printing::{ClosePrinter, DocumentPropertiesW, OpenPrinterW};
 use windows::Win32::Storage::Xps::{AbortDoc, DOCINFOW, EndDoc, EndPage, StartDocW, StartPage};
 use windows::core::{HSTRING, PCWSTR};
 
-use super::backend::{GraphicsBackend, NativeGraphicsContext};
+use super::backend::{GraphicsBackend, NativeGraphicsContext, PageOrientation};
+
+const DM_ORIENTATION: u32 = 0x0001;
+const DM_PAPERSIZE: u32 = 0x0002;
+const DM_PAPERLENGTH: u32 = 0x0004;
+const DM_PAPERWIDTH: u32 = 0x0008;
+const DM_OUT_BUFFER: u32 = 2;
+const DM_IN_BUFFER: u32 = 8;
+const DOCUMENT_PROPERTIES_OK: i32 = 1;
+const DMORIENT_PORTRAIT: i16 = 1;
+const DMORIENT_LANDSCAPE: i16 = 2;
+const DMPAPER_USER: i16 = 256;
 
 pub struct WindowsGraphicsBackend {
     hdc: Option<HDC>,
@@ -51,32 +62,64 @@ impl WindowsGraphicsBackend {
         }
     }
 
-    /// Returns the printer's full DEVMODE (from DocumentPropertiesW) with only
-    /// the paper-size fields patched. Preserves orientation, print-direction, and
-    /// all other driver-specific settings — this is why browser print works and a
-    /// zeroed DEVMODEW does not.
+    /// Returns the printer's full DEVMODE (from DocumentPropertiesW) with the
+    /// requested paper size and orientation merged by the driver. Preserves
+    /// print-direction and all driver-specific settings — this is why browser
+    /// print works and a zeroed DEVMODEW does not.
     ///
-    /// Falls back to a minimal DEVMODEW with explicit portrait orientation if the
+    /// Falls back to a minimal DEVMODEW with the requested orientation if the
     /// printer cannot be queried (e.g. printer offline during job setup).
-    fn build_devmode(printer_name: &str, paper_width_mm: f32, paper_height_mm: f32) -> Vec<u8> {
-        const DM_PAPERSIZE: u32 = 0x0002;
-        const DM_PAPERLENGTH: u32 = 0x0004;
-        const DM_PAPERWIDTH: u32 = 0x0008;
-        const DM_OUT_BUFFER: u32 = 2;
-        const DMPAPER_USER: i16 = 256;
+    fn patch_devmode(
+        dm: &mut DEVMODEW,
+        paper_width_mm: f32,
+        paper_height_mm: f32,
+        orientation: PageOrientation,
+    ) {
+        dm.dmFields.0 |= DM_ORIENTATION | DM_PAPERSIZE | DM_PAPERLENGTH | DM_PAPERWIDTH;
+        dm.Anonymous1.Anonymous1.dmOrientation = match orientation {
+            PageOrientation::Portrait => DMORIENT_PORTRAIT,
+            PageOrientation::Landscape => DMORIENT_LANDSCAPE,
+        };
+        dm.Anonymous1.Anonymous1.dmPaperSize = DMPAPER_USER;
+        dm.Anonymous1.Anonymous1.dmPaperWidth = (paper_width_mm * 10.0) as i16;
+        dm.Anonymous1.Anonymous1.dmPaperLength = (paper_height_mm * 10.0) as i16;
+    }
 
+    fn fallback_devmode(
+        paper_width_mm: f32,
+        paper_height_mm: f32,
+        orientation: PageOrientation,
+    ) -> Vec<u8> {
+        let mut dm: DEVMODEW = unsafe { std::mem::zeroed() };
+        dm.dmSize = size_of::<DEVMODEW>() as u16;
+        dm.dmSpecVersion = 0x0401;
+        Self::patch_devmode(&mut dm, paper_width_mm, paper_height_mm, orientation);
+
+        let dm_size = size_of::<DEVMODEW>();
+        let mut buf = vec![0u8; dm_size];
+        unsafe {
+            std::ptr::copy_nonoverlapping(&dm as *const _ as *const u8, buf.as_mut_ptr(), dm_size);
+        }
+        buf
+    }
+
+    fn build_devmode(
+        printer_name: &str,
+        paper_width_mm: f32,
+        paper_height_mm: f32,
+        orientation: PageOrientation,
+    ) -> Result<Vec<u8>, String> {
         let printer_hstr = HSTRING::from(printer_name);
         let printer_pcwstr = PCWSTR(printer_hstr.as_ptr());
 
         unsafe {
             let mut hprinter = HANDLE::default();
             if OpenPrinterW(printer_pcwstr, &mut hprinter, None).is_ok() {
-                // First call: pass fMode=0 to retrieve required buffer size.
                 let size =
                     DocumentPropertiesW(HWND::default(), hprinter, printer_pcwstr, None, None, 0);
-                if size > 0 {
+                if size >= size_of::<DEVMODEW>() as i32 {
                     let mut buf = vec![0u8; size as usize];
-                    let ok = DocumentPropertiesW(
+                    let queried = DocumentPropertiesW(
                         HWND::default(),
                         hprinter,
                         printer_pcwstr,
@@ -84,22 +127,55 @@ impl WindowsGraphicsBackend {
                         None,
                         DM_OUT_BUFFER,
                     );
-                    let _ = ClosePrinter(hprinter);
-                    if ok >= 0 {
-                        // Patch only paper-size fields; keep everything else the driver set.
-                        let dm = &mut *(buf.as_mut_ptr() as *mut DEVMODEW);
-                        dm.dmFields.0 |= DM_PAPERSIZE | DM_PAPERLENGTH | DM_PAPERWIDTH;
-                        dm.Anonymous1.Anonymous1.dmPaperSize = DMPAPER_USER;
-                        dm.Anonymous1.Anonymous1.dmPaperWidth = (paper_width_mm * 10.0) as i16;
-                        dm.Anonymous1.Anonymous1.dmPaperLength = (paper_height_mm * 10.0) as i16;
-                        tracing::debug!(
-                            "DEVMODE from driver: orientation={}, paperSize={}, w={}dmm, h={}dmm",
-                            dm.Anonymous1.Anonymous1.dmOrientation,
-                            dm.Anonymous1.Anonymous1.dmPaperSize,
-                            dm.Anonymous1.Anonymous1.dmPaperWidth,
-                            dm.Anonymous1.Anonymous1.dmPaperLength,
+                    if queried == DOCUMENT_PROPERTIES_OK {
+                        let dm_ptr = buf.as_mut_ptr() as *mut DEVMODEW;
+                        Self::patch_devmode(
+                            &mut *dm_ptr,
+                            paper_width_mm,
+                            paper_height_mm,
+                            orientation,
                         );
-                        return buf;
+
+                        let merged = DocumentPropertiesW(
+                            HWND::default(),
+                            hprinter,
+                            printer_pcwstr,
+                            Some(dm_ptr),
+                            Some(dm_ptr.cast_const()),
+                            DM_IN_BUFFER | DM_OUT_BUFFER,
+                        );
+                        let _ = ClosePrinter(hprinter);
+
+                        if merged == DOCUMENT_PROPERTIES_OK {
+                            let dm = &*dm_ptr;
+                            let expected_orientation = match orientation {
+                                PageOrientation::Portrait => DMORIENT_PORTRAIT,
+                                PageOrientation::Landscape => DMORIENT_LANDSCAPE,
+                            };
+                            let actual_orientation = dm.Anonymous1.Anonymous1.dmOrientation;
+                            if actual_orientation != expected_orientation {
+                                return Err(format!(
+                                    "Printer driver did not accept {:?} orientation (returned {})",
+                                    orientation, actual_orientation
+                                ));
+                            }
+                            tracing::debug!(
+                                requested_orientation = ?orientation,
+                                dm_orientation = dm.Anonymous1.Anonymous1.dmOrientation,
+                                paper_size = dm.Anonymous1.Anonymous1.dmPaperSize,
+                                paper_width_dmm = dm.Anonymous1.Anonymous1.dmPaperWidth,
+                                paper_height_dmm = dm.Anonymous1.Anonymous1.dmPaperLength,
+                                "DEVMODE merged and validated by printer driver"
+                            );
+                            return Ok(buf);
+                        }
+
+                        return Err(format!(
+                            "Printer driver rejected the requested page settings (DocumentPropertiesW returned {})",
+                            merged
+                        ));
+                    } else {
+                        let _ = ClosePrinter(hprinter);
                     }
                 } else {
                     let _ = ClosePrinter(hprinter);
@@ -107,28 +183,16 @@ impl WindowsGraphicsBackend {
             }
         }
 
-        // Fallback: minimal DEVMODEW with portrait orientation.
         tracing::warn!(
-            "DocumentPropertiesW failed for '{}', using fallback DEVMODEW",
-            printer_name
+            printer_name,
+            requested_orientation = ?orientation,
+            "DocumentPropertiesW failed, using fallback DEVMODEW"
         );
-        const DM_ORIENTATION: u32 = 0x0001;
-        const DMORIENT_PORTRAIT: i16 = 1;
-        let mut dm: DEVMODEW = unsafe { std::mem::zeroed() };
-        dm.dmSize = size_of::<DEVMODEW>() as u16;
-        dm.dmSpecVersion = 0x0401;
-        dm.dmFields =
-            DEVMODE_FIELD_FLAGS(DM_ORIENTATION | DM_PAPERSIZE | DM_PAPERLENGTH | DM_PAPERWIDTH);
-        dm.Anonymous1.Anonymous1.dmOrientation = DMORIENT_PORTRAIT;
-        dm.Anonymous1.Anonymous1.dmPaperSize = DMPAPER_USER;
-        dm.Anonymous1.Anonymous1.dmPaperWidth = (paper_width_mm * 10.0) as i16;
-        dm.Anonymous1.Anonymous1.dmPaperLength = (paper_height_mm * 10.0) as i16;
-        let dm_size = size_of::<DEVMODEW>();
-        let mut buf = vec![0u8; dm_size];
-        unsafe {
-            std::ptr::copy_nonoverlapping(&dm as *const _ as *const u8, buf.as_mut_ptr(), dm_size);
-        }
-        buf
+        Ok(Self::fallback_devmode(
+            paper_width_mm,
+            paper_height_mm,
+            orientation,
+        ))
     }
 }
 
@@ -140,13 +204,14 @@ impl GraphicsBackend for WindowsGraphicsBackend {
         output_path: Option<&str>,
         paper_width_mm: f32,
         paper_height_mm: f32,
+        orientation: PageOrientation,
     ) -> Result<(), String> {
         let printer_hstr = HSTRING::from(printer_name);
 
-        // Get the driver's full DEVMODE and patch only the paper size.
-        // This preserves orientation and all other driver settings —
-        // equivalent to what the browser does when printing.
-        let devmode_buf = Self::build_devmode(printer_name, paper_width_mm, paper_height_mm);
+        // Get the driver's full DEVMODE and merge the requested page settings.
+        // This preserves private driver data while making orientation explicit.
+        let devmode_buf =
+            Self::build_devmode(printer_name, paper_width_mm, paper_height_mm, orientation)?;
 
         // 1. Create Device Context
         let hdc = unsafe {
@@ -361,6 +426,80 @@ impl GraphicsBackend for WindowsGraphicsBackend {
                 DeleteDC(hdc);
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn patched_devmode(orientation: PageOrientation) -> DEVMODEW {
+        let mut dm: DEVMODEW = unsafe { std::mem::zeroed() };
+        WindowsGraphicsBackend::patch_devmode(&mut dm, 100.0, 150.0, orientation);
+        dm
+    }
+
+    #[test]
+    fn patches_landscape_and_custom_paper_fields() {
+        let dm = patched_devmode(PageOrientation::Landscape);
+        let printer_fields = unsafe { dm.Anonymous1.Anonymous1 };
+
+        assert_eq!(
+            dm.dmFields.0 & (DM_ORIENTATION | DM_PAPERSIZE | DM_PAPERLENGTH | DM_PAPERWIDTH),
+            DM_ORIENTATION | DM_PAPERSIZE | DM_PAPERLENGTH | DM_PAPERWIDTH
+        );
+        assert_eq!(printer_fields.dmOrientation, DMORIENT_LANDSCAPE);
+        assert_eq!(printer_fields.dmPaperSize, DMPAPER_USER);
+        assert_eq!(printer_fields.dmPaperWidth, 1000);
+        assert_eq!(printer_fields.dmPaperLength, 1500);
+    }
+
+    #[test]
+    fn patches_portrait_orientation_explicitly() {
+        let dm = patched_devmode(PageOrientation::Portrait);
+        let printer_fields = unsafe { dm.Anonymous1.Anonymous1 };
+
+        assert_eq!(
+            dm.dmFields.0 & DM_ORIENTATION,
+            DM_ORIENTATION,
+            "fallback and driver DEVMODEs must explicitly carry orientation"
+        );
+        assert_eq!(printer_fields.dmOrientation, DMORIENT_PORTRAIT);
+    }
+
+    #[test]
+    fn fallback_devmode_carries_requested_landscape_orientation() {
+        let buffer =
+            WindowsGraphicsBackend::fallback_devmode(100.0, 150.0, PageOrientation::Landscape);
+        let dm = unsafe { std::ptr::read_unaligned(buffer.as_ptr() as *const DEVMODEW) };
+        let printer_fields = unsafe { dm.Anonymous1.Anonymous1 };
+
+        assert_eq!(printer_fields.dmOrientation, DMORIENT_LANDSCAPE);
+        assert_eq!(printer_fields.dmPaperWidth, 1000);
+        assert_eq!(printer_fields.dmPaperLength, 1500);
+    }
+
+    #[test]
+    fn patching_public_devmode_fields_preserves_driver_private_data() {
+        #[repr(C)]
+        struct DriverDevmode {
+            public: DEVMODEW,
+            private: [u8; 8],
+        }
+
+        let mut driver_devmode = DriverDevmode {
+            public: unsafe { std::mem::zeroed() },
+            private: [0xA5; 8],
+        };
+
+        WindowsGraphicsBackend::patch_devmode(
+            &mut driver_devmode.public,
+            100.0,
+            150.0,
+            PageOrientation::Landscape,
+        );
+
+        assert_eq!(driver_devmode.private, [0xA5; 8]);
     }
 }
 
