@@ -5,13 +5,6 @@ use crate::application::ports::EventStore;
 use crate::application::ports::event_bus::EventBus;
 use crate::domain::print_job::PrintJobRepository;
 
-/// Hủy toàn bộ print job (chưa ở trạng thái terminal) của một phiếu in (`slip_id`).
-///
-/// Một phiếu in có thể sinh nhiều job. Khi webapp hủy phiếu, use case này đánh dấu
-/// mọi job chưa hoàn tất của phiếu sang `CANCELLED` trong SQLite, khiến `QueueWorker`
-/// không còn `pop()` các job đó nữa (pop chỉ chọn `QUEUED`) — chặn việc tiếp tục sinh
-/// lệnh in cho spooler. Job đang `PROCESSING` được chặn bổ sung bằng cancel-gate trong
-/// `ProcessPrintJobUseCase` trước bước đẩy sang spooler.
 pub struct CancelPrintJobUseCase {
     pub job_repo: Arc<dyn PrintJobRepository>,
     pub event_store: Arc<dyn EventStore>,

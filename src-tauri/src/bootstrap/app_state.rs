@@ -15,7 +15,7 @@ use crate::{
         use_cases::{
             CancelPrintJobUseCase, ClearHistoryUseCase, CreatePrintJobUseCase,
             GetAuditTrailUseCase, GetJobStatusUseCase, GetMetricsUseCase, ListPrintersUseCase,
-            ProcessPrintJobUseCase,
+            ProcessPrintJobUseCase, RecoverInterruptedJobsUseCase,
         },
     },
     infrastructure::{
@@ -106,6 +106,29 @@ pub fn build_app_state(
         Arc::clone(&event_store),
         Arc::clone(&event_bus),
     ));
+
+    // --- Startup reconciliation ---
+    // Dọn job dang dở TRƯỚC khi start worker: đưa mọi job non-terminal về terminal
+    // để không in lại phiếu cũ và không để job kẹt sau khi app bị tắt đột ngột.
+    // Chạy trước worker.start() để tránh race với vòng pop() của worker.
+    let recover_uc = RecoverInterruptedJobsUseCase::new(
+        Arc::clone(&job_repo),
+        Arc::clone(&event_store),
+        Arc::clone(&event_bus),
+    );
+    match recover_uc.execute() {
+        Ok(n) if n > 0 => tracing::info!(
+            target = "sapo_printer::startup",
+            recovered_jobs = n,
+            "Startup reconciliation: cleaned up interrupted jobs"
+        ),
+        Err(e) => tracing::warn!(
+            target = "sapo_printer::startup",
+            error = %e,
+            "Startup reconciliation failed (non-fatal)"
+        ),
+        _ => {}
+    }
 
     let worker = Arc::new(QueueWorker::new(
         Arc::clone(&queue_manager),

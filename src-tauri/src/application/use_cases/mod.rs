@@ -6,6 +6,7 @@ pub mod get_job_status;
 pub mod get_metrics;
 pub mod list_printers;
 pub mod process_print_job;
+pub mod recover_interrupted_jobs;
 
 pub use cancel_print_job::CancelPrintJobUseCase;
 pub use clear_history::ClearHistoryUseCase;
@@ -15,3 +16,4 @@ pub use get_job_status::GetJobStatusUseCase;
 pub use get_metrics::GetMetricsUseCase;
 pub use list_printers::ListPrintersUseCase;
 pub use process_print_job::ProcessPrintJobUseCase;
+pub use recover_interrupted_jobs::RecoverInterruptedJobsUseCase;
