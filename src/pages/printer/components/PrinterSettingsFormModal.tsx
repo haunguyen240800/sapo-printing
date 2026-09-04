@@ -21,21 +21,21 @@ const validationSchema = yup.object().shape({
   width: yup
     .number()
     .nullable()
-    .transform((value, original) => (original === "" ? null : value))
+    .transform((value, original) => (original === "" || original === undefined || original === null ? null : value))
     .when("paperSize", {
       is: "Custom",
       then: (schema) =>
-        schema.required("Chiều rộng bắt buộc khi chọn khổ Custom").min(50, "Chiều rộng phải tối thiểu 50mm"),
+        schema.required("Chiều rộng bắt buộc").min(50, "Chiều rộng phải tối thiểu 50mm"),
       otherwise: (schema) => schema.defined(),
     }),
   height: yup
     .number()
     .nullable()
-    .transform((value, original) => (original === "" ? null : value))
+    .transform((value, original) => (original === "" || original === undefined || original === null ? null : value))
     .when("paperSize", {
       is: "Custom",
       then: (schema) =>
-        schema.required("Chiều cao bắt buộc khi chọn khổ Custom").min(50, "Chiều cao phải tối thiểu 50mm"),
+        schema.required("Chiều cao bắt buộc").min(50, "Chiều cao phải tối thiểu 50mm"),
       otherwise: (schema) => schema.defined(),
     }),
   marginLeft: yup
@@ -166,8 +166,8 @@ const PrinterSettingsFormModal = ({ open, onClose, onSaved }: PrinterSettingsFor
       setValue("width", parseFloat(dimensions.width), { shouldDirty: true });
       setValue("height", parseFloat(dimensions.height), { shouldDirty: true });
     } else if (value === "Custom") {
-      setValue("width", undefined, { shouldDirty: true });
-      setValue("height", undefined, { shouldDirty: true });
+      setValue("width", null, { shouldDirty: true });
+      setValue("height", null, { shouldDirty: true });
     }
   };
 
